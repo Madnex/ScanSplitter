@@ -1,0 +1,21 @@
+[project]
+name = "scansplitter"
+version = "0.1.0"
+description = "Automatically detect, split, and rotate multiple photos from scanned images"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "gradio>=6.2.0",
+    "numpy>=2.4.0",
+    "opencv-python-headless>=4.11.0.86",
+    "pillow>=12.1.0",
+    "pymupdf>=1.26.7",
+]
+
+[project.scripts]
+scansplitter = "scansplitter.cli:main"
+
+[tool.uv]
+package = true
+
+[tool.uv.sources]
