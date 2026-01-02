@@ -16,6 +16,8 @@ def process_uploads(
     auto_rotate: bool,
     min_area: float,
     max_area: float,
+    output_format: str,
+    quality: int,
 ) -> tuple[list[Image.Image], str | None]:
     """
     Process uploaded files and return detected images.
@@ -25,6 +27,8 @@ def process_uploads(
         auto_rotate: Whether to auto-rotate images
         min_area: Minimum area ratio (percentage)
         max_area: Maximum area ratio (percentage)
+        output_format: Output format ("JPEG" or "PNG")
+        quality: JPEG quality (1-100), ignored for PNG
 
     Returns:
         Tuple of (list of PIL Images, path to ZIP file or None)
@@ -48,26 +52,42 @@ def process_uploads(
         return [], None
 
     # Create ZIP file with results
-    zip_path = create_zip(all_images)
+    zip_path = create_zip(all_images, output_format, quality)
 
     return all_images, zip_path
 
 
-def create_zip(images: list[Image.Image]) -> str:
-    """Create a ZIP file containing all images."""
-    # Create a temporary file for the ZIP
+def create_zip(
+    images: list[Image.Image],
+    output_format: str = "JPEG",
+    quality: int = 85,
+) -> str:
+    """Create a ZIP file containing all images with compression.
+
+    Args:
+        images: List of PIL Images to save
+        output_format: "JPEG" or "PNG"
+        quality: JPEG quality (1-100), ignored for PNG
+    """
     temp_dir = tempfile.mkdtemp()
     zip_path = Path(temp_dir) / "scansplitter_results.zip"
 
+    ext = "jpg" if output_format == "JPEG" else "png"
+
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
         for idx, img in enumerate(images):
-            # Save image to bytes
             img_bytes = io.BytesIO()
-            img.save(img_bytes, format="PNG")
-            img_bytes.seek(0)
 
-            # Add to ZIP
-            zf.writestr(f"photo_{idx + 1:03d}.png", img_bytes.read())
+            if output_format == "JPEG":
+                # Convert to RGB if necessary (JPEG doesn't support alpha)
+                if img.mode in ("RGBA", "P"):
+                    img = img.convert("RGB")
+                img.save(img_bytes, format="JPEG", quality=quality, optimize=True)
+            else:
+                img.save(img_bytes, format="PNG", optimize=True)
+
+            img_bytes.seek(0)
+            zf.writestr(f"photo_{idx + 1:03d}.{ext}", img_bytes.read())
 
     return str(zip_path)
 
@@ -123,6 +143,20 @@ def create_ui() -> gr.Blocks:
                         label="Maximum photo size (%)",
                         info="Ignore regions larger than this percentage of the scan",
                     )
+                    format_dropdown = gr.Dropdown(
+                        choices=["JPEG", "PNG"],
+                        value="JPEG",
+                        label="Output format",
+                        info="JPEG: smaller files, PNG: lossless quality",
+                    )
+                    quality_slider = gr.Slider(
+                        minimum=60,
+                        maximum=100,
+                        value=85,
+                        step=5,
+                        label="JPEG quality",
+                        info="Higher = better quality but larger files (ignored for PNG)",
+                    )
 
                 process_btn = gr.Button("Process", variant="primary", size="lg")
 
@@ -143,7 +177,14 @@ def create_ui() -> gr.Blocks:
         # Wire up the processing
         process_btn.click(
             fn=process_uploads,
-            inputs=[file_input, auto_rotate_checkbox, min_area_slider, max_area_slider],
+            inputs=[
+                file_input,
+                auto_rotate_checkbox,
+                min_area_slider,
+                max_area_slider,
+                format_dropdown,
+                quality_slider,
+            ],
             outputs=[gallery, download_btn],
         )
 

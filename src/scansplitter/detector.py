@@ -11,16 +11,22 @@ from PIL import Image
 class DetectedRegion:
     """A detected photo/document region in a scan."""
 
+    # Rotated rectangle properties (from minAreaRect)
+    center: tuple[float, float]  # Center point (cx, cy)
+    size: tuple[float, float]  # (width, height) of rotated rect
+    angle: float  # Rotation angle in degrees
+    area: float
+    area_ratio: float  # Ratio of region area to total image area
+
+    # Axis-aligned bounding box (for backward compat and quick checks)
     x: int
     y: int
     width: int
     height: int
-    area: int
-    area_ratio: float  # Ratio of region area to total image area
 
     @property
     def bbox(self) -> tuple[int, int, int, int]:
-        """Return bounding box as (x, y, x+width, y+height)."""
+        """Return axis-aligned bounding box as (x, y, x+width, y+height)."""
         return (self.x, self.y, self.x + self.width, self.y + self.height)
 
 
@@ -79,29 +85,43 @@ def detect_photos(
     # Step 5: Find contours
     contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
 
-    # Step 6: Filter contours by area
+    # Step 6: Filter contours by area using rotated rectangles
     regions = []
+    img_height, img_width = cv_image.shape[:2]
+
     for contour in contours:
-        x, y, w, h = cv2.boundingRect(contour)
-        area = w * h
+        # Get minimum area rotated rectangle
+        rect = cv2.minAreaRect(contour)
+        center, size, angle = rect
+        rect_width, rect_height = size
+        area = rect_width * rect_height
         area_ratio = area / total_area
 
         # Filter by area ratio
         if min_area_ratio <= area_ratio <= max_area_ratio:
-            # Apply padding while staying within image bounds
+            # Also get axis-aligned bounding box for quick reference
+            x, y, w, h = cv2.boundingRect(contour)
+
+            # Apply padding to axis-aligned box while staying within image bounds
             x_padded = max(0, x - padding)
             y_padded = max(0, y - padding)
-            w_padded = min(cv_image.shape[1] - x_padded, w + 2 * padding)
-            h_padded = min(cv_image.shape[0] - y_padded, h + 2 * padding)
+            w_padded = min(img_width - x_padded, w + 2 * padding)
+            h_padded = min(img_height - y_padded, h + 2 * padding)
+
+            # Apply padding to rotated rect size
+            padded_size = (rect_width + 2 * padding, rect_height + 2 * padding)
 
             regions.append(
                 DetectedRegion(
+                    center=center,
+                    size=padded_size,
+                    angle=angle,
+                    area=area,
+                    area_ratio=area_ratio,
                     x=x_padded,
                     y=y_padded,
                     width=w_padded,
                     height=h_padded,
-                    area=w_padded * h_padded,
-                    area_ratio=area_ratio,
                 )
             )
 
@@ -111,22 +131,104 @@ def detect_photos(
     return regions
 
 
+def crop_rotated_region(cv_image: np.ndarray, region: DetectedRegion) -> np.ndarray:
+    """
+    Extract a rotated region from an image and deskew it.
+
+    Uses affine transformation to rotate the image so the detected region
+    becomes axis-aligned, then crops the result.
+
+    Args:
+        cv_image: OpenCV image (BGR format)
+        region: DetectedRegion with rotation info
+
+    Returns:
+        Cropped and deskewed image as numpy array
+    """
+    center = region.center
+    size = region.size
+    angle = region.angle
+
+    # OpenCV's minAreaRect angle convention:
+    # - Angle is between -90 and 0 degrees
+    # - We need to handle the rotation correctly to avoid flipped results
+
+    width, height = size
+    width, height = int(width), int(height)
+
+    # Ensure width > height for consistent orientation
+    if width < height:
+        width, height = height, width
+        angle += 90
+
+    # Get rotation matrix to straighten the region
+    rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+
+    # Calculate the size of the rotated image to avoid clipping
+    img_height, img_width = cv_image.shape[:2]
+    cos_angle = abs(rotation_matrix[0, 0])
+    sin_angle = abs(rotation_matrix[0, 1])
+    new_width = int(img_height * sin_angle + img_width * cos_angle)
+    new_height = int(img_height * cos_angle + img_width * sin_angle)
+
+    # Adjust the rotation matrix to account for the new image size
+    rotation_matrix[0, 2] += (new_width - img_width) / 2
+    rotation_matrix[1, 2] += (new_height - img_height) / 2
+
+    # Rotate the entire image
+    rotated = cv2.warpAffine(
+        cv_image,
+        rotation_matrix,
+        (new_width, new_height),
+        flags=cv2.INTER_LINEAR,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=(255, 255, 255),  # White background for scans
+    )
+
+    # Calculate new center after rotation
+    cx, cy = center
+    new_cx = cx * rotation_matrix[0, 0] + cy * rotation_matrix[0, 1] + rotation_matrix[0, 2]
+    new_cy = cx * rotation_matrix[1, 0] + cy * rotation_matrix[1, 1] + rotation_matrix[1, 2]
+
+    # Crop the now-aligned rectangle
+    x1 = int(new_cx - width / 2)
+    y1 = int(new_cy - height / 2)
+    x2 = int(new_cx + width / 2)
+    y2 = int(new_cy + height / 2)
+
+    # Clamp to image bounds
+    x1 = max(0, x1)
+    y1 = max(0, y1)
+    x2 = min(new_width, x2)
+    y2 = min(new_height, y2)
+
+    return rotated[y1:y2, x1:x2]
+
+
 def crop_regions(image: Image.Image, regions: list[DetectedRegion]) -> list[Image.Image]:
     """
-    Crop detected regions from the original image.
+    Crop detected regions from the original image with deskewing.
 
     Args:
         image: Original PIL Image
         regions: List of DetectedRegion objects
 
     Returns:
-        List of cropped PIL Images
+        List of cropped and deskewed PIL Images
     """
+    # Convert to OpenCV format once
+    cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+
     cropped = []
     for region in regions:
-        bbox = region.bbox
-        cropped_img = image.crop(bbox)
+        # Extract and deskew the rotated region
+        cropped_cv = crop_rotated_region(cv_image, region)
+
+        # Convert back to PIL
+        cropped_rgb = cv2.cvtColor(cropped_cv, cv2.COLOR_BGR2RGB)
+        cropped_img = Image.fromarray(cropped_rgb)
         cropped.append(cropped_img)
+
     return cropped
 
 
