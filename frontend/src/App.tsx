@@ -90,6 +90,13 @@ function App() {
     );
   }, [activeFileIndex]);
 
+  // Handle image name change
+  const handleImageNameChange = useCallback((id: string, name: string) => {
+    setCroppedImages((prev) =>
+      prev.map((img) => (img.id === id ? { ...img, name } : img))
+    );
+  }, []);
+
   // Handle detection
   const handleDetect = useCallback(async () => {
     if (!activeFile) return;
@@ -121,7 +128,12 @@ function App() {
         activeFile.boxes,
         settings.autoRotate
       );
-      setCroppedImages(result);
+      // Initialize with default names
+      const imagesWithNames = result.map((img, idx) => ({
+        ...img,
+        name: `photo_${idx + 1}`,
+      }));
+      setCroppedImages(imagesWithNames);
     } catch (error) {
       console.error("Crop failed:", error);
       alert("Failed to crop photos");
@@ -135,7 +147,12 @@ function App() {
     if (!activeFile || croppedImages.length === 0) return;
     setIsExporting(true);
     try {
-      const blob = await exportZip(activeFile.sessionId, "jpeg", 85);
+      // Build names map from cropped images
+      const names = croppedImages.reduce(
+        (acc, img) => ({ ...acc, [img.id]: img.name }),
+        {} as Record<string, string>
+      );
+      const blob = await exportZip(activeFile.sessionId, "jpeg", 85, names);
 
       // Download the blob
       const url = URL.createObjectURL(blob);
@@ -152,7 +169,7 @@ function App() {
     } finally {
       setIsExporting(false);
     }
-  }, [activeFile, croppedImages.length]);
+  }, [activeFile, croppedImages]);
 
   // Get current image URL
   const imageUrl = activeFile
@@ -160,20 +177,20 @@ function App() {
     : null;
 
   return (
-    <div className="min-h-screen p-4">
-      <div className="max-w-7xl mx-auto">
+    <div className="h-screen flex flex-col p-4 overflow-hidden">
+      <div className="flex-1 flex flex-col min-h-0">
         {/* Header */}
-        <header className="mb-6">
-          <h1 className="text-2xl font-bold">ScanSplitter</h1>
-          <p className="text-muted-foreground">
+        <header className="mb-4 flex-shrink-0">
+          <h1 className="text-xl font-bold">ScanSplitter</h1>
+          <p className="text-sm text-muted-foreground">
             Detect, adjust, and extract photos from scanned images
           </p>
         </header>
 
         {/* Main layout */}
-        <div className="grid grid-cols-1 lg:grid-cols-[250px_1fr_250px] gap-4">
+        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[250px_1fr_250px] gap-4 min-h-0">
           {/* Left panel - Settings */}
-          <div className="space-y-4">
+          <div className="space-y-4 overflow-y-auto">
             <FileUpload onUpload={handleUpload} disabled={isUploading} />
             <SettingsPanel
               settings={settings}
@@ -187,14 +204,14 @@ function App() {
           </div>
 
           {/* Center panel - Canvas */}
-          <div className="min-h-[600px] flex flex-col">
+          <div className="flex flex-col min-h-0">
             <FileTabs
               files={files}
               activeIndex={activeFileIndex}
               onSelect={handleSelectFile}
               onClose={handleCloseFile}
             />
-            <div className="flex-1 mt-2">
+            <div className="flex-1 mt-2 min-h-0">
               <ImageCanvas
                 imageUrl={imageUrl}
                 boxes={activeFile?.boxes ?? []}
@@ -213,10 +230,11 @@ function App() {
           </div>
 
           {/* Right panel - Results */}
-          <div>
+          <div className="overflow-y-auto">
             <ResultsGallery
               images={croppedImages}
               onExport={handleExport}
+              onNameChange={handleImageNameChange}
               isExporting={isExporting}
             />
           </div>

@@ -26,6 +26,7 @@ export interface CroppedImage {
   width: number;
   height: number;
   rotationApplied: number;
+  name: string; // custom name for download
 }
 
 // Detection settings

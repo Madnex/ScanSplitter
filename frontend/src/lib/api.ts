@@ -77,7 +77,7 @@ export async function cropImages(
   page: number,
   boxes: BoundingBox[],
   autoRotate: boolean
-): Promise<CroppedImage[]> {
+): Promise<Omit<CroppedImage, "name">[]> {
   const response = await fetch(`${API_BASE}/crop`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -113,7 +113,8 @@ export async function cropImages(
 export async function exportZip(
   sessionId: string,
   format: "jpeg" | "png",
-  quality: number
+  quality: number,
+  names?: Record<string, string>
 ): Promise<Blob> {
   const response = await fetch(`${API_BASE}/export`, {
     method: "POST",
@@ -122,6 +123,7 @@ export async function exportZip(
       session_id: sessionId,
       format,
       quality,
+      names,
     }),
   });
 

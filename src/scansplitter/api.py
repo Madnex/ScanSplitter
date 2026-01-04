@@ -102,6 +102,7 @@ class ExportRequest(BaseModel):
     session_id: str
     format: str = "jpeg"  # jpeg or png
     quality: int = 85
+    names: dict[str, str] | None = None  # id -> custom name
 
 
 # --- Helper Functions ---
@@ -365,7 +366,15 @@ async def export_zip(request: ExportRequest):
                     img.save(buffer, "JPEG", quality=request.quality)
                     ext = "jpg"
 
-                zf.writestr(f"photo_{i:03d}.{ext}", buffer.getvalue())
+                # Get custom name if provided, otherwise use default
+                # Filename is cropped_{id}.jpg, extract the id
+                img_id = img_path.stem.replace("cropped_", "")
+                if request.names and img_id in request.names:
+                    filename = f"{request.names[img_id]}.{ext}"
+                else:
+                    filename = f"photo_{i:03d}.{ext}"
+
+                zf.writestr(filename, buffer.getvalue())
 
     return FileResponse(
         zip_path,
