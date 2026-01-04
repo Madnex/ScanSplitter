@@ -137,9 +137,10 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
       const imgWidth = htmlImg.naturalWidth;
       const imgHeight = htmlImg.naturalHeight;
 
-      // Get container dimensions
-      const containerWidth = container.clientWidth || 800;
-      const containerHeight = container.clientHeight || 600;
+      // Get container dimensions (subtract padding: p-12 = 48px on each side)
+      const padding = 48 * 2; // p-12 = 3rem = 48px, on both sides
+      const containerWidth = (container.clientWidth || 800) - padding;
+      const containerHeight = (container.clientHeight || 600) - padding;
 
       // Calculate scale to fit container while maintaining aspect ratio
       const scale = Math.min(
@@ -397,10 +398,10 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
         </span>
       </div>
 
-      {/* Canvas container */}
+      {/* Canvas container - overflow visible to show rotation handles */}
       <div
         ref={containerRef}
-        className="flex-1 bg-muted/30 rounded-lg overflow-hidden flex items-center justify-center min-h-[400px] relative"
+        className="flex-1 bg-muted/30 rounded-lg overflow-visible flex items-center justify-center min-h-[400px] relative p-12"
       >
         {/* Canvas wrapper - Fabric creates its own wrapper, so we wrap that */}
         <div style={{

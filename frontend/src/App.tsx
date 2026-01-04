@@ -112,6 +112,48 @@ function App() {
     );
   }, []);
 
+  // Handle image rotation (90° increments)
+  const handleImageRotate = useCallback((id: string, direction: "left" | "right") => {
+    const image = croppedImages.find((img) => img.id === id);
+    if (!image) return;
+
+    // Create a canvas to rotate the image
+    const img = new Image();
+    img.onload = () => {
+      const canvas = document.createElement("canvas");
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+
+      // Swap dimensions for 90° rotation
+      canvas.width = img.height;
+      canvas.height = img.width;
+
+      // Rotate around center
+      ctx.translate(canvas.width / 2, canvas.height / 2);
+      ctx.rotate((direction === "right" ? 90 : -90) * (Math.PI / 180));
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
+
+      // Get rotated base64 data (remove "data:image/jpeg;base64," prefix)
+      const rotatedData = canvas.toDataURL("image/jpeg", 0.92).split(",")[1];
+      const rotationDelta = direction === "right" ? 90 : -90;
+
+      setCroppedImages((prev) =>
+        prev.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                data: rotatedData,
+                width: item.height,
+                height: item.width,
+                rotationApplied: (item.rotationApplied + rotationDelta + 360) % 360,
+              }
+            : item
+        )
+      );
+    };
+    img.src = `data:image/jpeg;base64,${image.data}`;
+  }, [croppedImages]);
+
   // Handle detection
   const handleDetect = useCallback(async () => {
     if (!activeFile) return;
@@ -281,6 +323,7 @@ function App() {
               onExport={handleExport}
               onExportLocal={handleExportLocal}
               onNameChange={handleImageNameChange}
+              onRotate={handleImageRotate}
               isExporting={isExporting}
               outputDirectory={outputDirectory}
               onOutputDirectoryChange={setOutputDirectory}

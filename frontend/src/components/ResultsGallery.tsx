@@ -1,4 +1,4 @@
-import { Download, FolderDown } from "lucide-react";
+import { Download, FolderDown, RotateCcw, RotateCw } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -9,6 +9,7 @@ interface ResultsGalleryProps {
   onExport: () => void;
   onExportLocal: () => void;
   onNameChange: (id: string, name: string) => void;
+  onRotate: (id: string, direction: "left" | "right") => void;
   isExporting: boolean;
   outputDirectory: string;
   onOutputDirectoryChange: (path: string) => void;
@@ -19,6 +20,7 @@ export function ResultsGallery({
   onExport,
   onExportLocal,
   onNameChange,
+  onRotate,
   isExporting,
   outputDirectory,
   onOutputDirectoryChange,
@@ -98,10 +100,28 @@ export function ResultsGallery({
                 )}
               </div>
               <div className="flex gap-1">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 flex-shrink-0"
+                  onClick={() => onRotate(image.id, "left")}
+                  title="Rotate left 90°"
+                >
+                  <RotateCcw className="w-3 h-3" />
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  className="h-7 px-2 flex-shrink-0"
+                  onClick={() => onRotate(image.id, "right")}
+                  title="Rotate right 90°"
+                >
+                  <RotateCw className="w-3 h-3" />
+                </Button>
                 <Input
                   value={image.name}
                   onChange={(e) => onNameChange(image.id, e.target.value)}
-                  className="h-7 text-xs"
+                  className="h-7 text-xs flex-1 min-w-0"
                   placeholder="Name"
                 />
                 <Button
@@ -109,6 +129,7 @@ export function ResultsGallery({
                   variant="outline"
                   className="h-7 px-2 flex-shrink-0"
                   onClick={() => downloadImage(image)}
+                  title="Download image"
                 >
                   <Download className="w-3 h-3" />
                 </Button>
