@@ -1,10 +1,47 @@
 """Command-line interface for ScanSplitter."""
 
 import argparse
+import errno
+import os
+import socket
 import sys
 from pathlib import Path
 
 from .processor import process_file
+
+
+def _get_default_port() -> int:
+    for name in ("SCANSPLITTER_PORT", "PORT"):
+        value = os.environ.get(name)
+        if not value:
+            continue
+        try:
+            return int(value)
+        except ValueError:
+            print(f"Warning: ignoring invalid {name}={value!r}; expected an integer", file=sys.stderr)
+            break
+    return 8000
+
+
+def _port_is_available(host: str, port: int) -> bool:
+    if port == 0:
+        return True
+
+    try:
+        addrinfos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except socket.gaierror:
+        return True
+
+    for family, socktype, proto, _, sockaddr in addrinfos:
+        sock = socket.socket(family, socktype, proto)
+        try:
+            sock.bind(sockaddr)
+        except OSError as e:
+            if getattr(e, "errno", None) == errno.EADDRINUSE:
+                return False
+        finally:
+            sock.close()
+    return True
 
 
 def main():
@@ -27,8 +64,8 @@ def main():
     api_parser.add_argument(
         "--port",
         type=int,
-        default=8000,
-        help="Port to bind to (default: 8000)",
+        default=_get_default_port(),
+        help="Port to bind to (default: 8000; can also use SCANSPLITTER_PORT or PORT)",
     )
     api_parser.add_argument(
         "--reload",
@@ -85,15 +122,36 @@ def main():
         host = getattr(args, "host", "127.0.0.1")
         port = getattr(args, "port", 8000)
         reload = getattr(args, "reload", False)
+        suggested_port = port + 1 if port < 65535 else 8001
+
+        if not _port_is_available(host, port):
+            print(
+                f"Error: {host}:{port} is already in use.\n"
+                f"Try a different port, e.g. `scansplitter api --port {suggested_port}` "
+                f"(or `uvx scansplitter api --port {suggested_port}`).\n"
+                f"You can also set `SCANSPLITTER_PORT={suggested_port}`.",
+                file=sys.stderr,
+            )
+            raise SystemExit(1)
 
         print(f"Starting ScanSplitter API server at http://{host}:{port}")
         print("API docs available at /docs")
-        uvicorn.run(
-            "scansplitter.api:app" if reload else fastapi_app,
-            host=host,
-            port=port,
-            reload=reload,
-        )
+        try:
+            uvicorn.run(
+                "scansplitter.api:app" if reload else fastapi_app,
+                host=host,
+                port=port,
+                reload=reload,
+            )
+        except OSError as e:
+            if getattr(e, "errno", None) == errno.EADDRINUSE:
+                print(
+                    f"Error: {host}:{port} is already in use. "
+                    f"Try `--port {suggested_port}` (or set `SCANSPLITTER_PORT={suggested_port}`).",
+                    file=sys.stderr,
+                )
+                raise SystemExit(1) from e
+            raise
 
     elif args.command == "process":
         process_files_cli(args)

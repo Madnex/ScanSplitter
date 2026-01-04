@@ -27,6 +27,10 @@ uvx scansplitter api
 ```
 
 Opens at http://localhost:8000 - drag & drop your scans and export cropped photos.
+If port 8000 is already in use, pick another:
+```bash
+uvx scansplitter api --port 8001
+```
 
 ## Features
 
