@@ -123,6 +123,7 @@ class ExportLocalRequest(BaseModel):
     quality: int = 85
     names: dict[str, str] | None = None  # id -> custom name (legacy)
     images: list[ImageData] | None = None  # Direct image data with rotations applied
+    overwrite: bool = False  # Whether to overwrite existing files
 
 
 # --- Helper Functions ---
@@ -442,6 +443,33 @@ async def export_local(request: ExportLocalRequest):
         raise HTTPException(status_code=400, detail=f"Path is not a directory: {output_path}")
 
     ext = "png" if request.format.lower() == "png" else "jpg"
+
+    # Build list of filenames that would be created
+    filenames: list[str] = []
+    if request.images:
+        filenames = [f"{img_data.name}.{ext}" for img_data in request.images]
+    elif session.cropped_images:
+        for i, img_path in enumerate(session.cropped_images, 1):
+            if img_path.exists():
+                img_id = img_path.stem.replace("cropped_", "")
+                if request.names and img_id in request.names:
+                    filenames.append(f"{request.names[img_id]}.{ext}")
+                else:
+                    filenames.append(f"photo_{i:03d}.{ext}")
+
+    # Check for existing files if overwrite is not enabled
+    if not request.overwrite:
+        existing_files = [f for f in filenames if (output_path / f).exists()]
+        if existing_files:
+            raise HTTPException(
+                status_code=409,
+                detail={
+                    "message": "Files already exist",
+                    "existing_files": existing_files,
+                    "count": len(existing_files),
+                },
+            )
+
     exported_files = []
 
     try:

@@ -140,12 +140,28 @@ export async function exportZip(
   return response.blob();
 }
 
+export interface ExportConflict {
+  message: string;
+  existing_files: string[];
+  count: number;
+}
+
+export class FileConflictError extends Error {
+  conflict: ExportConflict;
+  constructor(conflict: ExportConflict) {
+    super(conflict.message);
+    this.name = "FileConflictError";
+    this.conflict = conflict;
+  }
+}
+
 export async function exportLocal(
   sessionId: string,
   outputDirectory: string,
   format: "jpeg" | "png",
   quality: number,
-  images: ExportImageData[]
+  images: ExportImageData[],
+  overwrite: boolean = false
 ): Promise<{ status: string; files: string[]; count: number }> {
   const response = await fetch(`${API_BASE}/export-local`, {
     method: "POST",
@@ -156,12 +172,20 @@ export async function exportLocal(
       format,
       quality,
       images,
+      overwrite,
     }),
   });
 
   if (!response.ok) {
     const error = await response.json().catch(() => ({ detail: response.statusText }));
-    throw new Error(error.detail || `Export failed: ${response.statusText}`);
+
+    // Handle file conflict (409)
+    if (response.status === 409 && error.detail?.existing_files) {
+      throw new FileConflictError(error.detail);
+    }
+
+    const message = typeof error.detail === "string" ? error.detail : error.detail?.message || response.statusText;
+    throw new Error(message || `Export failed: ${response.statusText}`);
   }
 
   return response.json();

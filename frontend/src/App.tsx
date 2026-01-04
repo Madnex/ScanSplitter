@@ -6,7 +6,8 @@ import { PageNavigator } from "@/components/PageNavigator";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ResultsGallery } from "@/components/ResultsGallery";
 import { Toast, type ToastType } from "@/components/Toast";
-import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl } from "@/lib/api";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
+import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, FileConflictError } from "@/lib/api";
 import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings } from "@/types";
 
 function App() {
@@ -37,6 +38,11 @@ function App() {
 
   // Toast notification state
   const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+
+  // Overwrite confirmation dialog state
+  const [overwriteDialog, setOverwriteDialog] = useState<{
+    files: string[];
+  } | null>(null);
 
   const showToast = useCallback((message: string, type: ToastType = "success") => {
     setToast({ message, type });
@@ -250,12 +256,8 @@ function App() {
   }, [activeFile, croppedImages, showToast]);
 
   // Handle export to local directory
-  const handleExportLocal = useCallback(async () => {
+  const doExportLocal = useCallback(async (overwrite: boolean) => {
     if (!activeFile || croppedImages.length === 0) return;
-    if (!outputDirectory.trim()) {
-      showToast("Please enter an output directory", "error");
-      return;
-    }
 
     setIsExporting(true);
     try {
@@ -270,16 +272,37 @@ function App() {
         outputDirectory,
         "jpeg",
         85,
-        images
+        images,
+        overwrite
       );
       showToast(`Exported ${result.count} images to ${outputDirectory}`, "success");
     } catch (error) {
       console.error("Export failed:", error);
+
+      // Handle file conflict - show confirmation dialog
+      if (error instanceof FileConflictError) {
+        setOverwriteDialog({ files: error.conflict.existing_files });
+        return;
+      }
+
       showToast(error instanceof Error ? error.message : "Failed to export photos", "error");
     } finally {
       setIsExporting(false);
     }
   }, [activeFile, croppedImages, outputDirectory, showToast]);
+
+  const handleExportLocal = useCallback(async () => {
+    if (!outputDirectory.trim()) {
+      showToast("Please enter an output directory", "error");
+      return;
+    }
+    await doExportLocal(false);
+  }, [outputDirectory, showToast, doExportLocal]);
+
+  const handleOverwriteConfirm = useCallback(async () => {
+    setOverwriteDialog(null);
+    await doExportLocal(true);
+  }, [doExportLocal]);
 
   // Get current image URL
   const imageUrl = activeFile
@@ -362,6 +385,19 @@ function App() {
           message={toast.message}
           type={toast.type}
           onClose={() => setToast(null)}
+        />
+      )}
+
+      {/* Overwrite confirmation dialog */}
+      {overwriteDialog && (
+        <ConfirmDialog
+          title="Files Already Exist"
+          message={`${overwriteDialog.files.length} file(s) already exist in the output directory. Do you want to overwrite them?`}
+          details={overwriteDialog.files}
+          confirmLabel="Overwrite"
+          cancelLabel="Cancel"
+          onConfirm={handleOverwriteConfirm}
+          onCancel={() => setOverwriteDialog(null)}
         />
       )}
     </div>
