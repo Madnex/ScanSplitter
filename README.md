@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="frontend/public/logo-rounded.png" alt="ScanSplitter Logo" width="200">
+  <img src="frontend/public/logo.png" alt="ScanSplitter Logo" width="200">
 </p>
 
 <p align="center">
