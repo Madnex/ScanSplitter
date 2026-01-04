@@ -8,14 +8,21 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies
 uv sync
 
-# Run web UI
-uv run scansplitter
+# Run new web UI (FastAPI + React with interactive bounding box editor)
+uv run scansplitter api
+
+# Run legacy Gradio UI
+uv run scansplitter ui
 
 # Process files via CLI
 uv run scansplitter process <files> -o ./output/
 
 # Run with specific options
 uv run scansplitter process scan.jpg --no-rotate --min-area 5 --max-area 70 --format jpg
+
+# Frontend development
+cd frontend && npm install && npm run dev  # Dev server on :5173
+cd frontend && npm run build               # Build to src/scansplitter/static/
 ```
 
 ## Architecture
@@ -33,5 +40,20 @@ ScanSplitter detects and extracts multiple photos from scanned images using Open
 - Detection uses `cv2.findContours()` with `RETR_EXTERNAL` to get outermost contours only
 
 **Interfaces:**
-- `ui.py` - Gradio web app with file upload, gallery preview, ZIP download
-- `cli.py` - Subcommands: `ui` (launch web), `process` (batch CLI)
+- `api.py` - FastAPI backend with REST endpoints for the new React frontend
+- `session.py` - Session management for temporary file storage
+- `ui.py` - Legacy Gradio web app (still available via `scansplitter ui`)
+- `cli.py` - Subcommands: `api` (new UI), `ui` (legacy Gradio), `process` (batch CLI)
+
+**Frontend** (`frontend/`):
+- React + TypeScript + Vite
+- Tailwind CSS for styling
+- Fabric.js for interactive, rotatable bounding box editing
+- Built output goes to `src/scansplitter/static/` and is served by FastAPI
+
+**API Endpoints** (`/api/...`):
+- `POST /upload` - Upload image/PDF, returns session ID
+- `POST /detect` - Run detection, returns bounding boxes
+- `POST /crop` - Crop with user-adjusted boxes
+- `POST /export` - Download results as ZIP
+- `GET /image/{session_id}/{filename}` - Serve uploaded images

@@ -7,9 +7,10 @@ Drop a scan containing multiple photos and get individual, correctly-oriented im
 ## Features
 
 - **Auto-detection** - Finds multiple photos in a single scan using contour detection
+- **Interactive editing** - Adjust, rotate, and resize bounding boxes before cropping
 - **Auto-rotation** - Detects and corrects 90°/180°/270° rotations
 - **PDF support** - Extract and process pages from PDF files
-- **Web UI** - Drag & drop interface with preview and ZIP download
+- **Web UI** - Modern React interface with Fabric.js canvas editor
 - **CLI** - Batch process files from the command line
 
 ## Installation
@@ -27,10 +28,15 @@ uv sync
 ### Web Interface
 
 ```bash
-uv run scansplitter
+uv run scansplitter api
 ```
 
-Opens a browser with drag & drop upload, gallery preview, and ZIP download.
+Opens at http://localhost:8000 with:
+- Drag & drop file upload (images and PDFs)
+- Interactive bounding box editor (drag, resize, rotate)
+- Multi-file support with tabs
+- PDF page navigation
+- ZIP export
 
 ### Command Line
 
@@ -69,4 +75,39 @@ uv run scansplitter process scan.jpg \
 2. **Thresholding** - Adaptive binary threshold to separate photos from background
 3. **Contour Detection** - Find distinct regions using OpenCV
 4. **Filtering** - Keep regions between min/max area thresholds
-5. **Rotation Detection** - Score each 90° rotation using Hough line detection, pick best alignment
+5. **Interactive Adjustment** - User can modify detected boxes in the web UI
+6. **Rotation Detection** - Score each 90° rotation using Hough line detection
+7. **Cropping** - Extract photos using adjusted bounding boxes
+
+## Development
+
+### Frontend Development
+
+```bash
+# Start API server
+uv run scansplitter api --reload
+
+# In another terminal, start frontend dev server
+cd frontend
+npm install
+npm run dev
+```
+
+Frontend runs on http://localhost:5173 with hot reload, proxying API requests to :8000.
+
+### Build Frontend
+
+```bash
+cd frontend
+npm run build
+```
+
+Builds to `src/scansplitter/static/`, which FastAPI serves automatically.
+
+## Legacy Gradio UI
+
+The original Gradio-based UI is still available:
+
+```bash
+uv run scansplitter ui
+```
