@@ -1,5 +1,11 @@
 <p align="center">
-  <img src="frontend/public/logo.png" alt="ScanSplitter Logo" width="200">
+  <img src="frontend/public/logo-rounded.png" alt="ScanSplitter Logo" width="200">
+</p>
+
+<p align="center">
+  <a href="https://pypi.org/project/scansplitter/"><img alt="PyPI" src="https://img.shields.io/pypi/v/scansplitter"></a>
+  <a href="https://pypi.org/project/scansplitter/"><img alt="Python versions" src="https://img.shields.io/pypi/pyversions/scansplitter"></a>
+  <a href="LICENSE"><img alt="License: GPLv3" src="https://img.shields.io/badge/License-GPLv3-blue.svg"></a>
 </p>
 
 # ScanSplitter
