@@ -8,11 +8,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 # Install dependencies
 uv sync
 
-# Run new web UI (FastAPI + React with interactive bounding box editor)
+# Run web UI (FastAPI + React with interactive bounding box editor)
 uv run scansplitter api
-
-# Run legacy Gradio UI
-uv run scansplitter ui
 
 # Process files via CLI
 uv run scansplitter process <files> -o ./output/
@@ -40,10 +37,9 @@ ScanSplitter detects and extracts multiple photos from scanned images using Open
 - Detection uses `cv2.findContours()` with `RETR_EXTERNAL` to get outermost contours only
 
 **Interfaces:**
-- `api.py` - FastAPI backend with REST endpoints for the new React frontend
+- `api.py` - FastAPI backend with REST endpoints for the React frontend
 - `session.py` - Session management for temporary file storage
-- `ui.py` - Legacy Gradio web app (still available via `scansplitter ui`)
-- `cli.py` - Subcommands: `api` (new UI), `ui` (legacy Gradio), `process` (batch CLI)
+- `cli.py` - Subcommands: `api` (web UI), `process` (batch CLI)
 
 **Frontend** (`frontend/`):
 - React + TypeScript + Vite

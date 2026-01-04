@@ -5,7 +5,6 @@ import sys
 from pathlib import Path
 
 from .processor import process_file
-from .ui import main as launch_ui
 
 
 def main():
@@ -17,15 +16,7 @@ def main():
 
     subparsers = parser.add_subparsers(dest="command", help="Commands")
 
-    # UI command (Gradio - legacy)
-    ui_parser = subparsers.add_parser("ui", help="Launch the Gradio web interface (legacy)")
-    ui_parser.add_argument(
-        "--share",
-        action="store_true",
-        help="Create a public shareable link",
-    )
-
-    # API command (new FastAPI backend)
+    # API command (FastAPI backend)
     api_parser = subparsers.add_parser("api", help="Launch the FastAPI backend server")
     api_parser.add_argument(
         "--host",
@@ -86,32 +77,26 @@ def main():
 
     args = parser.parse_args()
 
-    if args.command == "ui":
-        from .ui import create_ui
-
-        app = create_ui()
-        app.launch(share=args.share)
-
-    elif args.command == "api":
+    if args.command == "api" or args.command is None:
         import uvicorn
 
         from .api import app as fastapi_app
 
-        print(f"Starting ScanSplitter API server at http://{args.host}:{args.port}")
+        host = getattr(args, "host", "127.0.0.1")
+        port = getattr(args, "port", 8000)
+        reload = getattr(args, "reload", False)
+
+        print(f"Starting ScanSplitter API server at http://{host}:{port}")
         print("API docs available at /docs")
         uvicorn.run(
-            "scansplitter.api:app" if args.reload else fastapi_app,
-            host=args.host,
-            port=args.port,
-            reload=args.reload,
+            "scansplitter.api:app" if reload else fastapi_app,
+            host=host,
+            port=port,
+            reload=reload,
         )
 
     elif args.command == "process":
         process_files_cli(args)
-
-    else:
-        # Default: launch UI
-        launch_ui()
 
 
 def process_files_cli(args):

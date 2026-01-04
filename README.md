@@ -103,11 +103,3 @@ npm run build
 ```
 
 Builds to `src/scansplitter/static/`, which FastAPI serves automatically.
-
-## Legacy Gradio UI
-
-The original Gradio-based UI is still available:
-
-```bash
-uv run scansplitter ui
-```
