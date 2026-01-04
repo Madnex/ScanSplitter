@@ -37,7 +37,8 @@ def detect_photos(
     blur_kernel: int = 5,
     threshold_block_size: int = 11,
     threshold_c: int = 2,
-    padding: int = 5,
+    padding: int = 0,
+    inset: int = 10,
 ) -> list[DetectedRegion]:
     """
     Detect multiple photos/documents in a scanned image.
@@ -52,6 +53,7 @@ def detect_photos(
         threshold_block_size: Block size for adaptive thresholding
         threshold_c: Constant subtracted from threshold
         padding: Extra pixels to include around detected regions
+        inset: Pixels to shrink the bounding box inward (removes border artifacts)
 
     Returns:
         List of DetectedRegion objects sorted by position (top-to-bottom, left-to-right)
@@ -102,15 +104,17 @@ def detect_photos(
             # Also get axis-aligned bounding box for quick reference
             x, y, w, h = cv2.boundingRect(contour)
 
-            # Apply padding to axis-aligned box while staying within image bounds
-            x_padded = max(0, x - padding)
-            y_padded = max(0, y - padding)
-            w_padded = min(img_width - x_padded, w + 2 * padding)
-            h_padded = min(img_height - y_padded, h + 2 * padding)
+            # Apply padding then inset to axis-aligned box while staying within image bounds
+            # Net effect = padding - inset (e.g., padding=0, inset=3 shrinks by 3px each side)
+            net_adjust = padding - inset
+            x_padded = max(0, x - net_adjust)
+            y_padded = max(0, y - net_adjust)
+            w_padded = max(1, min(img_width - x_padded, w + 2 * net_adjust))
+            h_padded = max(1, min(img_height - y_padded, h + 2 * net_adjust))
 
-            # Apply padding to rotated rect size
-            padded_width = rect_width + 2 * padding
-            padded_height = rect_height + 2 * padding
+            # Apply padding then inset to rotated rect size
+            padded_width = max(1, rect_width + 2 * net_adjust)
+            padded_height = max(1, rect_height + 2 * net_adjust)
 
             # Normalize OpenCV's minAreaRect output:
             # minAreaRect returns angle in [-90, 0) with arbitrary width/height order.
