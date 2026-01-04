@@ -20,6 +20,11 @@ uv run scansplitter process scan.jpg --no-rotate --min-area 5 --max-area 70 --fo
 # Frontend development
 cd frontend && npm install && npm run dev  # Dev server on :5173
 cd frontend && npm run build               # Build to src/scansplitter/static/
+
+# Build and publish to PyPI
+cd frontend && npm run build               # Build frontend first
+uv build                                   # Creates dist/*.whl and dist/*.tar.gz
+uv publish                                 # Publish to PyPI (requires API token)
 ```
 
 ## Architecture
