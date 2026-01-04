@@ -4,6 +4,20 @@ Automatically detect, split, and rotate multiple photos from scanned images.
 
 Drop a scan containing multiple photos and get individual, correctly-oriented images back.
 
+## Quick Start
+
+**One-time setup** - Install [uv](https://docs.astral.sh/uv/):
+```bash
+curl -LsSf https://astral.sh/uv/install.sh | sh
+```
+
+**Run ScanSplitter** (no clone needed):
+```bash
+uvx scansplitter api
+```
+
+Opens at http://localhost:8000 - drag & drop your scans and export cropped photos.
+
 ## Features
 
 - **Auto-detection** - Finds multiple photos in a single scan using contour detection
@@ -13,14 +27,29 @@ Drop a scan containing multiple photos and get individual, correctly-oriented im
 - **Web UI** - Modern React interface with Fabric.js canvas editor
 - **CLI** - Batch process files from the command line
 
-## Installation
+## Installation Options
 
-Requires [uv](https://docs.astral.sh/uv/) and Python 3.13+.
+### Option 1: Run directly with uvx (recommended)
+
+No installation needed - just run:
+```bash
+uvx scansplitter api
+```
+
+### Option 2: Install with pipx
 
 ```bash
-git clone <repo-url>
-cd ScanSplitter
+pipx install scansplitter
+scansplitter api
+```
+
+### Option 3: Install from source
+
+```bash
+git clone https://github.com/janklan/scansplitter
+cd scansplitter
 uv sync
+uv run scansplitter api
 ```
 
 ## Usage
@@ -28,7 +57,8 @@ uv sync
 ### Web Interface
 
 ```bash
-uv run scansplitter api
+scansplitter api
+# or: uvx scansplitter api
 ```
 
 Opens at http://localhost:8000 with:
