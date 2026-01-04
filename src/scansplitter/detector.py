@@ -109,12 +109,24 @@ def detect_photos(
             h_padded = min(img_height - y_padded, h + 2 * padding)
 
             # Apply padding to rotated rect size
-            padded_size = (rect_width + 2 * padding, rect_height + 2 * padding)
+            padded_width = rect_width + 2 * padding
+            padded_height = rect_height + 2 * padding
+
+            # Normalize OpenCV's minAreaRect output:
+            # minAreaRect returns angle in [-90, 0) with arbitrary width/height order.
+            # We normalize so that:
+            # - angle is always 0 when the box is axis-aligned
+            # - width corresponds to the dimension along the angle direction
+            # This matches what the user sees and edits in the UI
+            if rect_width < rect_height:
+                # Swap to make width the larger dimension and adjust angle
+                padded_width, padded_height = padded_height, padded_width
+                angle = angle + 90
 
             regions.append(
                 DetectedRegion(
                     center=center,
-                    size=padded_size,
+                    size=(padded_width, padded_height),
                     angle=angle,
                     area=area,
                     area_ratio=area_ratio,
@@ -135,8 +147,8 @@ def crop_rotated_region(cv_image: np.ndarray, region: DetectedRegion) -> np.ndar
     """
     Extract a rotated region from an image and deskew it.
 
-    Uses affine transformation to rotate the image so the detected region
-    becomes axis-aligned, then crops the result.
+    Uses perspective transformation to extract the exact rotated rectangle
+    and warp it to an axis-aligned output.
 
     Args:
         cv_image: OpenCV image (BGR format)
@@ -146,63 +158,43 @@ def crop_rotated_region(cv_image: np.ndarray, region: DetectedRegion) -> np.ndar
         Cropped and deskewed image as numpy array
     """
     center = region.center
-    size = region.size
+    width, height = region.size
     angle = region.angle
 
-    # OpenCV's minAreaRect angle convention:
-    # - Angle is between -90 and 0 degrees
-    # - We need to handle the rotation correctly to avoid flipped results
+    # Create the rotated rectangle in OpenCV format
+    # OpenCV's RotatedRect uses (center, size, angle) where angle is in degrees
+    # Note: We negate the angle because Fabric.js uses clockwise-positive,
+    # but OpenCV's boxPoints expects counter-clockwise-positive angles
+    rect = (center, (width, height), -angle)
 
-    width, height = size
-    width, height = int(width), int(height)
+    # Get the 4 corners of the rotated rectangle
+    box_points = cv2.boxPoints(rect)
+    box_points = np.float32(box_points)
 
-    # Ensure width > height for consistent orientation
-    if width < height:
-        width, height = height, width
-        angle += 90
+    # Define the destination points (axis-aligned rectangle)
+    # boxPoints returns corners in order: bottom-left, top-left, top-right, bottom-right
+    # We want to map to a width x height output
+    dst_points = np.float32([
+        [0, height],      # bottom-left
+        [0, 0],           # top-left
+        [width, 0],       # top-right
+        [width, height],  # bottom-right
+    ])
 
-    # Get rotation matrix to straighten the region
-    rotation_matrix = cv2.getRotationMatrix2D(center, angle, 1.0)
+    # Get the perspective transformation matrix
+    matrix = cv2.getPerspectiveTransform(box_points, dst_points)
 
-    # Calculate the size of the rotated image to avoid clipping
-    img_height, img_width = cv_image.shape[:2]
-    cos_angle = abs(rotation_matrix[0, 0])
-    sin_angle = abs(rotation_matrix[0, 1])
-    new_width = int(img_height * sin_angle + img_width * cos_angle)
-    new_height = int(img_height * cos_angle + img_width * sin_angle)
-
-    # Adjust the rotation matrix to account for the new image size
-    rotation_matrix[0, 2] += (new_width - img_width) / 2
-    rotation_matrix[1, 2] += (new_height - img_height) / 2
-
-    # Rotate the entire image
-    rotated = cv2.warpAffine(
+    # Apply the transformation
+    result = cv2.warpPerspective(
         cv_image,
-        rotation_matrix,
-        (new_width, new_height),
+        matrix,
+        (int(width), int(height)),
         flags=cv2.INTER_LINEAR,
         borderMode=cv2.BORDER_CONSTANT,
         borderValue=(255, 255, 255),  # White background for scans
     )
 
-    # Calculate new center after rotation
-    cx, cy = center
-    new_cx = cx * rotation_matrix[0, 0] + cy * rotation_matrix[0, 1] + rotation_matrix[0, 2]
-    new_cy = cx * rotation_matrix[1, 0] + cy * rotation_matrix[1, 1] + rotation_matrix[1, 2]
-
-    # Crop the now-aligned rectangle
-    x1 = int(new_cx - width / 2)
-    y1 = int(new_cy - height / 2)
-    x2 = int(new_cx + width / 2)
-    y2 = int(new_cy + height / 2)
-
-    # Clamp to image bounds
-    x1 = max(0, x1)
-    y1 = max(0, y1)
-    x2 = min(new_width, x2)
-    y2 = min(new_height, y2)
-
-    return rotated[y1:y2, x1:x2]
+    return result
 
 
 def crop_regions(image: Image.Image, regions: list[DetectedRegion]) -> list[Image.Image]:
