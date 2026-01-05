@@ -36,7 +36,6 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
       fabricRef.current.dispose();
     }
 
-    console.log("Initializing Fabric canvas");
     const canvas = new fabric.Canvas(canvasRef.current, {
       selection: true,
       preserveObjectStacking: true,
@@ -44,7 +43,6 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
     });
 
     fabricRef.current = canvas;
-    console.log("Fabric canvas initialized, selection enabled:", canvas.selection);
 
     // Handle selection changes
     canvas.on("selection:created", (e) => {
@@ -163,8 +161,6 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
 
       imageScaleRef.current = scale;
 
-      console.log("Image:", imgWidth, "x", imgHeight, "Scaled:", scaledImgWidth, "x", scaledImgHeight, "Canvas (with padding):", canvasWidth, "x", canvasHeight);
-
       // Set canvas dimensions (image + padding for handles)
       canvas.setDimensions({
         width: canvasWidth,
@@ -200,13 +196,11 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
   // Update boxes on canvas when props change (and image is loaded)
   useEffect(() => {
     const canvas = fabricRef.current;
-    console.log("Boxes effect running. Canvas:", !!canvas, "imageLoaded:", imageLoaded, "boxes:", boxes.length);
     if (!canvas || !imageLoaded) return;
 
     isUpdatingRef.current = true;
     const scale = imageScaleRef.current;
     const padding = canvasPaddingRef.current;
-    console.log("Adding/updating boxes. Scale:", scale, "Padding:", padding);
 
     // Get current box IDs on canvas
     const currentIds = new Set(
@@ -298,7 +292,6 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
     (rect as fabric.Rect & { data: { id: string } }).data = { id: box.id };
 
     canvas.add(rect);
-    console.log("Added box to canvas:", box.id, "Total objects:", canvas.getObjects().length);
   }, []);
 
   const handleAddBox = useCallback(() => {
