@@ -111,6 +111,30 @@ def main():
         default="png",
         help="Output format (default: png)",
     )
+    # Phase 1: Enhanced detection options
+    process_parser.add_argument(
+        "--no-enhance",
+        action="store_true",
+        help="Disable contrast enhancement (CLAHE)",
+    )
+    process_parser.add_argument(
+        "--border-mode",
+        choices=["minAreaRect", "convexHull"],
+        default="minAreaRect",
+        help="Border detection mode (default: minAreaRect; convexHull preserves irregular borders)",
+    )
+    # Phase 2: U2-Net detection mode
+    process_parser.add_argument(
+        "--detection-mode",
+        choices=["scansplitterv2", "scansplitterv1", "u2net", "classic"],
+        default="scansplitterv2",
+        help="Detection mode: scansplitterv2 (default), scansplitterv1 (legacy), or u2net (deep learning); 'classic' is an alias for scansplitterv2",
+    )
+    process_parser.add_argument(
+        "--u2net-full",
+        action="store_true",
+        help="Use full U2-Net model instead of lite (slower but more accurate)",
+    )
 
     args = parser.parse_args()
 
@@ -178,6 +202,10 @@ def process_files_cli(args):
             auto_rotate_enabled=not args.no_rotate,
             min_area_ratio=args.min_area / 100,
             max_area_ratio=args.max_area / 100,
+            enhance_contrast=not args.no_enhance,
+            border_mode=args.border_mode,
+            detection_mode="scansplitterv2" if args.detection_mode == "classic" else args.detection_mode,
+            u2net_lite=not args.u2net_full,
         )
 
         print(f"  Found {len(results)} photo(s)")

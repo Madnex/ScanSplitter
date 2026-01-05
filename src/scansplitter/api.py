@@ -14,11 +14,18 @@ from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
 
-from .detector import DetectedRegion, crop_rotated_region, detect_photos
+from .detector import (
+    DetectedRegion,
+    crop_rotated_region,
+    detect_photos_u2net,
+    detect_photos_v1,
+    detect_photos_v2,
+)
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
 from .pdf_handler import extract_images_from_pdf, is_pdf
 from .rotator import auto_rotate
 from .session import Session, get_session_manager
+from .models import get_model_statuses, start_model_download
 
 app = FastAPI(title="ScanSplitter API", version="0.1.0")
 
@@ -63,6 +70,17 @@ class DetectRequest(BaseModel):
     page: int = 1
     min_area: float = 2.0  # percentage
     max_area: float = 80.0  # percentage
+    # Phase 1: Enhanced detection options
+    enhance_contrast: bool = True
+    adaptive_morphology: bool = True
+    min_solidity: float = 0.7
+    max_aspect_ratio: float = 5.0
+    min_extent: float = 0.4
+    border_mode: str = "minAreaRect"  # "minAreaRect" or "convexHull"
+    border_padding: float = 0.02
+    # Detection algorithms
+    detection_mode: str = "scansplitterv2"  # "scansplitterv1", "scansplitterv2", or "u2net"
+    u2net_lite: bool = True  # Use lightweight model (faster) vs full (more accurate)
 
 
 class DetectResponse(BaseModel):
@@ -148,6 +166,12 @@ class UpdateExifRequest(BaseModel):
 
     session_id: str
     date_taken: str | None = None  # Format: "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
+
+
+class ModelDownloadRequest(BaseModel):
+    """Request to download an ML model in the background."""
+
+    model: str  # "orientation", "u2net_lite", or "u2net_full"
 
 
 # --- Helper Functions ---
@@ -298,6 +322,21 @@ async def get_image(session_id: str, filename: str, page: int = 1):
     return Response(content=buffer.getvalue(), media_type="image/jpeg")
 
 
+@app.get("/api/models/status")
+async def models_status():
+    """Get the current status of downloadable models."""
+    return get_model_statuses()
+
+
+@app.post("/api/models/download")
+async def models_download(request: ModelDownloadRequest):
+    """Start downloading a model in the background (if missing)."""
+    try:
+        return start_model_download(request.model)
+    except KeyError as e:
+        raise HTTPException(status_code=400, detail=str(e)) from e
+
+
 @app.post("/api/detect", response_model=DetectResponse)
 async def detect_boxes(request: DetectRequest):
     """Detect bounding boxes in an image."""
@@ -310,12 +349,41 @@ async def detect_boxes(request: DetectRequest):
     filename = list(session.files.keys())[0]
     image = load_page_image(session, filename, request.page)
 
-    # Run detection
-    regions = detect_photos(
-        image,
-        min_area_ratio=request.min_area / 100,
-        max_area_ratio=request.max_area / 100,
-    )
+    detection_mode = request.detection_mode
+    if detection_mode in ("classic", "ScanSplitterv2", "v2"):
+        detection_mode = "scansplitterv2"
+    elif detection_mode in ("ScanSplitterv1", "v1", "legacy"):
+        detection_mode = "scansplitterv1"
+
+    # Run detection based on mode
+    if detection_mode == "u2net":
+        # Use U2-Net deep learning detection
+        regions = detect_photos_u2net(
+            image,
+            min_area_ratio=request.min_area / 100,
+            max_area_ratio=request.max_area / 100,
+            lite=request.u2net_lite,
+        )
+    elif detection_mode == "scansplitterv1":
+        regions = detect_photos_v1(
+            image,
+            min_area_ratio=request.min_area / 100,
+            max_area_ratio=request.max_area / 100,
+        )
+    else:
+        # Use ScanSplitterv2 contour-based detection with enhancements
+        regions = detect_photos_v2(
+            image,
+            min_area_ratio=request.min_area / 100,
+            max_area_ratio=request.max_area / 100,
+            enhance_contrast=request.enhance_contrast,
+            adaptive_morphology=request.adaptive_morphology,
+            min_solidity=request.min_solidity,
+            max_aspect_ratio=request.max_aspect_ratio,
+            min_extent=request.min_extent,
+            border_mode=request.border_mode,  # type: ignore
+            border_padding=request.border_padding,
+        )
 
     # Convert to BoundingBox format
     boxes = []

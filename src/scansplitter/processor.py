@@ -2,10 +2,11 @@
 
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Literal
 
 from PIL import Image
 
-from .detector import detect_and_crop
+from .detector import crop_regions, detect_photos_u2net, detect_photos_v1, detect_photos_v2
 from .pdf_handler import extract_images_from_pdf, is_pdf
 from .rotator import auto_rotate
 
@@ -45,6 +46,12 @@ def process_image(
     auto_rotate_enabled: bool = True,
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
+    # Phase 1 improvements
+    enhance_contrast: bool = True,
+    border_mode: Literal["minAreaRect", "convexHull"] = "minAreaRect",
+    # Detection algorithms
+    detection_mode: Literal["scansplitterv1", "scansplitterv2", "u2net"] = "scansplitterv2",
+    u2net_lite: bool = True,
 ) -> list[ProcessedImage]:
     """
     Process a single image: detect photos and optionally auto-rotate.
@@ -56,16 +63,49 @@ def process_image(
         auto_rotate_enabled: Whether to auto-rotate detected photos
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
+        enhance_contrast: Apply CLAHE for better low-contrast detection
+        border_mode: "minAreaRect" (tight) or "convexHull" (preserves irregular borders)
+        detection_mode: "scansplitterv1" (legacy), "scansplitterv2" (default), or "u2net" (deep learning)
+        u2net_lite: Use lightweight U2-Net model (faster) vs full (more accurate)
 
     Returns:
         List of ProcessedImage objects
     """
-    # Detect and crop photos
-    cropped_images = detect_and_crop(
-        image,
-        min_area_ratio=min_area_ratio,
-        max_area_ratio=max_area_ratio,
-    )
+    # Detect photos based on selected mode (accept older aliases for compatibility)
+    if detection_mode in ("u2net",):
+        regions = detect_photos_u2net(
+            image,
+            min_area_ratio=min_area_ratio,
+            max_area_ratio=max_area_ratio,
+            lite=u2net_lite,
+        )
+    else:
+        normalized_mode = detection_mode
+        if normalized_mode in ("classic", "ScanSplitterv2", "v2"):  # type: ignore[comparison-overlap]
+            normalized_mode = "scansplitterv2"  # type: ignore[assignment]
+        if normalized_mode in ("ScanSplitterv1", "v1", "legacy"):  # type: ignore[comparison-overlap]
+            normalized_mode = "scansplitterv1"  # type: ignore[assignment]
+
+        if normalized_mode == "scansplitterv1":
+            regions = detect_photos_v1(
+                image,
+                min_area_ratio=min_area_ratio,
+                max_area_ratio=max_area_ratio,
+            )
+        else:
+            regions = detect_photos_v2(
+                image,
+                min_area_ratio=min_area_ratio,
+                max_area_ratio=max_area_ratio,
+                enhance_contrast=enhance_contrast,
+                border_mode=border_mode,
+            )
+
+    # If no regions detected, return the original image
+    if not regions:
+        cropped_images = [image]
+    else:
+        cropped_images = crop_regions(image, regions)
 
     results = []
     for idx, cropped in enumerate(cropped_images):
@@ -93,6 +133,12 @@ def process_file(
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
     pdf_dpi: int = 300,
+    # Phase 1 improvements
+    enhance_contrast: bool = True,
+    border_mode: Literal["minAreaRect", "convexHull"] = "minAreaRect",
+    # Detection algorithms
+    detection_mode: Literal["scansplitterv1", "scansplitterv2", "u2net"] = "scansplitterv2",
+    u2net_lite: bool = True,
 ) -> list[ProcessedImage]:
     """
     Process a single file (image or PDF).
@@ -103,6 +149,10 @@ def process_file(
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
         pdf_dpi: DPI for PDF rendering
+        enhance_contrast: Apply CLAHE for better low-contrast detection
+        border_mode: "minAreaRect" (tight) or "convexHull" (preserves irregular borders)
+        detection_mode: "scansplitterv1" (legacy), "scansplitterv2" (default), or "u2net" (deep learning)
+        u2net_lite: Use lightweight U2-Net model (faster) vs full (more accurate)
 
     Returns:
         List of ProcessedImage objects
@@ -123,6 +173,10 @@ def process_file(
                 auto_rotate_enabled=auto_rotate_enabled,
                 min_area_ratio=min_area_ratio,
                 max_area_ratio=max_area_ratio,
+                enhance_contrast=enhance_contrast,
+                border_mode=border_mode,
+                detection_mode=detection_mode,
+                u2net_lite=u2net_lite,
             )
             results.extend(page_results)
     else:
@@ -134,6 +188,10 @@ def process_file(
             auto_rotate_enabled=auto_rotate_enabled,
             min_area_ratio=min_area_ratio,
             max_area_ratio=max_area_ratio,
+            enhance_contrast=enhance_contrast,
+            border_mode=border_mode,
+            detection_mode=detection_mode,
+            u2net_lite=u2net_lite,
         )
 
     return results

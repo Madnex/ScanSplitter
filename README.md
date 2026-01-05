@@ -40,12 +40,28 @@ uvx scansplitter api --port 8001
 
 ## Features
 
-- **Auto-detection** - Finds multiple photos in a single scan using contour detection
+- **Multiple detection modes** - Choose between ScanSplitterv1, ScanSplitterv2 (default), and AI (U2-Net)
 - **Interactive editing** - Adjust, rotate, and resize bounding boxes before cropping
 - **Auto-rotation** - Detects and corrects 90°/180°/270° rotations
 - **PDF support** - Extract and process pages from PDF files
 - **Web UI** - Modern React interface with Fabric.js canvas editor
 - **CLI** - Batch process files from the command line
+
+## Detection Modes & Models
+
+### Photo detection (splitter)
+
+- **ScanSplitterv2 (default)**: An improved contour-based detector. It applies contrast enhancement (CLAHE), adaptive thresholding, adaptive morphology (kernel scales with resolution), and contour quality filtering (solidity/aspect/extent). It can also use convex-hull borders for irregular edges.
+- **ScanSplitterv1**: The first contour-based detector used with adaptive threshold + fixed morphology + `minAreaRect` filtering. It’s simpler and can be useful as a fallback if v2 behaves unexpectedly on a specific scan.
+- **AI (U2-Net)**: A deep-learning salient-object model (ONNX) that produces a mask; ScanSplitter then extracts regions from that mask. It’s best for difficult scans (busy backgrounds, low contrast), but requires downloading a model on first use. Might be less accurate for multiple photos at once.
+
+### Auto-rotation model
+
+- **Orientation model**: An EfficientNetV2-based ONNX classifier that predicts the correct 0°/90°/180°/270° rotation for each cropped photo. ScanSplitter may fall back to classic heuristics if the model can’t be loaded.
+
+### Model downloads
+
+Some modes require downloading models on first use (U2-Net (5Mb / 176MB) and the orientation model (80MB)). The web UI shows download progress while this is happening.
 
 ## Installation Options
 
@@ -105,6 +121,7 @@ uv run scansplitter process scan.jpg \
   --no-rotate \
   --min-area 5 \
   --max-area 70 \
+  --detection-mode scansplitterv2 \
   --format jpg \
   -o ./output/
 ```
@@ -117,17 +134,24 @@ uv run scansplitter process scan.jpg \
 | `--no-rotate` | Disable auto-rotation |
 | `--min-area` | Minimum photo size as % of scan (default: 2) |
 | `--max-area` | Maximum photo size as % of scan (default: 80) |
+| `--detection-mode` | `scansplitterv2` (default), `scansplitterv1` (legacy), or `u2net` (deep learning); `classic` is an alias for `scansplitterv2` |
+| `--u2net-full` | Use full U2-Net model instead of lite (slower, more accurate) |
 | `--format` | Output format: `png` or `jpg` (default: png) |
 
 ## How It Works
 
-1. **Preprocessing** - Convert to grayscale, apply Gaussian blur
-2. **Thresholding** - Adaptive binary threshold to separate photos from background
-3. **Contour Detection** - Find distinct regions using OpenCV
-4. **Filtering** - Keep regions between min/max area thresholds
-5. **Interactive Adjustment** - User can modify detected boxes in the web UI
-6. **Rotation Detection** - Score each 90° rotation using Hough line detection
-7. **Cropping** - Extract photos using adjusted bounding boxes
+1. **Photo detection** - Runs the selected detection mode (ScanSplitterv1 / ScanSplitterv2 / AI (U2-Net)) to produce rotatable bounding boxes.
+2. **Interactive adjustment** - You can refine boxes in the web UI before cropping.
+3. **Cropping** - Extracts rotated regions using the adjusted boxes.
+4. **Auto-rotation (optional)** - Uses the orientation model (with fallbacks) to fix 90°/180°/270° rotations.
+
+## Credits
+
+ScanSplitter depends on excellent open models and upstream work:
+
+- **U²-Net (salient object detection)** by Xuebin Qin et al. — paper: https://arxiv.org/abs/2005.09007, code: https://github.com/xuebinqin/U-2-Net
+- **U2-Net ONNX weights** are downloaded from `rembg` releases by Daniel Gatis (with a ScanSplitter backup mirror) — https://github.com/danielgatis/rembg
+- **Orientation model (EfficientNetV2)** is downloaded from Duarte Barbosa’s deep image orientation detection project (with a ScanSplitter backup mirror) — https://github.com/duartebarbosadev/deep-image-orientation-detection
 
 ## Development
 
