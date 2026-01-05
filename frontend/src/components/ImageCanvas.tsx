@@ -27,6 +27,13 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
   const onBoxesChangeRef = useRef(onBoxesChange);
   onBoxesChangeRef.current = onBoxesChange;
 
+  // Magnifier state for precision corner dragging
+  const [magnifierState, setMagnifierState] = useState<{
+    visible: boolean;
+    imageX: number;  // Corner position in image coordinates
+    imageY: number;
+  } | null>(null);
+
   // Initialize Fabric canvas
   useEffect(() => {
     if (!canvasRef.current) return;
@@ -68,6 +75,27 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
     canvas.on("object:modified", () => {
       if (isUpdatingRef.current) return;
       syncBoxesFromCanvas();
+    });
+
+    // Show magnifier during corner/edge scaling for precision
+    canvas.on("object:scaling", (e) => {
+      const transform = (e as fabric.TEvent<MouseEvent> & { transform?: { corner?: string } }).transform;
+      if (!transform || !transform.corner) return;
+
+      // Use the pointer position directly from the event - this is where the corner handle is
+      const pointer = e.pointer;
+      if (!pointer) return;
+
+      // Convert to image coordinates (remove padding offset)
+      const imageX = (pointer.x - canvasPaddingRef.current) / imageScaleRef.current;
+      const imageY = (pointer.y - canvasPaddingRef.current) / imageScaleRef.current;
+
+      setMagnifierState({ visible: true, imageX, imageY });
+    });
+
+    // Hide magnifier when scaling ends
+    canvas.on("mouse:up", () => {
+      setMagnifierState(null);
     });
 
     return () => {
@@ -425,6 +453,36 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
         {imageUrl && imageError && (
           <p className="text-destructive">{imageError}</p>
         )}
+
+        {/* Magnifier overlay for precision corner dragging */}
+        {magnifierState?.visible && imageUrl && (() => {
+          const canvasWidth = fabricRef.current?.getWidth() || 0;
+          const canvasHeight = fabricRef.current?.getHeight() || 0;
+          const padding = canvasPaddingRef.current;
+          const scale = imageScaleRef.current;
+          // Image area is canvas minus padding on each side
+          const imgDisplayWidth = canvasWidth - padding * 2;
+          const imgDisplayHeight = canvasHeight - padding * 2;
+          const zoom = 3;
+          const magnifierRadius = 64; // half of 128px (w-32 h-32)
+
+          return (
+            <div
+              className="absolute top-4 left-4 w-32 h-32 rounded-full border-2 border-white shadow-lg overflow-hidden pointer-events-none z-10"
+              style={{
+                backgroundImage: `url(${imageUrl})`,
+                backgroundSize: `${imgDisplayWidth * zoom}px ${imgDisplayHeight * zoom}px`,
+                backgroundPosition: `${-magnifierState.imageX * scale * zoom + magnifierRadius}px ${-magnifierState.imageY * scale * zoom + magnifierRadius}px`,
+              }}
+            >
+              {/* Crosshairs */}
+              <div className="absolute inset-0 flex items-center justify-center">
+                <div className="absolute w-full h-px bg-blue-500 opacity-70" />
+                <div className="absolute h-full w-px bg-blue-500 opacity-70" />
+              </div>
+            </div>
+          );
+        })()}
       </div>
 
       {/* Instructions */}
