@@ -40,6 +40,7 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
       selection: true,
       preserveObjectStacking: true,
       renderOnAddRemove: true,
+      uniformScaling: false,
     });
 
     fabricRef.current = canvas;
@@ -278,6 +279,7 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
       hasControls: true,
       hasBorders: true,
       lockRotation: false,
+      lockUniScaling: false,
       // Control styling
       cornerColor: "#3b82f6",
       cornerStyle: "circle",
