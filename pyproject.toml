@@ -29,9 +29,9 @@ dependencies = [
 ]
 
 [project.urls]
-Homepage = "https://github.com/janklan/scansplitter"
-Repository = "https://github.com/janklan/scansplitter"
-Issues = "https://github.com/janklan/scansplitter/issues"
+Homepage = "https://github.com/madnex/scansplitter"
+Repository = "https://github.com/madnex/scansplitter"
+Issues = "https://github.com/madnex/scansplitter/issues"
 
 [project.scripts]
 scansplitter = "scansplitter.cli:main"
