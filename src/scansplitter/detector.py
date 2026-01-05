@@ -1,4 +1,4 @@
-"""Contour-based photo detection for scanned images."""
+"""Photo detection for scanned images."""
 
 from dataclasses import dataclass, field
 from typing import Literal
@@ -81,7 +81,89 @@ class DetectedRegion:
         return (self.x, self.y, self.x + self.width, self.y + self.height)
 
 
-def detect_photos(
+def detect_photos_v1(
+    image: Image.Image,
+    min_area_ratio: float = 0.02,
+    max_area_ratio: float = 0.80,
+    blur_kernel: int = 5,
+    threshold_block_size: int = 11,
+    threshold_c: int = 2,
+    padding: int = 0,
+    inset: int = 10,
+) -> list[DetectedRegion]:
+    """
+    Detect multiple photos/documents in a scanned image (ScanSplitterv1).
+
+    This is the original contour-based detector from `main`.
+    """
+    cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+    total_area = cv_image.shape[0] * cv_image.shape[1]
+
+    gray = cv2.cvtColor(cv_image, cv2.COLOR_BGR2GRAY)
+    blurred = cv2.GaussianBlur(gray, (blur_kernel, blur_kernel), 0)
+
+    thresh = cv2.adaptiveThreshold(
+        blurred,
+        255,
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        threshold_block_size,
+        threshold_c,
+    )
+
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (5, 5))
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=2)
+    thresh = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=1)
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    regions = []
+    img_height, img_width = cv_image.shape[:2]
+
+    for contour in contours:
+        rect = cv2.minAreaRect(contour)
+        center, size, angle = rect
+        rect_width, rect_height = size
+        area = rect_width * rect_height
+        area_ratio = area / total_area
+
+        if not (min_area_ratio <= area_ratio <= max_area_ratio):
+            continue
+
+        x, y, w, h = cv2.boundingRect(contour)
+
+        net_adjust = padding - inset
+        x_padded = max(0, x - net_adjust)
+        y_padded = max(0, y - net_adjust)
+        w_padded = max(1, min(img_width - x_padded, w + 2 * net_adjust))
+        h_padded = max(1, min(img_height - y_padded, h + 2 * net_adjust))
+
+        padded_width = max(1, rect_width + 2 * net_adjust)
+        padded_height = max(1, rect_height + 2 * net_adjust)
+
+        if rect_width < rect_height:
+            padded_width, padded_height = padded_height, padded_width
+            angle = angle + 90
+
+        regions.append(
+            DetectedRegion(
+                center=center,
+                size=(padded_width, padded_height),
+                angle=angle,
+                area=area,
+                area_ratio=area_ratio,
+                x=x_padded,
+                y=y_padded,
+                width=w_padded,
+                height=h_padded,
+            )
+        )
+
+    regions.sort(key=lambda r: (r.y // 100, r.x))
+    return regions
+
+
+def detect_photos_v2(
     image: Image.Image,
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
@@ -242,6 +324,10 @@ def detect_photos(
     regions.sort(key=lambda r: (r.y // 100, r.x))  # Group rows within 100px
 
     return regions
+
+
+# Backwards-compatible alias: "classic" / previous default points at ScanSplitterv2.
+detect_photos = detect_photos_v2
 
 
 # Global U2-Net session cache (lazy loaded)

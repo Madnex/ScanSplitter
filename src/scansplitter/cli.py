@@ -126,9 +126,9 @@ def main():
     # Phase 2: U2-Net detection mode
     process_parser.add_argument(
         "--detection-mode",
-        choices=["classic", "u2net"],
-        default="classic",
-        help="Detection mode: classic (fast contour-based) or u2net (deep learning, more accurate)",
+        choices=["scansplitterv2", "scansplitterv1", "u2net", "classic"],
+        default="scansplitterv2",
+        help="Detection mode: scansplitterv2 (default), scansplitterv1 (legacy), or u2net (deep learning); 'classic' is an alias for scansplitterv2",
     )
     process_parser.add_argument(
         "--u2net-full",
@@ -204,7 +204,7 @@ def process_files_cli(args):
             max_area_ratio=args.max_area / 100,
             enhance_contrast=not args.no_enhance,
             border_mode=args.border_mode,
-            detection_mode=args.detection_mode,
+            detection_mode="scansplitterv2" if args.detection_mode == "classic" else args.detection_mode,
             u2net_lite=not args.u2net_full,
         )
 

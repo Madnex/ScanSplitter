@@ -12,9 +12,9 @@ import { Toast, type ToastType } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { Button } from "@/components/ui/button";
-import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, FileConflictError } from "@/lib/api";
+import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, FileConflictError, getModelStatuses, startModelDownload } from "@/lib/api";
 import { generateName } from "@/lib/naming";
-import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern } from "@/types";
+import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern, ModelKey, ModelStatus } from "@/types";
 
 function App() {
   // File state
@@ -40,9 +40,12 @@ function App() {
     maxArea: 80,
     autoRotate: true,
     autoDetect: true,
-    detectionMode: "classic",
+    detectionMode: "scansplitterv2",
     u2netLite: true,
   });
+
+  // Model download status (orientation + U2-Net)
+  const [modelStatuses, setModelStatuses] = useState<Record<ModelKey, ModelStatus> | null>(null);
 
   // Loading states
   const [isUploading, setIsUploading] = useState(false);
@@ -69,6 +72,61 @@ function App() {
   const showToast = useCallback((message: string, type: ToastType = "success") => {
     setToast({ message, type });
   }, []);
+
+  const refreshModelStatuses = useCallback(async () => {
+    try {
+      const statuses = await getModelStatuses();
+      setModelStatuses(statuses);
+      return statuses;
+    } catch (error) {
+      console.error("Failed to refresh model statuses:", error);
+      return null;
+    }
+  }, []);
+
+  const ensureModelReady = useCallback(async (modelKey: ModelKey) => {
+    const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
+    let statuses = await refreshModelStatuses();
+    if (!statuses) {
+      throw new Error("Failed to load model status");
+    }
+
+    const current = statuses[modelKey];
+    if (current?.status === "ready") return;
+
+    await startModelDownload(modelKey);
+
+    // Poll until ready (or error)
+    for (;;) {
+      await sleep(500);
+      statuses = await refreshModelStatuses();
+      if (!statuses) continue;
+      const next = statuses[modelKey];
+      if (!next) throw new Error("Unknown model");
+      if (next.status === "ready") return;
+      if (next.status === "error") {
+        throw new Error(next.error || "Model download failed");
+      }
+    }
+  }, [refreshModelStatuses]);
+
+  useEffect(() => {
+    refreshModelStatuses();
+  }, [refreshModelStatuses]);
+
+  useEffect(() => {
+    if (settings.detectionMode !== "u2net") return;
+
+    const modelKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
+    (async () => {
+      const statuses = await refreshModelStatuses();
+      const current = statuses?.[modelKey];
+      if (!current || current.status === "ready" || current.status === "downloading") return;
+      await startModelDownload(modelKey);
+      await refreshModelStatuses();
+    })();
+  }, [settings.detectionMode, settings.u2netLite, refreshModelStatuses]);
 
   // Persist output directory to localStorage
   useEffect(() => {
@@ -119,6 +177,11 @@ function App() {
     );
 
     try {
+      if (settings.detectionMode === "u2net") {
+        const modelKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
+        await ensureModelReady(modelKey);
+      }
+
       const result = await detectBoxes(
         sessionId,
         page,
@@ -143,7 +206,7 @@ function App() {
         )
       );
     }
-  }, [settings.minArea, settings.maxArea, settings.detectionMode, settings.u2netLite]);
+  }, [settings.minArea, settings.maxArea, settings.detectionMode, settings.u2netLite, ensureModelReady]);
 
   // Handle file upload (multiple files)
   const handleUpload = useCallback(async (filesToUpload: File[]) => {
@@ -321,6 +384,10 @@ function App() {
     if (!activeFile) return;
     setIsDetecting(true);
     try {
+      if (settings.detectionMode === "u2net") {
+        const modelKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
+        await ensureModelReady(modelKey);
+      }
       const result = await detectBoxes(
         activeFile.sessionId,
         activeFile.currentPage,
@@ -336,13 +403,16 @@ function App() {
     } finally {
       setIsDetecting(false);
     }
-  }, [activeFile, settings, handleBoxesChange]);
+  }, [activeFile, settings, handleBoxesChange, ensureModelReady]);
 
   // Handle crop
   const handleCrop = useCallback(async () => {
     if (!activeFile || activeFile.boxes.length === 0) return;
     setIsCropping(true);
     try {
+      if (settings.autoRotate) {
+        await ensureModelReady("orientation");
+      }
       const result = await cropImages(
         activeFile.sessionId,
         activeFile.currentPage,
@@ -382,7 +452,7 @@ function App() {
     } finally {
       setIsCropping(false);
     }
-  }, [activeFile, activeFileIndex, settings.autoRotate]);
+  }, [activeFile, activeFileIndex, settings.autoRotate, ensureModelReady]);
 
   // Handle export
   const handleExport = useCallback(async () => {
@@ -524,6 +594,7 @@ function App() {
               isDetecting={isDetecting}
               isCropping={isCropping}
               hasBoxes={(activeFile?.boxes.length ?? 0) > 0}
+              modelStatuses={modelStatuses}
             />
             <ExifEditor
               sessionId={activeFile?.sessionId ?? null}

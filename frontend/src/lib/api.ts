@@ -3,6 +3,9 @@ import type {
   CropResponse,
   CroppedImage,
   DetectResponse,
+  DetectionMode,
+  ModelKey,
+  ModelStatus,
   UploadResponse,
 } from "@/types";
 
@@ -42,7 +45,7 @@ export async function detectBoxes(
   page: number,
   minArea: number,
   maxArea: number,
-  detectionMode: "classic" | "u2net" = "classic",
+  detectionMode: DetectionMode = "scansplitterv2",
   u2netLite: boolean = true
 ): Promise<{ boxes: BoundingBox[]; imageUrl: string }> {
   const response = await fetch(`${API_BASE}/detect`, {
@@ -229,4 +232,26 @@ export async function updateExif(
   if (!response.ok) {
     throw new Error("Failed to update EXIF");
   }
+}
+
+export async function getModelStatuses(): Promise<Record<ModelKey, ModelStatus>> {
+  const response = await fetch(`${API_BASE}/models/status`);
+  if (!response.ok) {
+    throw new Error(`Failed to get model status: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function startModelDownload(model: ModelKey): Promise<ModelStatus> {
+  const response = await fetch(`${API_BASE}/models/download`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model }),
+  });
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const message = typeof error.detail === "string" ? error.detail : response.statusText;
+    throw new Error(message);
+  }
+  return response.json();
 }

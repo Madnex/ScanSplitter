@@ -1,7 +1,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
-import type { DetectionSettings } from "@/types";
+import { Loader2 } from "lucide-react";
+import type { DetectionSettings, ModelKey, ModelStatus } from "@/types";
 
 interface SettingsPanelProps {
   settings: DetectionSettings;
@@ -11,6 +12,7 @@ interface SettingsPanelProps {
   isDetecting: boolean;
   isCropping: boolean;
   hasBoxes: boolean;
+  modelStatuses?: Record<ModelKey, ModelStatus> | null;
 }
 
 export function SettingsPanel({
@@ -21,7 +23,12 @@ export function SettingsPanel({
   isDetecting,
   isCropping,
   hasBoxes,
+  modelStatuses = null,
 }: SettingsPanelProps) {
+  const u2netKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
+  const u2netStatus = modelStatuses?.[u2netKey] ?? null;
+  const orientationStatus = modelStatuses?.["orientation"] ?? null;
+
   return (
     <Card>
       <CardHeader className="pb-3">
@@ -74,6 +81,21 @@ export function SettingsPanel({
             Auto-rotate photos
           </label>
         </div>
+        {settings.autoRotate && orientationStatus && (orientationStatus.status === "downloading" || orientationStatus.status === "error") && (
+          <div className="text-xs text-muted-foreground flex items-center gap-2">
+            {orientationStatus.status === "downloading" ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>
+                  Downloading {orientationStatus.label} ({orientationStatus.size_desc}){" "}
+                  {orientationStatus.progress}%
+                </span>
+              </>
+            ) : orientationStatus.status === "error" ? (
+              <span>{orientationStatus.error || "Rotation model download failed"}</span>
+            ) : null}
+          </div>
+        )}
 
         <div className="flex items-center gap-2">
           <input
@@ -100,18 +122,24 @@ export function SettingsPanel({
             onChange={(e) =>
               onSettingsChange({
                 ...settings,
-                detectionMode: e.target.value as "classic" | "u2net",
+                detectionMode: e.target.value as
+                  | "scansplitterv1"
+                  | "scansplitterv2"
+                  | "u2net",
               })
             }
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <option value="classic">Classic (Fast)</option>
-            <option value="u2net">U2-Net (AI, Accurate)</option>
+            <option value="scansplitterv2">ScanSplitterv2</option>
+            <option value="scansplitterv1">ScanSplitterv1</option>
+            <option value="u2net">AI (U2-Net)</option>
           </select>
           <p className="text-xs text-muted-foreground">
             {settings.detectionMode === "u2net"
-              ? "Deep learning model - better for difficult scans"
-              : "Traditional contour detection - fast and reliable"}
+              ? "Deep learning model - best for difficult scans"
+              : settings.detectionMode === "scansplitterv1"
+                ? "Legacy contour detector from main"
+                : "Default contour detector - fast and improved"}
           </p>
         </div>
 
@@ -132,6 +160,24 @@ export function SettingsPanel({
             <p className="text-xs text-muted-foreground ml-auto">
               {settings.u2netLite ? "5MB" : "176MB"}
             </p>
+          </div>
+        )}
+        {settings.detectionMode === "u2net" && u2netStatus && u2netStatus.status !== "ready" && (
+          <div className="text-xs text-muted-foreground flex items-center gap-2">
+            {u2netStatus.status === "downloading" ? (
+              <>
+                <Loader2 className="w-3 h-3 animate-spin" />
+                <span>
+                  Downloading {u2netStatus.label} ({u2netStatus.size_desc}) {u2netStatus.progress}%
+                </span>
+              </>
+            ) : u2netStatus.status === "error" ? (
+              <span>{u2netStatus.error || "Model download failed"}</span>
+            ) : (
+              <span>
+                {u2netStatus.label} not downloaded yet ({u2netStatus.size_desc})
+              </span>
+            )}
           </div>
         )}
 

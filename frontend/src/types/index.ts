@@ -44,7 +44,7 @@ export interface CroppedImage {
 }
 
 // Detection mode
-export type DetectionMode = "classic" | "u2net";
+export type DetectionMode = "scansplitterv1" | "scansplitterv2" | "u2net";
 
 // Detection settings
 export interface DetectionSettings {
@@ -52,7 +52,7 @@ export interface DetectionSettings {
   maxArea: number; // percentage
   autoRotate: boolean;
   autoDetect: boolean; // auto-detect on upload
-  detectionMode: DetectionMode; // classic (fast) or u2net (deep learning)
+  detectionMode: DetectionMode; // scansplitterv1 (legacy), scansplitterv2 (default), or u2net (deep learning)
   u2netLite: boolean; // use lite model (5MB, faster) vs full (176MB, more accurate)
 }
 
@@ -92,4 +92,21 @@ export interface CropResponse {
     height: number;
     rotation_applied: number;
   }>;
+}
+
+// Downloadable model keys (backend `/api/models/*`)
+export type ModelKey = "orientation" | "u2net_lite" | "u2net_full";
+
+export type ModelDownloadStatus = "missing" | "downloading" | "ready" | "error";
+
+export interface ModelStatus {
+  key: ModelKey;
+  status: ModelDownloadStatus;
+  progress: number; // 0-100
+  downloaded_bytes: number;
+  total_bytes: number;
+  size_desc: string;
+  filename: string;
+  label: string;
+  error?: string | null;
 }
