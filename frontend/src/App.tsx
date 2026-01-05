@@ -1,14 +1,16 @@
-import { useState, useCallback, useEffect } from "react";
+import { useState, useCallback, useEffect, useMemo } from "react";
 import { FileUpload } from "@/components/FileUpload";
 import { FileTabs } from "@/components/FileTabs";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { PageNavigator } from "@/components/PageNavigator";
+import { ScanNavigator } from "@/components/ScanNavigator";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ResultsGallery } from "@/components/ResultsGallery";
 import { Toast, type ToastType } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, FileConflictError } from "@/lib/api";
-import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings } from "@/types";
+import { generateName } from "@/lib/naming";
+import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern } from "@/types";
 
 function App() {
   // File state
@@ -18,11 +20,22 @@ function App() {
   // Results state
   const [croppedImages, setCroppedImages] = useState<CroppedImage[]>([]);
 
+  // View mode for results (current scan vs all)
+  const [resultsViewMode, setResultsViewMode] = useState<"current" | "all">("current");
+
+  // Naming pattern for export
+  const [namingPattern, setNamingPattern] = useState<NamingPattern>({
+    pattern: "{album}_{n}",
+    albumName: "",
+    startNumber: 1,
+  });
+
   // Settings state
   const [settings, setSettings] = useState<DetectionSettings>({
     minArea: 2,
     maxArea: 80,
     autoRotate: true,
+    autoDetect: true,
   });
 
   // Loading states
@@ -56,10 +69,59 @@ function App() {
   // Get active file
   const activeFile = files[activeFileIndex] ?? null;
 
+  // Compute images for current scan vs all
+  const currentScanImages = useMemo(() => {
+    if (!activeFile) return [];
+    return croppedImages.filter(
+      (img) =>
+        img.source.fileIndex === activeFileIndex &&
+        img.source.page === activeFile.currentPage
+    );
+  }, [croppedImages, activeFileIndex, activeFile]);
+
+  // Run detection for a file by session ID
+  const runDetection = useCallback(async (
+    sessionId: string,
+    filename: string,
+    page: number
+  ) => {
+    // Update status to detecting
+    setFiles((prev) =>
+      prev.map((f) =>
+        f.sessionId === sessionId ? { ...f, detectionStatus: 'detecting' as const } : f
+      )
+    );
+
+    try {
+      const result = await detectBoxes(
+        sessionId,
+        page,
+        settings.minArea,
+        settings.maxArea
+      );
+      // Update with detected boxes
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.sessionId === sessionId
+            ? { ...f, boxes: result.boxes, detectionStatus: 'detected' as const }
+            : f
+        )
+      );
+    } catch (error) {
+      console.error(`Detection failed for ${filename}:`, error);
+      setFiles((prev) =>
+        prev.map((f) =>
+          f.sessionId === sessionId ? { ...f, detectionStatus: 'failed' as const } : f
+        )
+      );
+    }
+  }, [settings.minArea, settings.maxArea]);
+
   // Handle file upload (multiple files)
   const handleUpload = useCallback(async (filesToUpload: File[]) => {
     setIsUploading(true);
     const startIndex = files.length;
+    const uploadedFiles: UploadedFile[] = [];
 
     try {
       for (const file of filesToUpload) {
@@ -72,33 +134,49 @@ function App() {
           imageWidth: result.imageWidth,
           imageHeight: result.imageHeight,
           boxes: [],
+          detectionStatus: 'pending',
         };
         setFiles((prev) => [...prev, newFile]);
+        uploadedFiles.push(newFile);
       }
       // Switch to first newly uploaded file
       setActiveFileIndex(startIndex);
-      setCroppedImages([]);
     } catch (error) {
       console.error("Upload failed:", error);
       alert("Failed to upload file(s)");
     } finally {
       setIsUploading(false);
     }
-  }, [files.length]);
+
+    // Auto-detect if enabled - run sequentially to avoid overwhelming the server
+    if (settings.autoDetect && uploadedFiles.length > 0) {
+      for (const file of uploadedFiles) {
+        await runDetection(file.sessionId, file.filename, file.currentPage);
+      }
+    }
+  }, [files.length, settings.autoDetect, runDetection]);
 
   // Handle file tab selection
   const handleSelectFile = useCallback((index: number) => {
     setActiveFileIndex(index);
-    setCroppedImages([]);
   }, []);
 
   // Handle file tab close
   const handleCloseFile = useCallback((index: number) => {
+    // Remove cropped images from this file
+    setCroppedImages((prev) => prev.filter((img) => img.source.fileIndex !== index));
+    // Reindex sources for files after the removed one
+    setCroppedImages((prev) =>
+      prev.map((img) =>
+        img.source.fileIndex > index
+          ? { ...img, source: { ...img.source, fileIndex: img.source.fileIndex - 1 } }
+          : img
+      )
+    );
     setFiles((prev) => prev.filter((_, i) => i !== index));
     if (activeFileIndex >= index && activeFileIndex > 0) {
       setActiveFileIndex(activeFileIndex - 1);
     }
-    setCroppedImages([]);
   }, [activeFileIndex]);
 
   // Handle page change
@@ -109,7 +187,6 @@ function App() {
         i === activeFileIndex ? { ...f, currentPage: page, boxes: [] } : f
       )
     );
-    setCroppedImages([]);
   }, [activeFile, activeFileIndex]);
 
   // Handle boxes change
@@ -126,15 +203,29 @@ function App() {
     );
   }, []);
 
-  // Handle batch rename with common name
-  const handleBatchRename = useCallback((baseName: string) => {
-    setCroppedImages((prev) =>
-      prev.map((img, idx) => ({
-        ...img,
-        name: `${baseName}_${idx + 1}`,
-      }))
-    );
-  }, []);
+  // Apply naming pattern to all images
+  const applyNamingPattern = useCallback(() => {
+    setCroppedImages((prev) => {
+      // Group images by source to calculate photo index within each scan
+      const scanGroups = new Map<string, number>();
+
+      return prev.map((img, globalIdx) => {
+        const scanKey = `${img.source.fileIndex}-${img.source.page}`;
+        const photoIdx = (scanGroups.get(scanKey) ?? 0) + 1;
+        scanGroups.set(scanKey, photoIdx);
+
+        const newName = generateName(namingPattern.pattern, {
+          album: namingPattern.albumName || "album",
+          scan: img.source.filename.replace(/\.[^.]+$/, ""),
+          page: img.source.page,
+          n: namingPattern.startNumber + globalIdx,
+          photo: photoIdx,
+        });
+
+        return { ...img, name: newName };
+      });
+    });
+  }, [namingPattern]);
 
   // Handle image rotation (90° increments)
   const handleImageRotate = useCallback((id: string, direction: "left" | "right") => {
@@ -209,19 +300,39 @@ function App() {
         activeFile.boxes,
         settings.autoRotate
       );
-      // Initialize with default names
-      const imagesWithNames = result.map((img, idx) => ({
-        ...img,
-        name: `photo_${idx + 1}`,
-      }));
-      setCroppedImages(imagesWithNames);
+
+      // Remove existing images from same file/page before adding new ones
+      setCroppedImages((prev) => {
+        const filtered = prev.filter(
+          (img) =>
+            img.source.fileIndex !== activeFileIndex ||
+            img.source.page !== activeFile.currentPage
+        );
+
+        // Calculate next global index for naming
+        const nextIndex = filtered.length + 1;
+
+        // Add source tracking and names to new images
+        const imagesWithSource = result.map((img, idx) => ({
+          ...img,
+          name: `photo_${nextIndex + idx}`,
+          source: {
+            fileIndex: activeFileIndex,
+            filename: activeFile.filename,
+            page: activeFile.currentPage,
+            boxId: activeFile.boxes[idx]?.id ?? img.id,
+          },
+        }));
+
+        return [...filtered, ...imagesWithSource];
+      });
     } catch (error) {
       console.error("Crop failed:", error);
       alert("Failed to crop photos");
     } finally {
       setIsCropping(false);
     }
-  }, [activeFile, settings.autoRotate]);
+  }, [activeFile, activeFileIndex, settings.autoRotate]);
 
   // Handle export
   const handleExport = useCallback(async () => {
@@ -304,6 +415,18 @@ function App() {
     await doExportLocal(true);
   }, [doExportLocal]);
 
+  // Handle scan navigation (file + page combined)
+  const handleScanNavigate = useCallback((fileIndex: number, page: number) => {
+    setActiveFileIndex(fileIndex);
+    if (files[fileIndex] && files[fileIndex].currentPage !== page) {
+      setFiles((prev) =>
+        prev.map((f, i) =>
+          i === fileIndex ? { ...f, currentPage: page, boxes: [] } : f
+        )
+      );
+    }
+  }, [files]);
+
   // Get current image URL
   const imageUrl = activeFile
     ? getImageUrl(activeFile.sessionId, activeFile.filename, activeFile.currentPage)
@@ -338,12 +461,19 @@ function App() {
 
           {/* Center panel - Canvas */}
           <div className="flex flex-col min-h-0">
-            <FileTabs
-              files={files}
-              activeIndex={activeFileIndex}
-              onSelect={handleSelectFile}
-              onClose={handleCloseFile}
-            />
+            <div className="flex items-center gap-2 flex-wrap">
+              <FileTabs
+                files={files}
+                activeIndex={activeFileIndex}
+                onSelect={handleSelectFile}
+                onClose={handleCloseFile}
+              />
+              <ScanNavigator
+                files={files}
+                activeFileIndex={activeFileIndex}
+                onNavigate={handleScanNavigate}
+              />
+            </div>
             <div className="flex-1 mt-2 min-h-0">
               <ImageCanvas
                 imageUrl={imageUrl}
@@ -365,11 +495,16 @@ function App() {
           {/* Right panel - Results */}
           <div className="overflow-y-auto">
             <ResultsGallery
-              images={croppedImages}
+              allImages={croppedImages}
+              currentScanImages={currentScanImages}
+              viewMode={resultsViewMode}
+              onViewModeChange={setResultsViewMode}
+              namingPattern={namingPattern}
+              onNamingPatternChange={setNamingPattern}
+              onApplyNamingPattern={applyNamingPattern}
               onExport={handleExport}
               onExportLocal={handleExportLocal}
               onNameChange={handleImageNameChange}
-              onBatchRename={handleBatchRename}
               onRotate={handleImageRotate}
               isExporting={isExporting}
               outputDirectory={outputDirectory}

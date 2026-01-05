@@ -1,4 +1,4 @@
-import { X } from "lucide-react";
+import { X, Loader2, Check, AlertCircle } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { UploadedFile } from "@/types";
 
@@ -7,6 +7,19 @@ interface FileTabsProps {
   activeIndex: number;
   onSelect: (index: number) => void;
   onClose: (index: number) => void;
+}
+
+function DetectionStatusIcon({ status }: { status: UploadedFile['detectionStatus'] }) {
+  switch (status) {
+    case 'detecting':
+      return <Loader2 className="w-3 h-3 animate-spin text-blue-500" />;
+    case 'detected':
+      return <Check className="w-3 h-3 text-green-500" />;
+    case 'failed':
+      return <AlertCircle className="w-3 h-3 text-red-500" />;
+    default:
+      return null;
+  }
 }
 
 export function FileTabs({ files, activeIndex, onSelect, onClose }: FileTabsProps) {
@@ -27,6 +40,7 @@ export function FileTabs({ files, activeIndex, onSelect, onClose }: FileTabsProp
           )}
           onClick={() => onSelect(index)}
         >
+          <DetectionStatusIcon status={file.detectionStatus} />
           <span className="truncate max-w-32">{file.filename}</span>
           {file.pageCount > 1 && (
             <span className="text-xs text-muted-foreground">

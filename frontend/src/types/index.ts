@@ -8,6 +8,9 @@ export interface BoundingBox {
   angle: number; // degrees
 }
 
+// Detection status for files
+export type DetectionStatus = 'pending' | 'detecting' | 'detected' | 'failed';
+
 // Uploaded file state
 export interface UploadedFile {
   sessionId: string;
@@ -17,6 +20,15 @@ export interface UploadedFile {
   imageWidth: number;
   imageHeight: number;
   boxes: BoundingBox[];
+  detectionStatus: DetectionStatus;
+}
+
+// Source tracking for cropped images
+export interface ImageSource {
+  fileIndex: number;
+  filename: string;
+  page: number;
+  boxId: string;
 }
 
 // Cropped image result
@@ -27,6 +39,7 @@ export interface CroppedImage {
   height: number;
   rotationApplied: number;
   name: string; // custom name for download
+  source: ImageSource;
 }
 
 // Detection settings
@@ -34,6 +47,14 @@ export interface DetectionSettings {
   minArea: number; // percentage
   maxArea: number; // percentage
   autoRotate: boolean;
+  autoDetect: boolean; // auto-detect on upload
+}
+
+// Naming pattern for batch export
+export interface NamingPattern {
+  pattern: string; // e.g., "{album}_{n}"
+  albumName: string;
+  startNumber: number;
 }
 
 // API response types

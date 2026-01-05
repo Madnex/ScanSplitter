@@ -40,7 +40,15 @@ export function Lightbox({
     document.body.removeChild(link);
   }, [currentImage]);
 
-  // Keyboard navigation
+  const handleRotateLeft = useCallback(() => {
+    if (currentImage) onRotate(currentImage.id, "left");
+  }, [currentImage, onRotate]);
+
+  const handleRotateRight = useCallback(() => {
+    if (currentImage) onRotate(currentImage.id, "right");
+  }, [currentImage, onRotate]);
+
+  // Keyboard navigation and rotation
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       switch (e.key) {
@@ -53,12 +61,20 @@ export function Lightbox({
         case "ArrowRight":
           handleNext();
           break;
+        case "r":
+        case "R":
+          if (e.shiftKey) {
+            handleRotateLeft();
+          } else {
+            handleRotateRight();
+          }
+          break;
       }
     };
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [onClose, handlePrev, handleNext]);
+  }, [onClose, handlePrev, handleNext, handleRotateLeft, handleRotateRight]);
 
   if (!currentImage) return null;
 
@@ -78,7 +94,7 @@ export function Lightbox({
             variant="ghost"
             className="text-white hover:bg-white/20"
             onClick={() => onRotate(currentImage.id, "left")}
-            title="Rotate left 90°"
+            title="Rotate left 90° (Shift+R)"
           >
             <RotateCcw className="w-5 h-5" />
           </Button>
@@ -87,7 +103,7 @@ export function Lightbox({
             variant="ghost"
             className="text-white hover:bg-white/20"
             onClick={() => onRotate(currentImage.id, "right")}
-            title="Rotate right 90°"
+            title="Rotate right 90° (R)"
           >
             <RotateCw className="w-5 h-5" />
           </Button>

@@ -77,7 +77,7 @@ export async function cropImages(
   page: number,
   boxes: BoundingBox[],
   autoRotate: boolean
-): Promise<Omit<CroppedImage, "name">[]> {
+): Promise<Omit<CroppedImage, "name" | "source">[]> {
   const response = await fetch(`${API_BASE}/crop`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },

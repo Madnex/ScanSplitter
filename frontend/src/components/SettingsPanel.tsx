@@ -75,6 +75,21 @@ export function SettingsPanel({
           </label>
         </div>
 
+        <div className="flex items-center gap-2">
+          <input
+            type="checkbox"
+            id="auto-detect"
+            checked={settings.autoDetect}
+            onChange={(e) =>
+              onSettingsChange({ ...settings, autoDetect: e.target.checked })
+            }
+            className="rounded"
+          />
+          <label htmlFor="auto-detect" className="text-sm">
+            Auto-detect on upload
+          </label>
+        </div>
+
         <div className="space-y-2 pt-2">
           <Button
             onClick={onDetect}
