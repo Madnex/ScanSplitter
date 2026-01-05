@@ -9,7 +9,11 @@ PROTOTXT_URL = "https://raw.githubusercontent.com/opencv/opencv/master/samples/d
 CAFFEMODEL_URL = "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel"
 
 # Orientation detection model (EfficientNetV2 ONNX)
-ORIENTATION_MODEL_URL = "https://github.com/duartebarbosadev/deep-image-orientation-detection/releases/download/v2/orientation_model_v2_0.9882.onnx"
+# Primary: original source, Fallback: our own backup
+ORIENTATION_MODEL_URLS = [
+    "https://github.com/duartebarbosadev/deep-image-orientation-detection/releases/download/v2/orientation_model_v2_0.9882.onnx",
+    "https://github.com/Madnex/ScanSplitter/releases/download/models-v1/orientation_model_v2.onnx",
+]
 ORIENTATION_MODEL_FILENAME = "orientation_model_v2.onnx"
 
 # Cache directory for models
@@ -57,6 +61,8 @@ def _download_with_progress(url: str, dest: Path, description: str) -> None:
 def get_orientation_model_path() -> Path:
     """Get path to the orientation detection ONNX model, downloading if needed.
 
+    Tries multiple URLs in order (primary source, then backup).
+
     Returns:
         Path to the ONNX model file
     """
@@ -66,6 +72,14 @@ def get_orientation_model_path() -> Path:
 
     if not model_path.exists():
         print("Downloading orientation detection model (~80MB)...")
-        _download_with_progress(ORIENTATION_MODEL_URL, model_path, "Downloading")
+        for i, url in enumerate(ORIENTATION_MODEL_URLS):
+            try:
+                _download_with_progress(url, model_path, "Downloading")
+                break
+            except Exception as e:
+                if i < len(ORIENTATION_MODEL_URLS) - 1:
+                    print(f"\nPrimary URL failed, trying backup...")
+                else:
+                    raise RuntimeError(f"Failed to download orientation model: {e}") from e
 
     return model_path
