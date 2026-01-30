@@ -1,0 +1,10 @@
+version: "3.9"
+services:
+  app:
+    build: .
+    image: scan-splitter:latest
+    container_name: scan-splitter
+    volumes:
+      - ./:/app
+    command: bash
+    tty: true
