@@ -39,7 +39,7 @@ export function validatePattern(pattern: string): { valid: boolean; error?: stri
   }
 
   // Check for invalid characters (filesystem unsafe)
-  const invalidChars = pattern.match(/[<>:"|?*\\\/]/);
+  const invalidChars = pattern.match(/[<>:"|?*\\/]/);
   if (invalidChars) {
     return { valid: false, error: `Invalid character: ${invalidChars[0]}` };
   }

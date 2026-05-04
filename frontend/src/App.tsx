@@ -112,8 +112,22 @@ function App() {
   }, [refreshModelStatuses]);
 
   useEffect(() => {
-    refreshModelStatuses();
-  }, [refreshModelStatuses]);
+    let isMounted = true;
+
+    getModelStatuses()
+      .then((statuses) => {
+        if (isMounted) {
+          setModelStatuses(statuses);
+        }
+      })
+      .catch((error) => {
+        console.error("Failed to refresh model statuses:", error);
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   useEffect(() => {
     if (settings.detectionMode !== "u2net") return;
@@ -597,6 +611,7 @@ function App() {
               modelStatuses={modelStatuses}
             />
             <ExifEditor
+              key={activeFile?.sessionId ?? "no-session"}
               sessionId={activeFile?.sessionId ?? null}
               imageCount={croppedImages.length}
               onApplyToAll={handleApplyDateToAll}

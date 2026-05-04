@@ -15,19 +15,21 @@ export function ExifEditor({ sessionId, imageCount, onApplyToAll }: ExifEditorPr
   const [dateTaken, setDateTaken] = useState<string>("");
   const [make, setMake] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
+  const [isLoading, setIsLoading] = useState(Boolean(sessionId));
 
   useEffect(() => {
     if (!sessionId) {
-      setDateTaken("");
-      setMake(null);
-      setModel(null);
       return;
     }
 
-    setIsLoading(true);
+    let isMounted = true;
+
     getExif(sessionId)
       .then((exif) => {
+        if (!isMounted) {
+          return;
+        }
+
         if (exif) {
           // Parse EXIF date format "YYYY:MM:DD HH:MM:SS" to "YYYY-MM-DD"
           let dateStr = exif.date_taken ?? "";
@@ -43,7 +45,15 @@ export function ExifEditor({ sessionId, imageCount, onApplyToAll }: ExifEditorPr
           setModel(null);
         }
       })
-      .finally(() => setIsLoading(false));
+      .finally(() => {
+        if (isMounted) {
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      isMounted = false;
+    };
   }, [sessionId]);
 
   const handleApply = () => {

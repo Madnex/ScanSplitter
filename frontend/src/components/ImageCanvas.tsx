@@ -20,12 +20,21 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
   const isUpdatingRef = useRef(false);
   const currentImageUrlRef = useRef<string | null>(null);
   const imageScaleRef = useRef(1);
+  const [imageMetrics, setImageMetrics] = useState<{
+    displayWidth: number;
+    displayHeight: number;
+    scale: number;
+    padding: number;
+  } | null>(null);
   // Canvas padding for rotation handles (pixels on each side)
   const CANVAS_PADDING = 50;
   const canvasPaddingRef = useRef(CANVAS_PADDING);
   // Ref to store latest onBoxesChange to avoid stale closures in event handlers
   const onBoxesChangeRef = useRef(onBoxesChange);
-  onBoxesChangeRef.current = onBoxesChange;
+
+  useEffect(() => {
+    onBoxesChangeRef.current = onBoxesChange;
+  }, [onBoxesChange]);
 
   // Magnifier state for precision corner dragging
   const [magnifierState, setMagnifierState] = useState<{
@@ -33,6 +42,86 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
     imageX: number;  // Corner position in image coordinates
     imageY: number;
   } | null>(null);
+
+  // Read current boxes from canvas (without triggering state update)
+  const readBoxesFromCanvas = useCallback((): BoundingBox[] => {
+    const canvas = fabricRef.current;
+    if (!canvas) return [];
+
+    const scale = imageScaleRef.current;
+    const padding = canvasPaddingRef.current;
+    const currentBoxes: BoundingBox[] = [];
+
+    canvas.getObjects("rect").forEach((obj) => {
+      const rect = obj as fabric.Rect & { data?: { id: string } };
+      if (!rect.data?.id) return;
+
+      const scaleX = rect.scaleX || 1;
+      const scaleY = rect.scaleY || 1;
+      const width = (rect.width || 0) * scaleX;
+      const height = (rect.height || 0) * scaleY;
+      // With center origin, left/top IS the center (subtract padding to get image-relative coords)
+      const centerX = (rect.left || 0) - padding;
+      const centerY = (rect.top || 0) - padding;
+
+      // Convert back to original image coordinates
+      currentBoxes.push({
+        id: rect.data.id,
+        centerX: centerX / scale,
+        centerY: centerY / scale,
+        width: width / scale,
+        height: height / scale,
+        angle: rect.angle || 0,
+      });
+    });
+
+    return currentBoxes;
+  }, []);
+
+  // Sync boxes from canvas to state
+  const syncBoxesFromCanvas = useCallback(() => {
+    const newBoxes = readBoxesFromCanvas();
+    // Use ref to avoid stale closure issues in event handlers
+    onBoxesChangeRef.current(newBoxes);
+  }, [readBoxesFromCanvas]);
+
+  const addBoxToCanvas = useCallback((box: BoundingBox) => {
+    const canvas = fabricRef.current;
+    if (!canvas) return;
+
+    // Use center origin so rotation works correctly
+    const rect = new fabric.Rect({
+      left: box.centerX,
+      top: box.centerY,
+      width: box.width,
+      height: box.height,
+      angle: box.angle,
+      originX: 'center',
+      originY: 'center',
+      fill: "rgba(59, 130, 246, 0.2)",
+      stroke: "#3b82f6",
+      strokeWidth: 2,
+      // Make sure it's selectable and has controls
+      selectable: true,
+      hasControls: true,
+      hasBorders: true,
+      lockRotation: false,
+      lockUniScaling: false,
+      // Control styling
+      cornerColor: "#3b82f6",
+      cornerStyle: "circle",
+      cornerSize: 12,
+      transparentCorners: false,
+      borderColor: "#3b82f6",
+      borderScaleFactor: 2,
+      padding: 0,
+    });
+
+    // Store ID in data property
+    (rect as fabric.Rect & { data: { id: string } }).data = { id: box.id };
+
+    canvas.add(rect);
+  }, []);
 
   // Initialize Fabric canvas
   useEffect(() => {
@@ -102,49 +191,7 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
       canvas.dispose();
       fabricRef.current = null;
     };
-  }, []);
-
-  // Read current boxes from canvas (without triggering state update)
-  const readBoxesFromCanvas = useCallback((): BoundingBox[] => {
-    const canvas = fabricRef.current;
-    if (!canvas) return [];
-
-    const scale = imageScaleRef.current;
-    const padding = canvasPaddingRef.current;
-    const currentBoxes: BoundingBox[] = [];
-
-    canvas.getObjects("rect").forEach((obj) => {
-      const rect = obj as fabric.Rect & { data?: { id: string } };
-      if (!rect.data?.id) return;
-
-      const scaleX = rect.scaleX || 1;
-      const scaleY = rect.scaleY || 1;
-      const width = (rect.width || 0) * scaleX;
-      const height = (rect.height || 0) * scaleY;
-      // With center origin, left/top IS the center (subtract padding to get image-relative coords)
-      const centerX = (rect.left || 0) - padding;
-      const centerY = (rect.top || 0) - padding;
-
-      // Convert back to original image coordinates
-      currentBoxes.push({
-        id: rect.data.id,
-        centerX: centerX / scale,
-        centerY: centerY / scale,
-        width: width / scale,
-        height: height / scale,
-        angle: rect.angle || 0,
-      });
-    });
-
-    return currentBoxes;
-  }, []);
-
-  // Sync boxes from canvas to state
-  const syncBoxesFromCanvas = useCallback(() => {
-    const newBoxes = readBoxesFromCanvas();
-    // Use ref to avoid stale closure issues in event handlers
-    onBoxesChangeRef.current(newBoxes);
-  }, [readBoxesFromCanvas]);
+  }, [syncBoxesFromCanvas]);
 
   // Load image when URL changes
   useEffect(() => {
@@ -189,6 +236,12 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
       const canvasHeight = scaledImgHeight + padding * 2;
 
       imageScaleRef.current = scale;
+      setImageMetrics({
+        displayWidth: scaledImgWidth,
+        displayHeight: scaledImgHeight,
+        scale,
+        padding,
+      });
 
       // Set canvas dimensions (image + padding for handles)
       canvas.setDimensions({
@@ -217,6 +270,7 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
       console.error("Failed to load image:", e);
       setImageError("Failed to load image");
       setImageLoaded(false);
+      setImageMetrics(null);
     };
 
     htmlImg.src = imageUrl;
@@ -284,45 +338,7 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
 
     canvas.renderAll();
     isUpdatingRef.current = false;
-  }, [boxes, imageLoaded]);
-
-  const addBoxToCanvas = useCallback((box: BoundingBox) => {
-    const canvas = fabricRef.current;
-    if (!canvas) return;
-
-    // Use center origin so rotation works correctly
-    const rect = new fabric.Rect({
-      left: box.centerX,
-      top: box.centerY,
-      width: box.width,
-      height: box.height,
-      angle: box.angle,
-      originX: 'center',
-      originY: 'center',
-      fill: "rgba(59, 130, 246, 0.2)",
-      stroke: "#3b82f6",
-      strokeWidth: 2,
-      // Make sure it's selectable and has controls
-      selectable: true,
-      hasControls: true,
-      hasBorders: true,
-      lockRotation: false,
-      lockUniScaling: false,
-      // Control styling
-      cornerColor: "#3b82f6",
-      cornerStyle: "circle",
-      cornerSize: 12,
-      transparentCorners: false,
-      borderColor: "#3b82f6",
-      borderScaleFactor: 2,
-      padding: 0,
-    });
-
-    // Store ID in data property
-    (rect as fabric.Rect & { data: { id: string } }).data = { id: box.id };
-
-    canvas.add(rect);
-  }, []);
+  }, [addBoxToCanvas, boxes, imageLoaded]);
 
   const handleAddBox = useCallback(() => {
     const canvas = fabricRef.current;
@@ -455,34 +471,22 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
         )}
 
         {/* Magnifier overlay for precision corner dragging */}
-        {magnifierState?.visible && imageUrl && (() => {
-          const canvasWidth = fabricRef.current?.getWidth() || 0;
-          const canvasHeight = fabricRef.current?.getHeight() || 0;
-          const padding = canvasPaddingRef.current;
-          const scale = imageScaleRef.current;
-          // Image area is canvas minus padding on each side
-          const imgDisplayWidth = canvasWidth - padding * 2;
-          const imgDisplayHeight = canvasHeight - padding * 2;
-          const zoom = 3;
-          const magnifierRadius = 64; // half of 128px (w-32 h-32)
-
-          return (
-            <div
-              className="absolute top-4 left-4 w-32 h-32 rounded-full border-2 border-white shadow-lg overflow-hidden pointer-events-none z-10"
-              style={{
-                backgroundImage: `url(${imageUrl})`,
-                backgroundSize: `${imgDisplayWidth * zoom}px ${imgDisplayHeight * zoom}px`,
-                backgroundPosition: `${-magnifierState.imageX * scale * zoom + magnifierRadius}px ${-magnifierState.imageY * scale * zoom + magnifierRadius}px`,
-              }}
-            >
-              {/* Crosshairs */}
-              <div className="absolute inset-0 flex items-center justify-center">
-                <div className="absolute w-full h-px bg-blue-500 opacity-70" />
-                <div className="absolute h-full w-px bg-blue-500 opacity-70" />
-              </div>
+        {magnifierState?.visible && imageUrl && imageMetrics && (
+          <div
+            className="absolute top-4 left-4 w-32 h-32 rounded-full border-2 border-white shadow-lg overflow-hidden pointer-events-none z-10"
+            style={{
+              backgroundImage: `url(${imageUrl})`,
+              backgroundSize: `${imageMetrics.displayWidth * 3}px ${imageMetrics.displayHeight * 3}px`,
+              backgroundPosition: `${-magnifierState.imageX * imageMetrics.scale * 3 + 64}px ${-magnifierState.imageY * imageMetrics.scale * 3 + 64}px`,
+            }}
+          >
+            {/* Crosshairs */}
+            <div className="absolute inset-0 flex items-center justify-center">
+              <div className="absolute w-full h-px bg-blue-500 opacity-70" />
+              <div className="absolute h-full w-px bg-blue-500 opacity-70" />
             </div>
-          );
-        })()}
+          </div>
+        )}
       </div>
 
       {/* Instructions */}
