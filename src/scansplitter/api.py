@@ -2,6 +2,8 @@
 
 import base64
 import io
+import subprocess
+import sys
 import uuid
 import zipfile
 from pathlib import Path
@@ -146,6 +148,18 @@ class ExportLocalRequest(BaseModel):
     overwrite: bool = False  # Whether to overwrite existing files
 
 
+class SelectDirectoryRequest(BaseModel):
+    """Request to open a native directory picker."""
+
+    initial_directory: str | None = None
+
+
+class SelectDirectoryResponse(BaseModel):
+    """Response from the native directory picker."""
+
+    directory: str | None = None
+
+
 class ExifData(BaseModel):
     """EXIF metadata."""
 
@@ -248,6 +262,80 @@ def box_to_detected_region(box: BoundingBox, image: Image.Image) -> DetectedRegi
         width=int(min(image.width, x_max) - max(0, x_min)),
         height=int(min(image.height, y_max) - max(0, y_min)),
     )
+
+
+def normalize_initial_directory(initial_directory: str | None) -> str | None:
+    """Resolve an initial directory or fall back to its nearest existing parent."""
+    if not initial_directory:
+        return None
+
+    candidate = Path(initial_directory).expanduser()
+    if candidate.exists() and candidate.is_dir():
+        return str(candidate.resolve())
+
+    for parent in candidate.parents:
+        if parent.exists() and parent.is_dir():
+            return str(parent.resolve())
+
+    return None
+
+
+def choose_directory(initial_directory: str | None = None) -> str | None:
+    """Open a native directory picker and return the selected absolute path."""
+    resolved_initial_directory = normalize_initial_directory(initial_directory)
+
+    if sys.platform == "darwin":
+        default_location = resolved_initial_directory or str(Path.home())
+        script = [
+            'set selectedFolder to choose folder with prompt "Select output directory" default location POSIX file "'
+            + default_location.replace('\\', '\\\\').replace('"', '\\"')
+            + '"',
+            "POSIX path of selectedFolder",
+        ]
+        args: list[str] = []
+        for line in script:
+            args.extend(["-e", line])
+
+        result = subprocess.run(
+            ["osascript", *args],
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        if result.returncode != 0:
+            stderr = result.stderr.strip()
+            if "User canceled" in stderr:
+                return None
+            raise RuntimeError(f"Directory picker unavailable: {stderr or result.stdout.strip()}")
+
+        selected = result.stdout.strip()
+        return str(Path(selected).expanduser().resolve()) if selected else None
+
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+
+        root = tk.Tk()
+        root.withdraw()
+        try:
+            root.attributes("-topmost", True)
+        except Exception:
+            pass
+
+        selected = filedialog.askdirectory(
+            parent=root,
+            title="Select output directory",
+            initialdir=resolved_initial_directory or str(Path.home()),
+            mustexist=True,
+        )
+        root.destroy()
+
+        if not selected:
+            return None
+
+        return str(Path(selected).expanduser().resolve())
+    except Exception as error:
+        raise RuntimeError(f"Directory picker unavailable: {error}") from error
 
 
 # --- API Endpoints ---
@@ -658,6 +746,17 @@ async def export_local(request: ExportLocalRequest):
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
 
     return {"status": "success", "files": exported_files, "count": len(exported_files)}
+
+
+@app.post("/api/select-directory", response_model=SelectDirectoryResponse)
+async def select_directory(request: SelectDirectoryRequest):
+    """Open a native directory picker on the host machine."""
+    try:
+        directory = choose_directory(request.initial_directory)
+    except RuntimeError as error:
+        raise HTTPException(status_code=500, detail=str(error)) from error
+
+    return SelectDirectoryResponse(directory=directory)
 
 
 @app.delete("/api/session/{session_id}")

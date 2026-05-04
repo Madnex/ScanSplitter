@@ -12,7 +12,7 @@ import { Toast, type ToastType } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { Button } from "@/components/ui/button";
-import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, FileConflictError, getModelStatuses, startModelDownload } from "@/lib/api";
+import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, FileConflictError, getModelStatuses, selectDirectory, startModelDownload } from "@/lib/api";
 import { generateName } from "@/lib/naming";
 import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern, ModelKey, ModelStatus } from "@/types";
 
@@ -52,6 +52,7 @@ function App() {
   const [isDetecting, setIsDetecting] = useState(false);
   const [isCropping, setIsCropping] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
+  const [isBrowsingOutputDirectory, setIsBrowsingOutputDirectory] = useState(false);
 
   // Output directory (persisted to localStorage)
   const [outputDirectory, setOutputDirectory] = useState<string>(() =>
@@ -551,6 +552,21 @@ function App() {
     await doExportLocal(true);
   }, [doExportLocal]);
 
+  const handleBrowseOutputDirectory = useCallback(async () => {
+    setIsBrowsingOutputDirectory(true);
+    try {
+      const selectedDirectory = await selectDirectory(outputDirectory);
+      if (selectedDirectory) {
+        setOutputDirectory(selectedDirectory);
+      }
+    } catch (error) {
+      console.error("Directory picker failed:", error);
+      showToast(error instanceof Error ? error.message : "Failed to open directory picker", "error");
+    } finally {
+      setIsBrowsingOutputDirectory(false);
+    }
+  }, [outputDirectory, showToast]);
+
   // Handle scan navigation (file + page combined)
   const handleScanNavigate = useCallback((fileIndex: number, page: number) => {
     setActiveFileIndex(fileIndex);
@@ -667,8 +683,10 @@ function App() {
               onDateChange={handleImageDateChange}
               onRotate={handleImageRotate}
               isExporting={isExporting}
+              isBrowsingOutputDirectory={isBrowsingOutputDirectory}
               outputDirectory={outputDirectory}
               onOutputDirectoryChange={setOutputDirectory}
+              onBrowseOutputDirectory={handleBrowseOutputDirectory}
             />
           </div>
         </div>

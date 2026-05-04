@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Download, FolderDown, RotateCcw, RotateCw, Expand, Wand2, Calendar } from "lucide-react";
+import { Download, FolderDown, FolderOpen, RotateCcw, RotateCw, Expand, Wand2, Calendar } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,8 +22,10 @@ interface ResultsGalleryProps {
   onDateChange: (id: string, date: string | null) => void;
   onRotate: (id: string, direction: "left" | "right") => void;
   isExporting: boolean;
+  isBrowsingOutputDirectory: boolean;
   outputDirectory: string;
   onOutputDirectoryChange: (path: string) => void;
+  onBrowseOutputDirectory: () => void;
 }
 
 export function ResultsGallery({
@@ -40,8 +42,10 @@ export function ResultsGallery({
   onDateChange,
   onRotate,
   isExporting,
+  isBrowsingOutputDirectory,
   outputDirectory,
   onOutputDirectoryChange,
+  onBrowseOutputDirectory,
 }: ResultsGalleryProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
@@ -122,12 +126,25 @@ export function ResultsGallery({
 
           {/* Output directory */}
           <div className="mt-2">
-            <Input
-              value={outputDirectory}
-              onChange={(e) => onOutputDirectoryChange(e.target.value)}
-              placeholder="/path/to/output"
-              className="text-xs h-7"
-            />
+            <div className="flex gap-1">
+              <Input
+                value={outputDirectory}
+                onChange={(e) => onOutputDirectoryChange(e.target.value)}
+                placeholder="/path/to/output"
+                className="text-xs h-7 flex-1"
+              />
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-7 px-2 text-xs shrink-0"
+                onClick={onBrowseOutputDirectory}
+                disabled={isBrowsingOutputDirectory}
+                title="Browse for output directory"
+              >
+                <FolderOpen className="w-3 h-3" />
+                Browse
+              </Button>
+            </div>
           </div>
 
           {/* Naming pattern */}

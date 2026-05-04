@@ -199,6 +199,25 @@ export async function exportLocal(
   return response.json();
 }
 
+export async function selectDirectory(initialDirectory?: string): Promise<string | null> {
+  const response = await fetch(`${API_BASE}/select-directory`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      initial_directory: initialDirectory?.trim() ? initialDirectory : null,
+    }),
+  });
+
+  if (!response.ok) {
+    const error = await response.json().catch(() => ({ detail: response.statusText }));
+    const message = typeof error.detail === "string" ? error.detail : response.statusText;
+    throw new Error(message || `Failed to open directory picker: ${response.statusText}`);
+  }
+
+  const data: { directory: string | null } = await response.json();
+  return data.directory;
+}
+
 export function getImageUrl(sessionId: string, filename: string, page: number): string {
   return `${API_BASE}/image/${sessionId}/${filename}?page=${page}`;
 }
