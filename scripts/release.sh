@@ -6,6 +6,26 @@ set -e
 
 BUMP_TYPE="${1:-patch}"
 PYPROJECT="pyproject.toml"
+FRONTEND_DIR="frontend"
+
+if [[ -n "$(git status --porcelain)" ]]; then
+    echo "Error: Working tree is not clean. Commit or stash changes before releasing."
+    exit 1
+fi
+
+if [[ -f "$FRONTEND_DIR/package.json" ]]; then
+    echo "Validating frontend..."
+    (
+        cd "$FRONTEND_DIR"
+        npm ci
+        npm run build
+    )
+
+    if [[ -n "$(git status --porcelain)" ]]; then
+        echo "Error: Frontend validation changed tracked files. Commit those changes before releasing."
+        exit 1
+    fi
+fi
 
 # Extract current version
 CURRENT_VERSION=$(grep -E '^version = ' "$PYPROJECT" | sed 's/version = "\(.*\)"/\1/')
