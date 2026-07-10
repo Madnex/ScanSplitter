@@ -14,6 +14,7 @@ import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { Button } from "@/components/ui/button";
 import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, FileConflictError, getModelStatuses, selectDirectory, startModelDownload } from "@/lib/api";
 import { generateName } from "@/lib/naming";
+import { buildExportPayload } from "@/lib/utils";
 import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern, ModelKey, ModelStatus } from "@/types";
 
 function App() {
@@ -60,7 +61,7 @@ function App() {
   );
 
   // Toast notification state
-  const [toast, setToast] = useState<{ message: string; type: ToastType } | null>(null);
+  const [toast, setToast] = useState<{ id: string; message: string; type: ToastType } | null>(null);
 
   // Overwrite confirmation dialog state
   const [overwriteDialog, setOverwriteDialog] = useState<{
@@ -71,7 +72,10 @@ function App() {
   const [showShortcuts, setShowShortcuts] = useState(false);
 
   const showToast = useCallback((message: string, type: ToastType = "success") => {
-    setToast({ message, type });
+    // Unique id per toast so a new toast within the previous one's exit
+    // animation window gets its own component instance (and timers) instead
+    // of inheriting stale `isExiting` state from the toast it replaced.
+    setToast({ id: crypto.randomUUID(), message, type });
   }, []);
 
   const refreshModelStatuses = useCallback(async () => {
@@ -96,7 +100,12 @@ function App() {
     const current = statuses[modelKey];
     if (current?.status === "ready") return;
 
-    await startModelDownload(modelKey);
+    // Only kick off a new download if one isn't already in progress -
+    // otherwise concurrent callers (or re-entrant calls) would each start
+    // their own duplicate download.
+    if (current?.status !== "downloading") {
+      await startModelDownload(modelKey);
+    }
 
     // Poll until ready (or error)
     for (;;) {
@@ -178,6 +187,14 @@ function App() {
     );
   }, [croppedImages, activeFileIndex, activeFile]);
 
+  // The set of images exports operate on - mirrors ResultsGallery's own
+  // `displayImages` computation so exports always match what's on screen
+  // ("Current" scopes to the active scan, "All" exports everything).
+  const exportImages = useMemo(
+    () => (resultsViewMode === "current" ? currentScanImages : croppedImages),
+    [resultsViewMode, currentScanImages, croppedImages]
+  );
+
   // Run detection for a file by session ID
   const runDetection = useCallback(async (
     sessionId: string,
@@ -249,7 +266,7 @@ function App() {
       setActiveFileIndex(startIndex);
     } catch (error) {
       console.error("Upload failed:", error);
-      alert("Failed to upload file(s)");
+      showToast("Failed to upload file(s)", "error");
     } finally {
       setIsUploading(false);
     }
@@ -260,7 +277,7 @@ function App() {
         await runDetection(file.sessionId, file.filename, file.currentPage);
       }
     }
-  }, [files.length, settings.autoDetect, runDetection]);
+  }, [files.length, settings.autoDetect, runDetection, showToast]);
 
   // Handle file tab selection
   const handleSelectFile = useCallback((index: number) => {
@@ -290,7 +307,9 @@ function App() {
     if (!activeFile) return;
     setFiles((prev) =>
       prev.map((f, i) =>
-        i === activeFileIndex ? { ...f, currentPage: page, boxes: [] } : f
+        i === activeFileIndex
+          ? { ...f, currentPage: page, boxes: [], detectionStatus: 'pending' as const }
+          : f
       )
     );
   }, [activeFile, activeFileIndex]);
@@ -391,8 +410,12 @@ function App() {
         )
       );
     };
+    img.onerror = () => {
+      console.error("Failed to load image for rotation");
+      showToast("Failed to rotate image", "error");
+    };
     img.src = `data:image/jpeg;base64,${image.data}`;
-  }, [croppedImages]);
+  }, [croppedImages, showToast]);
 
   // Handle detection
   const handleDetect = useCallback(async () => {
@@ -414,11 +437,11 @@ function App() {
       handleBoxesChange(result.boxes);
     } catch (error) {
       console.error("Detection failed:", error);
-      alert("Failed to detect photos");
+      showToast("Failed to detect photos", "error");
     } finally {
       setIsDetecting(false);
     }
-  }, [activeFile, settings, handleBoxesChange, ensureModelReady]);
+  }, [activeFile, settings, handleBoxesChange, ensureModelReady, showToast]);
 
   // Handle crop
   const handleCrop = useCallback(async () => {
@@ -463,24 +486,18 @@ function App() {
       });
     } catch (error) {
       console.error("Crop failed:", error);
-      alert("Failed to crop photos");
+      showToast("Failed to crop photos", "error");
     } finally {
       setIsCropping(false);
     }
-  }, [activeFile, activeFileIndex, settings.autoRotate, ensureModelReady]);
+  }, [activeFile, activeFileIndex, settings.autoRotate, ensureModelReady, showToast]);
 
   // Handle export
   const handleExport = useCallback(async () => {
-    if (!activeFile || croppedImages.length === 0) return;
+    if (!activeFile || exportImages.length === 0) return;
     setIsExporting(true);
     try {
-      // Build image data array with dates
-      const images = croppedImages.map((img) => ({
-        id: img.id,
-        data: img.data,
-        name: img.name,
-        date_taken: img.dateTaken,
-      }));
+      const images = buildExportPayload(exportImages);
       const blob = await exportZip(activeFile.sessionId, "jpeg", 85, images);
 
       // Download the blob
@@ -493,28 +510,22 @@ function App() {
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
 
-      showToast(`Downloaded ${croppedImages.length} images as ZIP`, "success");
+      showToast(`Downloaded ${exportImages.length} images as ZIP`, "success");
     } catch (error) {
       console.error("Export failed:", error);
       showToast("Failed to export photos", "error");
     } finally {
       setIsExporting(false);
     }
-  }, [activeFile, croppedImages, showToast]);
+  }, [activeFile, exportImages, showToast]);
 
   // Handle export to local directory
   const doExportLocal = useCallback(async (overwrite: boolean) => {
-    if (!activeFile || croppedImages.length === 0) return;
+    if (!activeFile || exportImages.length === 0) return;
 
     setIsExporting(true);
     try {
-      // Build image data array with dates
-      const images = croppedImages.map((img) => ({
-        id: img.id,
-        data: img.data,
-        name: img.name,
-        date_taken: img.dateTaken,
-      }));
+      const images = buildExportPayload(exportImages);
       const result = await exportLocal(
         activeFile.sessionId,
         outputDirectory,
@@ -537,7 +548,7 @@ function App() {
     } finally {
       setIsExporting(false);
     }
-  }, [activeFile, croppedImages, outputDirectory, showToast]);
+  }, [activeFile, exportImages, outputDirectory, showToast]);
 
   const handleExportLocal = useCallback(async () => {
     if (!outputDirectory.trim()) {
@@ -573,7 +584,9 @@ function App() {
     if (files[fileIndex] && files[fileIndex].currentPage !== page) {
       setFiles((prev) =>
         prev.map((f, i) =>
-          i === fileIndex ? { ...f, currentPage: page, boxes: [] } : f
+          i === fileIndex
+            ? { ...f, currentPage: page, boxes: [], detectionStatus: 'pending' as const }
+            : f
         )
       );
     }
@@ -695,6 +708,7 @@ function App() {
       {/* Toast notifications */}
       {toast && (
         <Toast
+          key={toast.id}
           message={toast.message}
           type={toast.type}
           onClose={() => setToast(null)}

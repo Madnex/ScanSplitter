@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { CheckCircle, X, XCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -13,19 +13,32 @@ interface ToastProps {
 
 export function Toast({ message, type = "success", duration = 4000, onClose }: ToastProps) {
   const [isExiting, setIsExiting] = useState(false);
+  // Tracks the pending "close after exit animation" timeout so it can be
+  // cancelled on unmount - otherwise a stale timer can fire onClose for a
+  // toast instance that has already been replaced.
+  const closeTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
     const timer = setTimeout(() => {
       setIsExiting(true);
-      setTimeout(onClose, 300);
+      closeTimeoutRef.current = setTimeout(onClose, 300);
     }, duration);
 
-    return () => clearTimeout(timer);
+    return () => {
+      clearTimeout(timer);
+      if (closeTimeoutRef.current) {
+        clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+    };
   }, [duration, onClose]);
 
   const handleClose = () => {
     setIsExiting(true);
-    setTimeout(onClose, 300);
+    if (closeTimeoutRef.current) {
+      clearTimeout(closeTimeoutRef.current);
+    }
+    closeTimeoutRef.current = setTimeout(onClose, 300);
   };
 
   const icons = {
@@ -56,37 +69,6 @@ export function Toast({ message, type = "success", duration = 4000, onClose }: T
       >
         <X className="w-4 h-4" />
       </button>
-    </div>
-  );
-}
-
-// Toast manager for multiple toasts
-interface ToastItem {
-  id: string;
-  message: string;
-  type: ToastType;
-}
-
-interface ToastContainerProps {
-  toasts: ToastItem[];
-  onRemove: (id: string) => void;
-}
-
-export function ToastContainer({ toasts, onRemove }: ToastContainerProps) {
-  return (
-    <div className="fixed bottom-4 right-4 z-50 flex flex-col gap-2">
-      {toasts.map((toast, index) => (
-        <div
-          key={toast.id}
-          style={{ transform: `translateY(-${index * 60}px)` }}
-        >
-          <Toast
-            message={toast.message}
-            type={toast.type}
-            onClose={() => onRemove(toast.id)}
-          />
-        </div>
-      ))}
     </div>
   );
 }

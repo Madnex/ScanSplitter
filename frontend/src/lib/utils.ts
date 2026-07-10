@@ -1,8 +1,23 @@
 import { clsx, type ClassValue } from "clsx"
 import { twMerge } from "tailwind-merge"
+import type { ExportImageData } from "@/lib/api"
+import type { CroppedImage } from "@/types"
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
+}
+
+/**
+ * Build the payload sent to the export endpoints from a set of cropped images.
+ * Shared by ZIP export and local-directory export so both stay in sync.
+ */
+export function buildExportPayload(images: CroppedImage[]): ExportImageData[] {
+  return images.map((img) => ({
+    id: img.id,
+    data: img.data,
+    name: img.name,
+    date_taken: img.dateTaken,
+  }));
 }
 
 export function estimateBase64FileSize(base64: string): number {

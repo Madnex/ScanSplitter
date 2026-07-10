@@ -32,10 +32,14 @@ export function validatePattern(pattern: string): { valid: boolean; error?: stri
     return { valid: false, error: "Pattern cannot be empty" };
   }
 
-  // Check for at least one placeholder or text
+  // Require at least one placeholder - otherwise every exported file would
+  // get the same static name and silently overwrite the previous one.
   const hasPlaceholder = /\{(album|scan|page|n|photo)\}/.test(pattern);
-  if (!hasPlaceholder && pattern.length < 1) {
-    return { valid: false, error: "Pattern must include at least one placeholder" };
+  if (!hasPlaceholder) {
+    return {
+      valid: false,
+      error: "Pattern must include at least one placeholder ({album}, {scan}, {page}, {n}, {photo})",
+    };
   }
 
   // Check for invalid characters (filesystem unsafe)

@@ -404,6 +404,15 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      // Skip if focused on an input, textarea, or contenteditable element
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) {
+        return;
+      }
+
       if (e.key === "Delete" || e.key === "Backspace") {
         if (selectedIds.size > 0) {
           e.preventDefault();

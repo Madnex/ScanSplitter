@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { Download, FolderDown, FolderOpen, RotateCcw, RotateCw, Expand, Wand2, Calendar } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Lightbox } from "@/components/Lightbox";
 import { NamingPatternInput } from "@/components/NamingPatternInput";
 import { estimateBase64FileSize, formatFileSize, formatDimensions } from "@/lib/utils";
+import { validatePattern } from "@/lib/naming";
 import type { CroppedImage, NamingPattern } from "@/types";
 
 interface ResultsGalleryProps {
@@ -51,6 +52,11 @@ export function ResultsGallery({
 
   // Use the appropriate images based on view mode
   const displayImages = viewMode === "current" ? currentScanImages : allImages;
+
+  const patternValidation = useMemo(
+    () => validatePattern(namingPattern.pattern),
+    [namingPattern.pattern]
+  );
 
   const downloadImage = (image: CroppedImage) => {
     const link = document.createElement("a");
@@ -156,8 +162,12 @@ export function ResultsGallery({
                 variant="outline"
                 className="h-6 text-xs px-2"
                 onClick={onApplyNamingPattern}
-                disabled={allImages.length === 0}
-                title="Apply pattern to all images"
+                disabled={allImages.length === 0 || !patternValidation.valid}
+                title={
+                  !patternValidation.valid
+                    ? patternValidation.error
+                    : "Apply pattern to all images"
+                }
               >
                 <Wand2 className="w-3 h-3 mr-1" />
                 Apply

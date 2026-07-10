@@ -45,6 +45,16 @@ export function ExifEditor({ sessionId, imageCount, onApplyToAll }: ExifEditorPr
           setModel(null);
         }
       })
+      .catch((error) => {
+        // Treat failures as "no EXIF available" rather than leaving the UI stuck loading
+        console.error("Failed to load EXIF data:", error);
+        if (!isMounted) {
+          return;
+        }
+        setDateTaken("");
+        setMake(null);
+        setModel(null);
+      })
       .finally(() => {
         if (isMounted) {
           setIsLoading(false);
