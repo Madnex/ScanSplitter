@@ -82,7 +82,7 @@ scansplitter api
 ### Option 3: Install from source
 
 ```bash
-git clone https://github.com/janklan/scansplitter
+git clone https://github.com/madnex/scansplitter
 cd scansplitter
 uv sync
 uv run scansplitter api

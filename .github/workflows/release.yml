@@ -39,6 +39,14 @@ jobs:
       - name: Build package
         run: uv build
 
+      - name: Verify wheel contains frontend
+        run: unzip -l dist/*.whl | grep scansplitter/static/index.html
+
+      - name: Run tests against source
+        run: |
+          uv sync
+          uv run pytest
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
