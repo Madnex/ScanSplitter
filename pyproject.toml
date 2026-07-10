@@ -1,3 +1,7 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "scansplitter"
 version = "0.4.2"
@@ -44,3 +48,22 @@ scansplitter = ["static/**/*"]
 package = true
 
 [tool.uv.sources]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.3",
+    "httpx>=0.28",
+    "ruff>=0.9",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
+
+[tool.ruff.lint]
+extend-select = ["I"]
+
+[tool.ruff.lint.per-file-ignores]
+# onnxruntime is imported lazily; the module-level string annotations that
+# reference it trip F821 even though they are valid at runtime.
+"src/scansplitter/detector.py" = ["F821"]

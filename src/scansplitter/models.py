@@ -1,14 +1,25 @@
 """Model download and management for face detection and orientation detection."""
 
-import sys
+import hashlib
+import logging
 import threading
 import urllib.request
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any
+
+logger = logging.getLogger(__name__)
+
+# Per-read network timeout for model downloads (seconds)
+DOWNLOAD_TIMEOUT = 30
+_DOWNLOAD_CHUNK_SIZE = 256 * 1024
 
 # Model URLs from OpenCV's GitHub (face detection)
 PROTOTXT_URL = "https://raw.githubusercontent.com/opencv/opencv/master/samples/dnn/face_detector/deploy.prototxt"
 CAFFEMODEL_URL = "https://raw.githubusercontent.com/opencv/opencv_3rdparty/dnn_samples_face_detector_20170830/res10_300x300_ssd_iter_140000.caffemodel"
+# The prototxt tracks opencv master and may legitimately change, so it is not
+# hash-pinned. Binary models are pinned to known-good SHA-256 hashes.
+CAFFEMODEL_SHA256 = "2a56a11a57a4a295956b0660b4a3d76bbdca2206c4961cea8efe7d95c7cb2f2d"
 
 # Orientation detection model (EfficientNetV2 ONNX)
 # Primary: original source, Fallback: our own backup
@@ -42,18 +53,21 @@ _MODEL_SPECS: dict[str, dict[str, Any]] = {
         "urls": ORIENTATION_MODEL_URLS,
         "size_desc": "~80MB",
         "label": "Orientation model",
+        "sha256": "cffe911c1dff47fbfbbd90110aaab9c07134645c460d35b3ae8832079bea91ba",
     },
     "u2net_lite": {
         "filename": U2NETP_MODEL_FILENAME,
         "urls": U2NETP_MODEL_URLS,
         "size_desc": "~5MB",
         "label": "U2-Net lite model",
+        "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
     },
     "u2net_full": {
         "filename": U2NET_MODEL_FILENAME,
         "urls": U2NET_MODEL_URLS,
         "size_desc": "~176MB",
         "label": "U2-Net full model",
+        "sha256": "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
     },
 }
 
@@ -106,6 +120,55 @@ def get_model_statuses() -> dict[str, dict[str, Any]]:
         return {k: dict(v) for k, v in _MODEL_STATUS.items()}
 
 
+def _fetch_url(
+    url: str,
+    dest: Path,
+    sha256: str | None = None,
+    progress_cb: Callable[[int, int], None] | None = None,
+) -> None:
+    """Download a URL to dest with timeout, optional hash check, atomic rename.
+
+    Downloads to a temporary ".part" file first so a failed or tampered
+    download never leaves a partial/bad file at the final path.
+
+    Args:
+        url: Source URL.
+        dest: Final destination path.
+        sha256: Expected SHA-256 hex digest; verified before rename if given.
+        progress_cb: Optional callback(downloaded_bytes, total_bytes).
+
+    Raises:
+        RuntimeError: If the checksum does not match.
+    """
+    tmp_path = dest.with_suffix(dest.suffix + ".part")
+    hasher = hashlib.sha256()
+    downloaded = 0
+
+    try:
+        with urllib.request.urlopen(url, timeout=DOWNLOAD_TIMEOUT) as response:
+            total = int(response.headers.get("Content-Length") or 0)
+            with open(tmp_path, "wb") as f:
+                while True:
+                    chunk = response.read(_DOWNLOAD_CHUNK_SIZE)
+                    if not chunk:
+                        break
+                    f.write(chunk)
+                    hasher.update(chunk)
+                    downloaded += len(chunk)
+                    if progress_cb is not None:
+                        progress_cb(downloaded, total)
+
+        if sha256 is not None and hasher.hexdigest() != sha256:
+            raise RuntimeError(
+                f"Checksum mismatch for {url}: expected {sha256}, got {hasher.hexdigest()}"
+            )
+
+        tmp_path.replace(dest)
+    except BaseException:
+        tmp_path.unlink(missing_ok=True)
+        raise
+
+
 def get_model_paths() -> tuple[Path, Path]:
     """Get paths to the face detection model files, downloading if needed.
 
@@ -118,30 +181,14 @@ def get_model_paths() -> tuple[Path, Path]:
     caffemodel_path = MODELS_DIR / "res10_300x300_ssd_iter_140000.caffemodel"
 
     if not prototxt_path.exists():
-        print("Downloading face detection prototxt...")
-        urllib.request.urlretrieve(PROTOTXT_URL, prototxt_path)
+        logger.info("Downloading face detection prototxt...")
+        _fetch_url(PROTOTXT_URL, prototxt_path)
 
     if not caffemodel_path.exists():
-        print("Downloading face detection model (10MB)...")
-        urllib.request.urlretrieve(CAFFEMODEL_URL, caffemodel_path)
+        logger.info("Downloading face detection model (10MB)...")
+        _fetch_url(CAFFEMODEL_URL, caffemodel_path, sha256=CAFFEMODEL_SHA256)
 
     return prototxt_path, caffemodel_path
-
-
-def _download_with_progress(url: str, dest: Path, description: str) -> None:
-    """Download a file with progress reporting."""
-
-    def report_progress(block_num: int, block_size: int, total_size: int) -> None:
-        if total_size > 0:
-            downloaded = block_num * block_size
-            percent = min(100, downloaded * 100 // total_size)
-            mb_downloaded = downloaded / (1024 * 1024)
-            mb_total = total_size / (1024 * 1024)
-            sys.stdout.write(f"\r{description}: {mb_downloaded:.1f}/{mb_total:.1f} MB ({percent}%)")
-            sys.stdout.flush()
-
-    urllib.request.urlretrieve(url, dest, reporthook=report_progress)
-    print()  # Newline after progress
 
 
 def _download_model_blocking(key: str) -> Path:
@@ -168,8 +215,7 @@ def _download_model_blocking(key: str) -> Path:
         error=None,
     )
 
-    def report_progress(block_num: int, block_size: int, total_size: int) -> None:
-        downloaded = block_num * block_size
+    def report_progress(downloaded: int, total_size: int) -> None:
         percent = 0
         if total_size > 0:
             percent = int(min(100, downloaded * 100 // total_size))
@@ -180,24 +226,20 @@ def _download_model_blocking(key: str) -> Path:
             downloaded_bytes=int(downloaded),
             total_bytes=int(total_size),
         )
-        if total_size > 0:
-            mb_downloaded = downloaded / (1024 * 1024)
-            mb_total = total_size / (1024 * 1024)
-            sys.stdout.write(f"\rDownloading {label}: {mb_downloaded:.1f}/{mb_total:.1f} MB ({percent}%)")
-            sys.stdout.flush()
+
+    expected_sha256 = spec.get("sha256")
 
     last_error: Exception | None = None
     for i, url in enumerate(urls):
         try:
-            urllib.request.urlretrieve(url, dest, reporthook=report_progress)
-            print()
+            logger.info("Downloading %s from %s", label, url)
+            _fetch_url(url, dest, sha256=expected_sha256, progress_cb=report_progress)
             _set_model_status(key, status="ready", progress=100, error=None)
             return dest
         except Exception as e:
             last_error = e
-            dest.unlink(missing_ok=True)
             if i < len(urls) - 1:
-                print(f"\nPrimary URL failed, trying backup...")
+                logger.warning("Download of %s failed (%s), trying backup URL...", label, e)
             continue
 
     message = f"Failed to download {label} ({size_desc}): {last_error}"

@@ -148,6 +148,13 @@ def main():
         reload = getattr(args, "reload", False)
         suggested_port = port + 1 if port < 65535 else 8001
 
+        # Host-filesystem features (native directory picker, local export)
+        # are only safe when the server is reachable from this machine alone.
+        # Respect an explicit override, otherwise derive from the bind host.
+        if "SCANSPLITTER_LOCAL_MODE" not in os.environ:
+            loopback = host in ("127.0.0.1", "localhost", "::1")
+            os.environ["SCANSPLITTER_LOCAL_MODE"] = "1" if loopback else "0"
+
         if not _port_is_available(host, port):
             print(
                 f"Error: {host}:{port} is already in use.\n"

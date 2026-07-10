@@ -6,6 +6,49 @@ import fitz  # PyMuPDF
 from PIL import Image
 
 
+def get_pdf_page_count(pdf_path: str | Path) -> int:
+    """Return the number of pages in a PDF without rendering any of them."""
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    doc = fitz.open(pdf_path)
+    try:
+        return len(doc)
+    finally:
+        doc.close()
+
+
+def extract_pdf_page(pdf_path: str | Path, page: int, dpi: int = 300) -> Image.Image:
+    """
+    Render a single PDF page (1-indexed) as a PIL Image.
+
+    Much cheaper than extract_images_from_pdf when only one page is needed.
+
+    Args:
+        pdf_path: Path to the PDF file
+        page: 1-indexed page number
+        dpi: Resolution for rendering
+
+    Raises:
+        ValueError: If the page number is out of range.
+    """
+    pdf_path = Path(pdf_path)
+    if not pdf_path.exists():
+        raise FileNotFoundError(f"PDF file not found: {pdf_path}")
+
+    doc = fitz.open(pdf_path)
+    try:
+        if page < 1 or page > len(doc):
+            raise ValueError(f"Invalid page number: {page} (PDF has {len(doc)} pages)")
+        zoom = dpi / 72
+        matrix = fitz.Matrix(zoom, zoom)
+        pix = doc[page - 1].get_pixmap(matrix=matrix)
+        return Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+    finally:
+        doc.close()
+
+
 def extract_images_from_pdf(pdf_path: str | Path, dpi: int = 300) -> list[Image.Image]:
     """
     Extract all pages from a PDF as PIL Images.

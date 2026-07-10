@@ -1,13 +1,19 @@
 """Automatic rotation detection and correction for photos."""
 
+import threading
+
 import cv2
 import numpy as np
 import onnxruntime as ort
 from PIL import Image
 
-# Lazy-loaded models
+# Lazy-loaded models.
+# _face_net_lock also guards inference: cv2.dnn.Net is not thread-safe.
+# _orientation_lock only guards lazy creation (ORT session.run is thread-safe).
 _face_net = None
+_face_net_lock = threading.Lock()
 _orientation_session = None
+_orientation_lock = threading.Lock()
 
 # Orientation model configuration
 _ORIENTATION_IMAGE_SIZE = 384
@@ -17,7 +23,10 @@ _ORIENTATION_CLASS_TO_ANGLE = {0: 0, 1: 90, 2: 180, 3: 270}
 
 
 def _get_face_net():
-    """Lazy-load the face detection neural network."""
+    """Lazy-load the face detection neural network.
+
+    Caller must hold _face_net_lock.
+    """
     global _face_net
     if _face_net is None:
         from .models import get_model_paths
@@ -38,9 +47,6 @@ def detect_face(cv_image: np.ndarray, min_confidence: float = 0.7) -> bool:
     Returns:
         True if a face is detected with sufficient confidence
     """
-    net = _get_face_net()
-    h, w = cv_image.shape[:2]
-
     # Create blob from image (resize to 300x300 as expected by the model)
     blob = cv2.dnn.blobFromImage(
         cv2.resize(cv_image, (300, 300)),
@@ -49,8 +55,12 @@ def detect_face(cv_image: np.ndarray, min_confidence: float = 0.7) -> bool:
         (104.0, 177.0, 123.0),
     )
 
-    net.setInput(blob)
-    detections = net.forward()
+    # cv2.dnn.Net is stateful (setInput/forward) and not thread-safe:
+    # serialize inference across worker threads.
+    with _face_net_lock:
+        net = _get_face_net()
+        net.setInput(blob)
+        detections = net.forward()
 
     # Check if any face detected with sufficient confidence
     for i in range(detections.shape[2]):
@@ -105,17 +115,18 @@ def detect_rotation_by_face(image: Image.Image) -> int | None:
 
 
 def _get_orientation_session() -> ort.InferenceSession:
-    """Lazy-load the orientation detection ONNX model."""
+    """Lazy-load the orientation detection ONNX model (thread-safe)."""
     global _orientation_session
-    if _orientation_session is None:
-        from .models import get_orientation_model_path
+    with _orientation_lock:
+        if _orientation_session is None:
+            from .models import get_orientation_model_path
 
-        model_path = get_orientation_model_path()
-        _orientation_session = ort.InferenceSession(
-            str(model_path),
-            providers=["CPUExecutionProvider"],
-        )
-    return _orientation_session
+            model_path = get_orientation_model_path()
+            _orientation_session = ort.InferenceSession(
+                str(model_path),
+                providers=["CPUExecutionProvider"],
+            )
+        return _orientation_session
 
 
 def _preprocess_for_orientation(image: Image.Image) -> np.ndarray:

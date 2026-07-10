@@ -1,5 +1,6 @@
 """Photo detection for scanned images."""
 
+import threading
 from dataclasses import dataclass, field
 from typing import Literal
 
@@ -331,27 +332,30 @@ detect_photos = detect_photos_v2
 
 
 # Global U2-Net session cache (lazy loaded)
+# Guarded by a lock: detection may run from multiple worker threads.
 _u2net_session: "onnxruntime.InferenceSession | None" = None
 _u2net_lite: bool | None = None
+_u2net_lock = threading.Lock()
 
 
 def _get_u2net_session(lite: bool = True) -> "onnxruntime.InferenceSession":
-    """Get or create the U2-Net ONNX inference session."""
+    """Get or create the U2-Net ONNX inference session (thread-safe)."""
     global _u2net_session, _u2net_lite
 
-    if _u2net_session is None or _u2net_lite != lite:
-        import onnxruntime
+    with _u2net_lock:
+        if _u2net_session is None or _u2net_lite != lite:
+            import onnxruntime
 
-        from .models import get_u2net_model_path
+            from .models import get_u2net_model_path
 
-        model_path = get_u2net_model_path(lite=lite)
-        _u2net_session = onnxruntime.InferenceSession(
-            str(model_path),
-            providers=["CPUExecutionProvider"],
-        )
-        _u2net_lite = lite
+            model_path = get_u2net_model_path(lite=lite)
+            _u2net_session = onnxruntime.InferenceSession(
+                str(model_path),
+                providers=["CPUExecutionProvider"],
+            )
+            _u2net_lite = lite
 
-    return _u2net_session
+        return _u2net_session
 
 
 def _u2net_preprocess(image: np.ndarray, size: int = 320) -> np.ndarray:

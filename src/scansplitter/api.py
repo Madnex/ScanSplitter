@@ -2,19 +2,23 @@
 
 import base64
 import io
+import logging
+import os
 import subprocess
 import sys
 import uuid
 import zipfile
+from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import Annotated
 
-from fastapi import FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
+
+import scansplitter
 
 from .detector import (
     DetectedRegion,
@@ -24,12 +28,52 @@ from .detector import (
     detect_photos_v2,
 )
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
-from .pdf_handler import extract_images_from_pdf, is_pdf
-from .rotator import auto_rotate
-from .session import Session, get_session_manager
 from .models import get_model_statuses, start_model_download
+from .pdf_handler import extract_pdf_page, get_pdf_page_count
+from .rotator import auto_rotate
+from .session import Session, get_session_manager, sanitize_name
 
-app = FastAPI(title="ScanSplitter API", version="0.1.0")
+logger = logging.getLogger(__name__)
+
+# --- Upload limits ---
+MAX_UPLOAD_BYTES = 200 * 1024 * 1024  # 200 MB
+MAX_PDF_PAGES = 200
+ALLOWED_UPLOAD_EXTENSIONS = {".jpg", ".jpeg", ".png", ".tif", ".tiff", ".bmp", ".webp", ".pdf"}
+_UPLOAD_CHUNK_SIZE = 1024 * 1024
+
+# Guard against decompression bombs: large scans are fine (300 MP allows
+# A3 at 1200 DPI) but PIL will raise beyond 2x this value.
+Image.MAX_IMAGE_PIXELS = 300_000_000
+
+# Number of rendered PDF pages kept per session (they are re-rendered on miss)
+_PAGE_CACHE_MAX_ENTRIES = 4
+
+# Get the static directory path relative to this file
+STATIC_DIR = Path(__file__).parent / "static"
+
+
+def _local_features_enabled() -> bool:
+    """Whether host-filesystem features (dir picker, local export) are allowed.
+
+    Enabled by default (ScanSplitter is a local desktop tool). The CLI sets
+    SCANSPLITTER_LOCAL_MODE=0 when the server binds to a non-loopback host so
+    remote clients cannot browse or write to the server's filesystem.
+    """
+    return os.environ.get("SCANSPLITTER_LOCAL_MODE", "1") != "0"
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Mount static files for serving the frontend if available."""
+    if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
+        app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
+        logger.info("Serving frontend from %s", STATIC_DIR)
+    else:
+        logger.info("No frontend found at %s, running API only", STATIC_DIR)
+    yield
+
+
+app = FastAPI(title="ScanSplitter API", version=scansplitter.__version__, lifespan=lifespan)
 
 # CORS for development
 app.add_middleware(
@@ -206,13 +250,30 @@ def load_page_image(session: Session, filename: str, page: int) -> Image.Image:
         raise HTTPException(status_code=404, detail=f"File not found: {filename}")
 
     file_path = Path(file_info["path"])
+    if not file_path.exists():
+        raise HTTPException(status_code=410, detail="Session files no longer exist")
 
     if file_info.get("is_pdf"):
-        # Extract specific page from PDF
-        images = extract_images_from_pdf(file_path, dpi=150)  # Lower DPI for preview
-        if page < 1 or page > len(images):
+        page_count = int(file_info.get("page_count", 1))
+        if page < 1 or page > page_count:
             raise HTTPException(status_code=400, detail=f"Invalid page number: {page}")
-        return images[page - 1]
+
+        # Render only the requested page; cache a few pages per session so
+        # repeated detect/crop/preview calls don't re-render the PDF.
+        cache_key = (filename, page)
+        cached = session.page_cache.get(cache_key)
+        if cached is not None:
+            return cached
+
+        try:
+            image = extract_pdf_page(file_path, page, dpi=150)  # Lower DPI for preview
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e)) from e
+
+        while len(session.page_cache) >= _PAGE_CACHE_MAX_ENTRIES:
+            session.page_cache.pop(next(iter(session.page_cache)))
+        session.page_cache[cache_key] = image
+        return image
     else:
         # Load image directly
         return Image.open(file_path).convert("RGB")
@@ -348,40 +409,85 @@ async def health_check():
 
 
 @app.post("/api/upload", response_model=UploadResponse)
-async def upload_file(file: UploadFile = File(...)):
-    """Upload a file and create a session."""
+def upload_file(file: UploadFile = File(...)):
+    """Upload a file and create a session.
+
+    Sync endpoint on purpose: FastAPI runs it in a worker thread so the
+    streaming copy and image probing never block the event loop.
+    """
     if file.filename is None:
         raise HTTPException(status_code=400, detail="No filename provided")
+
+    # Validate the extension against an allowlist before touching the content.
+    ext = Path(file.filename).suffix.lower()
+    if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                f"Unsupported file type: {ext or 'no extension'}. "
+                f"Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}"
+            ),
+        )
 
     # Create session
     session = get_session_manager().create_session()
 
-    # Save file
-    file_path = session.directory / file.filename
-    content = await file.read()
-    file_path.write_bytes(content)
+    # Sanitize the client-supplied filename before using it on the filesystem.
+    fallback_name = f"upload_{uuid.uuid4().hex[:8]}{ext}"
+    safe_filename = sanitize_name(file.filename, default=fallback_name)
+    file_path = session.directory / safe_filename
 
-    # Determine page count and dimensions
-    is_pdf_file = is_pdf(file_path)
-    if is_pdf_file:
-        images = extract_images_from_pdf(file_path, dpi=72)  # Low DPI just for count
-        page_count = len(images)
-        # Get dimensions from first page at full res
-        first_page = extract_images_from_pdf(file_path, dpi=150)[0]
-        width, height = first_page.width, first_page.height
-    else:
-        page_count = 1
-        image = Image.open(file_path)
-        width, height = image.size
-        image.close()
+    try:
+        # Stream to disk with a size cap (never buffer the whole file in RAM).
+        size = 0
+        with open(file_path, "wb") as out:
+            while True:
+                chunk = file.file.read(_UPLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)",
+                    )
+                out.write(chunk)
 
-        # Extract EXIF from non-PDF files
-        exif = extract_exif(content)
-        if exif:
-            session.exif_data[file.filename] = exif
+        # Determine page count and dimensions
+        is_pdf_file = ext == ".pdf"
+        if is_pdf_file:
+            page_count = get_pdf_page_count(file_path)  # No rendering needed
+            if page_count < 1:
+                raise HTTPException(status_code=400, detail="PDF contains no pages")
+            if page_count > MAX_PDF_PAGES:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"PDF has too many pages ({page_count}, max {MAX_PDF_PAGES})",
+                )
+            # Render only the first page for dimensions and cache it for reuse.
+            first_page = extract_pdf_page(file_path, 1, dpi=150)
+            width, height = first_page.width, first_page.height
+            session.page_cache[(safe_filename, 1)] = first_page
+        else:
+            page_count = 1
+            with Image.open(file_path) as image:
+                width, height = image.size
+
+            # Extract EXIF from non-PDF files
+            exif = extract_exif(file_path.read_bytes())
+            if exif:
+                session.exif_data[safe_filename] = exif
+    except HTTPException:
+        get_session_manager().delete_session(session.id)
+        raise
+    except Exception as e:
+        # Corrupt/unreadable file (includes PIL decompression-bomb errors)
+        get_session_manager().delete_session(session.id)
+        logger.warning("Rejected upload %r: %s", safe_filename, e)
+        raise HTTPException(status_code=400, detail=f"Could not read file: {e}") from e
 
     # Store file info
-    session.files[file.filename] = {
+    session.files[safe_filename] = {
         "path": str(file_path),
         "is_pdf": is_pdf_file,
         "page_count": page_count,
@@ -389,7 +495,7 @@ async def upload_file(file: UploadFile = File(...)):
 
     return UploadResponse(
         session_id=session.id,
-        filename=file.filename,
+        filename=safe_filename,
         page_count=page_count,
         image_width=width,
         image_height=height,
@@ -397,8 +503,8 @@ async def upload_file(file: UploadFile = File(...)):
 
 
 @app.get("/api/image/{session_id}/{filename}")
-async def get_image(session_id: str, filename: str, page: int = 1):
-    """Get an uploaded image or PDF page."""
+def get_image(session_id: str, filename: str, page: int = 1):
+    """Get an uploaded image or PDF page. Sync: runs in a worker thread."""
     session = get_session_or_404(session_id)
     image = load_page_image(session, filename, page)
 
@@ -426,8 +532,8 @@ async def models_download(request: ModelDownloadRequest):
 
 
 @app.post("/api/detect", response_model=DetectResponse)
-async def detect_boxes(request: DetectRequest):
-    """Detect bounding boxes in an image."""
+def detect_boxes(request: DetectRequest):
+    """Detect bounding boxes in an image. Sync: runs in a worker thread."""
     session = get_session_or_404(request.session_id)
 
     # Get first file (we only support one at a time for now)
@@ -494,8 +600,8 @@ async def detect_boxes(request: DetectRequest):
 
 
 @app.post("/api/crop", response_model=CropResponse)
-async def crop_images(request: CropRequest):
-    """Crop images using user-adjusted bounding boxes."""
+def crop_images(request: CropRequest):
+    """Crop images using user-adjusted bounding boxes. Sync: worker thread."""
     import cv2
     import numpy as np
 
@@ -506,6 +612,12 @@ async def crop_images(request: CropRequest):
 
     filename = list(session.files.keys())[0]
     image = load_page_image(session, filename, request.page)
+
+    # Drop results from previous crop calls so legacy exports can't mix
+    # stale crops with the current ones (and disk usage stays bounded).
+    for old_path in session.cropped_images:
+        old_path.unlink(missing_ok=True)
+    session.cropped_images.clear()
 
     # Convert to OpenCV format
     cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
@@ -540,8 +652,9 @@ async def crop_images(request: CropRequest):
             )
         )
 
-        # Save to session for export
-        cropped_path = session.directory / f"cropped_{box.id}.jpg"
+        # Save to session for export (sanitize the client-supplied box id)
+        safe_id = sanitize_name(box.id, default=uuid.uuid4().hex[:8], allow_dot=False)
+        cropped_path = session.directory / f"cropped_{safe_id}.jpg"
         cropped_pil.save(cropped_path, "JPEG", quality=95)
         session.cropped_images.append(cropped_path)
 
@@ -549,8 +662,8 @@ async def crop_images(request: CropRequest):
 
 
 @app.post("/api/export")
-async def export_zip(request: ExportRequest):
-    """Export cropped images as a ZIP file."""
+def export_zip(request: ExportRequest):
+    """Export cropped images as a ZIP file. Sync: runs in a worker thread."""
     session = get_session_or_404(request.session_id)
 
     # Get original EXIF data for potential reuse
@@ -585,7 +698,8 @@ async def export_zip(request: ExportRequest):
                         if exif_bytes:
                             buffer = io.BytesIO(apply_exif_to_jpeg(buffer.getvalue(), exif_bytes))
 
-                filename = f"{img_data.name}.{ext}"
+                # Sanitize client-supplied name to prevent zip-slip.
+                filename = f"{sanitize_name(img_data.name, default='photo')}.{ext}"
                 zf.writestr(filename, buffer.getvalue())
 
         return FileResponse(
@@ -597,6 +711,9 @@ async def export_zip(request: ExportRequest):
     # Legacy fallback: use cached images from session
     if not session.cropped_images:
         raise HTTPException(status_code=400, detail="No cropped images to export")
+
+    # Build EXIF once for the legacy path (no per-image dates available).
+    exif_bytes = create_exif_bytes(original_exif=original_exif_raw)
 
     zip_path = session.directory / "export.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -619,7 +736,8 @@ async def export_zip(request: ExportRequest):
                 # Get custom name if provided, otherwise use default
                 img_id = img_path.stem.replace("cropped_", "")
                 if request.names and img_id in request.names:
-                    filename = f"{request.names[img_id]}.{ext}"
+                    # Sanitize client-supplied name to prevent zip-slip.
+                    filename = f"{sanitize_name(request.names[img_id], default='photo')}.{ext}"
                 else:
                     filename = f"photo_{i:03d}.{ext}"
 
@@ -633,8 +751,14 @@ async def export_zip(request: ExportRequest):
 
 
 @app.post("/api/export-local")
-async def export_local(request: ExportLocalRequest):
-    """Export cropped images to a local directory."""
+def export_local(request: ExportLocalRequest):
+    """Export cropped images to a local directory. Sync: worker thread."""
+    if not _local_features_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Local filesystem export is disabled when the server is not bound to localhost",
+        )
+
     session = get_session_or_404(request.session_id)
 
     # Get original EXIF data for potential reuse
@@ -654,16 +778,24 @@ async def export_local(request: ExportLocalRequest):
 
     ext = "png" if request.format.lower() == "png" else "jpg"
 
-    # Build list of filenames that would be created
+    def safe_output_file(name: str) -> Path:
+        """Resolve a sanitized output path and enforce containment in output_path."""
+        filename = f"{sanitize_name(name, default='photo')}.{ext}"
+        candidate = output_path / filename
+        if not candidate.resolve().is_relative_to(output_path):
+            raise HTTPException(status_code=400, detail=f"Invalid output filename: {name}")
+        return candidate
+
+    # Build list of filenames that would be created (sanitized to basenames)
     filenames: list[str] = []
     if request.images:
-        filenames = [f"{img_data.name}.{ext}" for img_data in request.images]
+        filenames = [safe_output_file(img_data.name).name for img_data in request.images]
     elif session.cropped_images:
         for i, img_path in enumerate(session.cropped_images, 1):
             if img_path.exists():
                 img_id = img_path.stem.replace("cropped_", "")
                 if request.names and img_id in request.names:
-                    filenames.append(f"{request.names[img_id]}.{ext}")
+                    filenames.append(safe_output_file(request.names[img_id]).name)
                 else:
                     filenames.append(f"photo_{i:03d}.{ext}")
 
@@ -690,8 +822,7 @@ async def export_local(request: ExportLocalRequest):
                 img_bytes = base64.b64decode(img_data.data)
                 img = Image.open(io.BytesIO(img_bytes))
 
-                filename = f"{img_data.name}.{ext}"
-                output_file = output_path / filename
+                output_file = safe_output_file(img_data.name)
 
                 if request.format.lower() == "png":
                     img.save(output_file, "PNG", optimize=True)
@@ -715,17 +846,18 @@ async def export_local(request: ExportLocalRequest):
             if not session.cropped_images:
                 raise HTTPException(status_code=400, detail="No cropped images to export")
 
+            # Build EXIF once for the legacy path (no per-image dates available).
+            exif_bytes = create_exif_bytes(original_exif=original_exif_raw)
+
             for i, img_path in enumerate(session.cropped_images, 1):
                 if img_path.exists():
                     img = Image.open(img_path)
 
                     img_id = img_path.stem.replace("cropped_", "")
                     if request.names and img_id in request.names:
-                        filename = f"{request.names[img_id]}.{ext}"
+                        output_file = safe_output_file(request.names[img_id])
                     else:
-                        filename = f"photo_{i:03d}.{ext}"
-
-                    output_file = output_path / filename
+                        output_file = output_path / f"photo_{i:03d}.{ext}"
 
                     if request.format.lower() == "png":
                         img.save(output_file, "PNG", optimize=True)
@@ -740,17 +872,25 @@ async def export_local(request: ExportLocalRequest):
 
                     exported_files.append(str(output_file))
 
+    except HTTPException:
+        raise
     except PermissionError:
         raise HTTPException(status_code=403, detail=f"Permission denied writing to: {output_path}")
     except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}") from e
 
     return {"status": "success", "files": exported_files, "count": len(exported_files)}
 
 
 @app.post("/api/select-directory", response_model=SelectDirectoryResponse)
-async def select_directory(request: SelectDirectoryRequest):
-    """Open a native directory picker on the host machine."""
+def select_directory(request: SelectDirectoryRequest):
+    """Open a native directory picker on the host machine. Sync: worker thread."""
+    if not _local_features_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Directory picker is disabled when the server is not bound to localhost",
+        )
+
     try:
         directory = choose_directory(request.initial_directory)
     except RuntimeError as error:
@@ -810,22 +950,6 @@ async def update_exif(request: UpdateExifRequest):
         session.exif_data[filename]["date_modified"] = True
 
     return {"status": "ok"}
-
-
-# --- Static Files (for production) ---
-
-# Get the static directory path relative to this file
-STATIC_DIR = Path(__file__).parent / "static"
-
-
-@app.on_event("startup")
-async def mount_static_files():
-    """Mount static files for serving the frontend if available."""
-    if STATIC_DIR.exists() and (STATIC_DIR / "index.html").exists():
-        app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
-        print(f"Serving frontend from {STATIC_DIR}")
-    else:
-        print(f"No frontend found at {STATIC_DIR}, running API only")
 
 
 def create_app() -> FastAPI:
