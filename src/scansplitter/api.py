@@ -178,6 +178,7 @@ class ExportRequest(BaseModel):
     quality: int = 85
     names: dict[str, str] | None = None  # id -> custom name (legacy)
     images: list[ImageData] | None = None  # Direct image data with rotations applied
+    include_gps: bool = False  # Copy GPS EXIF onto exports (privacy: off by default)
 
 
 class ExportLocalRequest(BaseModel):
@@ -190,6 +191,7 @@ class ExportLocalRequest(BaseModel):
     names: dict[str, str] | None = None  # id -> custom name (legacy)
     images: list[ImageData] | None = None  # Direct image data with rotations applied
     overwrite: bool = False  # Whether to overwrite existing files
+    include_gps: bool = False  # Copy GPS EXIF onto exports (privacy: off by default)
 
 
 class SelectDirectoryRequest(BaseModel):
@@ -241,6 +243,22 @@ def get_session_or_404(session_id: str) -> Session:
     if session is None:
         raise HTTPException(status_code=404, detail="Session not found")
     return session
+
+
+def _session_date_state(session: Session) -> tuple[str | None, bool]:
+    """Return ``(date_taken, clear_date)`` overrides stored via /api/exif.
+
+    ``date_taken`` is a user-set date to write, or ``None``. ``clear_date`` is
+    True when the user explicitly cleared the date, meaning any date copied
+    from the original EXIF must be dropped on export.
+    """
+    if not session.files:
+        return None, False
+    filename = next(iter(session.files.keys()))
+    entry = session.exif_data.get(filename)
+    if not entry:
+        return None, False
+    return entry.get("date_taken"), bool(entry.get("date_cleared"))
 
 
 def load_page_image(session: Session, filename: str, page: int) -> Image.Image:
@@ -694,6 +712,7 @@ def export_zip(request: ExportRequest):
                         exif_bytes = create_exif_bytes(
                             date_taken=img_data.date_taken,
                             original_exif=original_exif_raw,
+                            include_gps=request.include_gps,
                         )
                         if exif_bytes:
                             buffer = io.BytesIO(apply_exif_to_jpeg(buffer.getvalue(), exif_bytes))
@@ -712,8 +731,15 @@ def export_zip(request: ExportRequest):
     if not session.cropped_images:
         raise HTTPException(status_code=400, detail="No cropped images to export")
 
-    # Build EXIF once for the legacy path (no per-image dates available).
-    exif_bytes = create_exif_bytes(original_exif=original_exif_raw)
+    # Build EXIF once for the legacy path. Honor any date set/cleared via
+    # /api/exif and the GPS privacy flag.
+    session_date, clear_date = _session_date_state(session)
+    exif_bytes = create_exif_bytes(
+        date_taken=session_date,
+        original_exif=original_exif_raw,
+        include_gps=request.include_gps,
+        clear_date=clear_date,
+    )
 
     zip_path = session.directory / "export.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
@@ -835,6 +861,7 @@ def export_local(request: ExportLocalRequest):
                         exif_bytes = create_exif_bytes(
                             date_taken=img_data.date_taken,
                             original_exif=original_exif_raw,
+                            include_gps=request.include_gps,
                         )
                         if exif_bytes:
                             output_bytes = apply_exif_to_jpeg(output_bytes, exif_bytes)
@@ -846,8 +873,15 @@ def export_local(request: ExportLocalRequest):
             if not session.cropped_images:
                 raise HTTPException(status_code=400, detail="No cropped images to export")
 
-            # Build EXIF once for the legacy path (no per-image dates available).
-            exif_bytes = create_exif_bytes(original_exif=original_exif_raw)
+            # Build EXIF once for the legacy path. Honor any date set/cleared
+            # via /api/exif and the GPS privacy flag.
+            session_date, clear_date = _session_date_state(session)
+            exif_bytes = create_exif_bytes(
+                date_taken=session_date,
+                original_exif=original_exif_raw,
+                include_gps=request.include_gps,
+                clear_date=clear_date,
+            )
 
             for i, img_path in enumerate(session.cropped_images, 1):
                 if img_path.exists():
@@ -945,9 +979,23 @@ async def update_exif(request: UpdateExifRequest):
     if filename not in session.exif_data:
         session.exif_data[filename] = {}
 
+    entry = session.exif_data[filename]
+
+    # Distinguish an explicit JSON `null` (clear the date) from an omitted
+    # field (keep the current value) using pydantic's set-fields tracking.
+    date_provided = "date_taken" in request.model_fields_set
+
     if request.date_taken:
-        session.exif_data[filename]["date_taken"] = request.date_taken
-        session.exif_data[filename]["date_modified"] = True
+        entry["date_taken"] = request.date_taken
+        entry["date_modified"] = True
+        entry["date_cleared"] = False
+    elif date_provided:
+        # Explicit null / empty -> clear so exports write no DateTimeOriginal,
+        # even when the original EXIF is being copied.
+        entry.pop("date_taken", None)
+        entry["date_modified"] = True
+        entry["date_cleared"] = True
+    # Field omitted entirely: leave existing date state untouched.
 
     return {"status": "ok"}
 

@@ -54,15 +54,34 @@ def extract_exif(image_bytes: bytes) -> dict[str, Any] | None:
         return None
 
 
+def _strip_gps(exif_dict: dict[str, Any]) -> None:
+    """Remove all GPS metadata from a parsed piexif dict, in place.
+
+    Clears the dedicated GPS IFD as well as the GPSTag pointer in the 0th IFD
+    (the offset that references the GPS IFD). The Exif IFD itself has no
+    standard GPS-location tags, so nothing there needs removing.
+    """
+    exif_dict["GPS"] = {}
+    zeroth = exif_dict.get("0th")
+    if isinstance(zeroth, dict):
+        zeroth.pop(piexif.ImageIFD.GPSTag, None)
+
+
 def create_exif_bytes(
     date_taken: str | None = None,
     original_exif: bytes | None = None,
+    include_gps: bool = True,
+    clear_date: bool = False,
 ) -> bytes | None:
     """Create EXIF bytes with optionally modified date.
 
     Args:
         date_taken: Date string in format "YYYY-MM-DD" or "YYYY-MM-DD HH:MM:SS"
         original_exif: Raw EXIF bytes from original image to preserve
+        include_gps: When False, strip the GPS IFD from the output (privacy).
+        clear_date: When True, remove DateTimeOriginal/DateTimeDigitized even
+            if they were present in ``original_exif``. An explicit clear wins
+            over any copied original date; ignored when ``date_taken`` is set.
 
     Returns:
         EXIF bytes ready to be inserted into an image, or None on error.
@@ -73,6 +92,9 @@ def create_exif_bytes(
         else:
             exif_dict = {"0th": {}, "Exif": {}, "GPS": {}, "1st": {}, "thumbnail": None}
 
+        if "Exif" not in exif_dict or exif_dict["Exif"] is None:
+            exif_dict["Exif"] = {}
+
         if date_taken:
             # Parse and format date
             # Accept formats: "2024-01-15", "2024-01-15 14:30:00", "2024:01:15 14:30:00"
@@ -81,10 +103,15 @@ def create_exif_bytes(
                 date_taken += " 00:00:00"
 
             date_bytes = date_taken.encode("utf-8")
-            if "Exif" not in exif_dict or exif_dict["Exif"] is None:
-                exif_dict["Exif"] = {}
             exif_dict["Exif"][piexif.ExifIFD.DateTimeOriginal] = date_bytes
             exif_dict["Exif"][piexif.ExifIFD.DateTimeDigitized] = date_bytes
+        elif clear_date:
+            # Explicit clear beats any date copied from the original EXIF.
+            exif_dict["Exif"].pop(piexif.ExifIFD.DateTimeOriginal, None)
+            exif_dict["Exif"].pop(piexif.ExifIFD.DateTimeDigitized, None)
+
+        if not include_gps:
+            _strip_gps(exif_dict)
 
         return piexif.dump(exif_dict)
     except Exception:
