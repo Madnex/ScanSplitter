@@ -67,3 +67,51 @@ export const PLACEHOLDERS = [
   { key: "{n}", description: "Global number" },
   { key: "{photo}", description: "Photo in scan" },
 ] as const;
+
+// Minimal source info needed to generate a name for one image.
+export interface NamingImageInfo {
+  fileIndex: number;
+  page: number;
+  filename: string;
+}
+
+/**
+ * Generate names for a full set of images using the same "photo index within
+ * scan" grouping logic as the batch "Apply pattern" action, so the live
+ * duplicate-name preview always matches what Apply would actually produce.
+ */
+export function generateNamesForImages(
+  pattern: string,
+  startNumber: number,
+  albumName: string,
+  images: NamingImageInfo[]
+): string[] {
+  const scanGroups = new Map<string, number>();
+
+  return images.map((img, globalIdx) => {
+    const scanKey = `${img.fileIndex}-${img.page}`;
+    const photoIdx = (scanGroups.get(scanKey) ?? 0) + 1;
+    scanGroups.set(scanKey, photoIdx);
+
+    return generateName(pattern, {
+      album: albumName || "album",
+      scan: img.filename.replace(/\.[^.]+$/, ""),
+      page: img.page,
+      n: startNumber + globalIdx,
+      photo: photoIdx,
+    });
+  });
+}
+
+/**
+ * Find the first name that appears more than once in a list. Returns null
+ * if all names are unique.
+ */
+export function findDuplicateName(names: string[]): string | null {
+  const seen = new Set<string>();
+  for (const name of names) {
+    if (seen.has(name)) return name;
+    seen.add(name);
+  }
+  return null;
+}

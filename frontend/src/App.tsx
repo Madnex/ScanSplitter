@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useMemo } from "react";
+import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { HelpCircle } from "lucide-react";
 import { FileUpload } from "@/components/FileUpload";
 import { FileTabs } from "@/components/FileTabs";
@@ -8,14 +8,24 @@ import { ScanNavigator } from "@/components/ScanNavigator";
 import { SettingsPanel } from "@/components/SettingsPanel";
 import { ExifEditor } from "@/components/ExifEditor";
 import { ResultsGallery } from "@/components/ResultsGallery";
-import { Toast, type ToastType } from "@/components/Toast";
+import { Toast, type ToastType, type ToastAction } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { Button } from "@/components/ui/button";
-import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, FileConflictError, getModelStatuses, selectDirectory, startModelDownload } from "@/lib/api";
-import { generateName } from "@/lib/naming";
+import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, isAbortError, FileConflictError, getModelStatuses, selectDirectory, startModelDownload } from "@/lib/api";
+import { generateNamesForImages, findDuplicateName } from "@/lib/naming";
 import { buildExportPayload } from "@/lib/utils";
 import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern, ModelKey, ModelStatus } from "@/types";
+
+// Max number of prior box-states kept per scan (file+page) for delete undo.
+const MAX_UNDO_ENTRIES = 20;
+
+interface DetectionTarget {
+  sessionId: string;
+  filename: string;
+  page: number;
+  fileIndex: number;
+}
 
 function App() {
   // File state
@@ -60,8 +70,19 @@ function App() {
     localStorage.getItem("scansplitter_output_dir") ?? ""
   );
 
+  // Whether to keep GPS location data from the original scan in exported
+  // photos. Defaults to off (stripped) - GPS is privacy-sensitive and most
+  // users scanning old photo albums don't want their home address embedded
+  // in every exported file.
+  const [includeGps, setIncludeGps] = useState(false);
+
   // Toast notification state
-  const [toast, setToast] = useState<{ id: string; message: string; type: ToastType } | null>(null);
+  const [toast, setToast] = useState<{
+    id: string;
+    message: string;
+    type: ToastType;
+    action?: ToastAction;
+  } | null>(null);
 
   // Overwrite confirmation dialog state
   const [overwriteDialog, setOverwriteDialog] = useState<{
@@ -71,11 +92,11 @@ function App() {
   // Keyboard shortcuts dialog state
   const [showShortcuts, setShowShortcuts] = useState(false);
 
-  const showToast = useCallback((message: string, type: ToastType = "success") => {
+  const showToast = useCallback((message: string, type: ToastType = "success", action?: ToastAction) => {
     // Unique id per toast so a new toast within the previous one's exit
     // animation window gets its own component instance (and timers) instead
     // of inheriting stale `isExiting` state from the toast it replaced.
-    setToast({ id: crypto.randomUUID(), message, type });
+    setToast({ id: crypto.randomUUID(), message, type, action });
   }, []);
 
   const refreshModelStatuses = useCallback(async () => {
@@ -195,56 +216,101 @@ function App() {
     [resultsViewMode, currentScanImages, croppedImages]
   );
 
-  // Run detection for a file by session ID
-  const runDetection = useCallback(async (
-    sessionId: string,
-    filename: string,
-    page: number
-  ) => {
-    // Update status to detecting
+  // In-flight detect request, if any. Detection results are only ever safe
+  // to apply if this is still the controller that produced them (checked via
+  // referential equality in the `finally` block) AND the target file/page is
+  // still what's on screen (checked in the success handler) - abort() alone
+  // isn't sufficient because the fetch promise can still resolve/settle
+  // after abort() is called (a resolution race), so both guards are needed.
+  const detectAbortControllerRef = useRef<AbortController | null>(null);
+
+  // In-flight crop request, if any (see handleCrop for why this only guards
+  // against redundant work, not result mis-attribution).
+  const cropAbortControllerRef = useRef<AbortController | null>(null);
+
+  // Cancel whatever detection is currently in flight (if any). Called on
+  // every navigation action (file switch, page change, scan navigation) so a
+  // stale request can never land its boxes on a different scan than the one
+  // it was computed for.
+  const cancelInFlightDetection = useCallback(() => {
+    detectAbortControllerRef.current?.abort();
+  }, []);
+
+  // Run detection for a target file/page. `silent` suppresses the "isDetecting"
+  // spinner and error toast - used for background/auto-detect so a failed
+  // auto-detect doesn't spam a toast (the file tab's status icon still shows
+  // the failure; a manual click is required to retry, matching the "don't
+  // retry-loop a failed page" requirement).
+  const runDetection = useCallback(async (target: DetectionTarget, options: { silent: boolean } = { silent: true }) => {
+    // Supersede any prior in-flight request.
+    detectAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    detectAbortControllerRef.current = controller;
+
     setFiles((prev) =>
       prev.map((f) =>
-        f.sessionId === sessionId ? { ...f, detectionStatus: 'detecting' as const } : f
+        f.sessionId === target.sessionId ? { ...f, detectionStatus: 'detecting' as const } : f
       )
     );
+    if (!options.silent) setIsDetecting(true);
 
     try {
       if (settings.detectionMode === "u2net") {
         const modelKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
         await ensureModelReady(modelKey);
       }
+      // The model-download wait above has no abort support; re-check before
+      // firing the actual detect request in case we were superseded meanwhile.
+      if (controller.signal.aborted) return;
 
       const result = await detectBoxes(
-        sessionId,
-        page,
+        target.sessionId,
+        target.page,
         settings.minArea,
         settings.maxArea,
         settings.detectionMode,
-        settings.u2netLite
+        settings.u2netLite,
+        controller.signal
       );
-      // Update with detected boxes
-      setFiles((prev) =>
-        prev.map((f) =>
-          f.sessionId === sessionId
-            ? { ...f, boxes: result.boxes, detectionStatus: 'detected' as const }
-            : f
-        )
-      );
+
+      // Belt-and-braces staleness guard: only apply if the target file is
+      // still at the index/page we computed boxes for. abort() should have
+      // already prevented this branch from running for a superseded
+      // request, but a resolution race (the fetch settling right as a new
+      // request starts) could let it through otherwise.
+      setFiles((prev) => {
+        const idx = prev.findIndex((f) => f.sessionId === target.sessionId);
+        if (idx === -1) return prev; // file was closed
+        if (idx !== target.fileIndex || prev[idx].currentPage !== target.page) {
+          return prev; // no longer viewing this scan
+        }
+        const next = [...prev];
+        next[idx] = { ...next[idx], boxes: result.boxes, detectionStatus: 'detected' as const };
+        return next;
+      });
     } catch (error) {
-      console.error(`Detection failed for ${filename}:`, error);
+      if (isAbortError(error)) return; // superseded - silent no-op, not a failure
+      console.error(`Detection failed for ${target.filename}:`, error);
       setFiles((prev) =>
         prev.map((f) =>
-          f.sessionId === sessionId ? { ...f, detectionStatus: 'failed' as const } : f
+          f.sessionId === target.sessionId ? { ...f, detectionStatus: 'failed' as const } : f
         )
       );
+      if (!options.silent) showToast("Failed to detect photos", "error");
+    } finally {
+      // Only clear the shared "detecting" spinner/ref if we're still the
+      // request of record (a superseding call already replaced them).
+      if (detectAbortControllerRef.current === controller) {
+        detectAbortControllerRef.current = null;
+        if (!options.silent) setIsDetecting(false);
+      }
     }
-  }, [settings.minArea, settings.maxArea, settings.detectionMode, settings.u2netLite, ensureModelReady]);
+  }, [settings.minArea, settings.maxArea, settings.detectionMode, settings.u2netLite, ensureModelReady, showToast]);
 
   // Handle file upload (multiple files)
   const handleUpload = useCallback(async (filesToUpload: File[]) => {
     setIsUploading(true);
     const startIndex = files.length;
-    const uploadedFiles: UploadedFile[] = [];
 
     try {
       for (const file of filesToUpload) {
@@ -260,9 +326,10 @@ function App() {
           detectionStatus: 'pending',
         };
         setFiles((prev) => [...prev, newFile]);
-        uploadedFiles.push(newFile);
       }
-      // Switch to first newly uploaded file
+      // Switch to first newly uploaded file. Auto-detection (if enabled) is
+      // handled reactively by the "pending" effect below for every file
+      // that just got added, not triggered here directly.
       setActiveFileIndex(startIndex);
     } catch (error) {
       console.error("Upload failed:", error);
@@ -270,22 +337,17 @@ function App() {
     } finally {
       setIsUploading(false);
     }
-
-    // Auto-detect if enabled - run sequentially to avoid overwhelming the server
-    if (settings.autoDetect && uploadedFiles.length > 0) {
-      for (const file of uploadedFiles) {
-        await runDetection(file.sessionId, file.filename, file.currentPage);
-      }
-    }
-  }, [files.length, settings.autoDetect, runDetection, showToast]);
+  }, [files.length, showToast]);
 
   // Handle file tab selection
   const handleSelectFile = useCallback((index: number) => {
+    cancelInFlightDetection();
     setActiveFileIndex(index);
-  }, []);
+  }, [cancelInFlightDetection]);
 
   // Handle file tab close
   const handleCloseFile = useCallback((index: number) => {
+    cancelInFlightDetection();
     // Remove cropped images from this file
     setCroppedImages((prev) => prev.filter((img) => img.source.fileIndex !== index));
     // Reindex sources for files after the removed one
@@ -300,11 +362,12 @@ function App() {
     if (activeFileIndex >= index && activeFileIndex > 0) {
       setActiveFileIndex(activeFileIndex - 1);
     }
-  }, [activeFileIndex]);
+  }, [activeFileIndex, cancelInFlightDetection]);
 
   // Handle page change
   const handlePageChange = useCallback((page: number) => {
     if (!activeFile) return;
+    cancelInFlightDetection();
     setFiles((prev) =>
       prev.map((f, i) =>
         i === activeFileIndex
@@ -312,7 +375,7 @@ function App() {
           : f
       )
     );
-  }, [activeFile, activeFileIndex]);
+  }, [activeFile, activeFileIndex, cancelInFlightDetection]);
 
   // Handle boxes change
   const handleBoxesChange = useCallback((boxes: BoundingBox[]) => {
@@ -320,6 +383,115 @@ function App() {
       prev.map((f, i) => (i === activeFileIndex ? { ...f, boxes } : f))
     );
   }, [activeFileIndex]);
+
+  // Auto-detect on navigation (and on upload): whenever a file's
+  // detectionStatus is 'pending' (freshly uploaded, or just reset by a
+  // page/scan navigation) and autoDetect is on, kick off detection for it.
+  // Deliberately excludes 'detecting' / 'detected' / 'failed' - a failed
+  // page requires an explicit manual click to retry, so we never get stuck
+  // in a retry loop. Only the first pending file is targeted per run; once
+  // its status flips away from 'pending' this effect re-fires and picks up
+  // the next one, which naturally serializes detection across files
+  // uploaded together as well as the page the user just navigated to.
+  //
+  // Dependencies are primitive values (not the `files` array itself) so
+  // unrelated updates - e.g. dragging a box on an already-detected page -
+  // don't re-trigger this effect.
+  const pendingDetectIndex = useMemo(
+    () => (settings.autoDetect ? files.findIndex((f) => f.detectionStatus === 'pending') : -1),
+    [files, settings.autoDetect]
+  );
+  const pendingDetectFile = pendingDetectIndex >= 0 ? files[pendingDetectIndex] : null;
+  const pendingDetectSessionId = pendingDetectFile?.sessionId ?? null;
+  const pendingDetectPage = pendingDetectFile?.currentPage ?? null;
+  const pendingDetectFilename = pendingDetectFile?.filename ?? null;
+
+  useEffect(() => {
+    if (pendingDetectIndex === -1 || !pendingDetectSessionId || pendingDetectPage === null || !pendingDetectFilename) {
+      return;
+    }
+    // Defer to a macrotask rather than calling runDetection (which sets
+    // state synchronously as its first step) directly in the effect body -
+    // avoids a synchronous cascading-render setState-in-effect. If the
+    // dependencies change again before this fires (e.g. the user navigates
+    // again immediately), the cleanup cancels the now-stale trigger.
+    const timeoutId = setTimeout(() => {
+      void runDetection({
+        sessionId: pendingDetectSessionId,
+        filename: pendingDetectFilename,
+        page: pendingDetectPage,
+        fileIndex: pendingDetectIndex,
+      }, { silent: true });
+    }, 0);
+    return () => clearTimeout(timeoutId);
+  }, [pendingDetectIndex, pendingDetectSessionId, pendingDetectPage, pendingDetectFilename, runDetection]);
+
+  // Undo stack for box deletion, keyed by `${sessionId}-${page}` so each
+  // scan has independent history. Only deletions push a snapshot (see
+  // ImageCanvas's onBoxesDeleted) - regular edits (move/resize/add) don't,
+  // and rotation is self-inverse so it doesn't need undo support either.
+  const undoStackRef = useRef<Map<string, BoundingBox[][]>>(new Map());
+
+  const pushUndoSnapshot = useCallback((key: string, boxes: BoundingBox[]) => {
+    const stack = undoStackRef.current.get(key) ?? [];
+    const next = [...stack, boxes];
+    if (next.length > MAX_UNDO_ENTRIES) next.shift();
+    undoStackRef.current.set(key, next);
+  }, []);
+
+  const popUndoSnapshot = useCallback((key: string): BoundingBox[] | null => {
+    const stack = undoStackRef.current.get(key);
+    if (!stack || stack.length === 0) return null;
+    const restored = stack[stack.length - 1];
+    undoStackRef.current.set(key, stack.slice(0, -1));
+    return restored;
+  }, []);
+
+  // Restore the most recently deleted box state for the current scan.
+  // Wired to both Cmd/Ctrl+Z and the "Undo" button on the deletion toast.
+  const handleUndo = useCallback(() => {
+    if (!activeFile) return;
+    const key = `${activeFile.sessionId}-${activeFile.currentPage}`;
+    const restored = popUndoSnapshot(key);
+    if (!restored) return;
+    handleBoxesChange(restored);
+  }, [activeFile, popUndoSnapshot, handleBoxesChange]);
+
+  // Called by ImageCanvas right before it removes boxes (Delete/Backspace,
+  // the Delete button, or Reset). Snapshots the pre-deletion state for undo
+  // and surfaces a toast with an inline Undo action.
+  const handleBoxesDeleted = useCallback((previousBoxes: BoundingBox[], deletedCount: number) => {
+    if (!activeFile) return;
+    const key = `${activeFile.sessionId}-${activeFile.currentPage}`;
+    pushUndoSnapshot(key, previousBoxes);
+    showToast(
+      `${deletedCount} box${deletedCount !== 1 ? "es" : ""} deleted`,
+      "info",
+      { label: "Undo", onClick: handleUndo }
+    );
+  }, [activeFile, pushUndoSnapshot, showToast, handleUndo]);
+
+  // Global Cmd/Ctrl+Z shortcut for undoing a box deletion. Same input-focus
+  // guard pattern used elsewhere (App's "?" handler, ImageCanvas's
+  // Delete/Backspace handler, ScanNavigator's Alt+arrow handler) so typing
+  // "z" in a text field never triggers it.
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (
+        e.target instanceof HTMLInputElement ||
+        e.target instanceof HTMLTextAreaElement ||
+        (e.target instanceof HTMLElement && e.target.isContentEditable)
+      ) {
+        return;
+      }
+      if ((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        handleUndo();
+      }
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [handleUndo]);
 
   // Handle image name change
   const handleImageNameChange = useCallback((id: string, name: string) => {
@@ -350,24 +522,17 @@ function App() {
   // Apply naming pattern to all images
   const applyNamingPattern = useCallback(() => {
     setCroppedImages((prev) => {
-      // Group images by source to calculate photo index within each scan
-      const scanGroups = new Map<string, number>();
-
-      return prev.map((img, globalIdx) => {
-        const scanKey = `${img.source.fileIndex}-${img.source.page}`;
-        const photoIdx = (scanGroups.get(scanKey) ?? 0) + 1;
-        scanGroups.set(scanKey, photoIdx);
-
-        const newName = generateName(namingPattern.pattern, {
-          album: namingPattern.albumName || "album",
-          scan: img.source.filename.replace(/\.[^.]+$/, ""),
+      const names = generateNamesForImages(
+        namingPattern.pattern,
+        namingPattern.startNumber,
+        namingPattern.albumName,
+        prev.map((img) => ({
+          fileIndex: img.source.fileIndex,
           page: img.source.page,
-          n: namingPattern.startNumber + globalIdx,
-          photo: photoIdx,
-        });
-
-        return { ...img, name: newName };
-      });
+          filename: img.source.filename,
+        }))
+      );
+      return prev.map((img, idx) => ({ ...img, name: names[idx] }));
     });
   }, [namingPattern]);
 
@@ -417,35 +582,29 @@ function App() {
     img.src = `data:image/jpeg;base64,${image.data}`;
   }, [croppedImages, showToast]);
 
-  // Handle detection
-  const handleDetect = useCallback(async () => {
+  // Handle detection (manual "Detect Photos" button click) - always runs
+  // regardless of current detectionStatus, and supersedes any in-flight
+  // auto-detect for the same file via the shared abort controller.
+  const handleDetect = useCallback(() => {
     if (!activeFile) return;
-    setIsDetecting(true);
-    try {
-      if (settings.detectionMode === "u2net") {
-        const modelKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
-        await ensureModelReady(modelKey);
-      }
-      const result = await detectBoxes(
-        activeFile.sessionId,
-        activeFile.currentPage,
-        settings.minArea,
-        settings.maxArea,
-        settings.detectionMode,
-        settings.u2netLite
-      );
-      handleBoxesChange(result.boxes);
-    } catch (error) {
-      console.error("Detection failed:", error);
-      showToast("Failed to detect photos", "error");
-    } finally {
-      setIsDetecting(false);
-    }
-  }, [activeFile, settings, handleBoxesChange, ensureModelReady, showToast]);
+    void runDetection({
+      sessionId: activeFile.sessionId,
+      filename: activeFile.filename,
+      page: activeFile.currentPage,
+      fileIndex: activeFileIndex,
+    }, { silent: false });
+  }, [activeFile, activeFileIndex, runDetection]);
 
-  // Handle crop
+  // Handle crop. Cancels any prior in-flight crop first - crop results are
+  // tagged with the source fileIndex/page captured in this closure at call
+  // time (not re-read from state after the await), so a stale crop can
+  // never land on the wrong scan; the abort here just avoids doing redundant
+  // work if the button is clicked again before the first request finishes.
   const handleCrop = useCallback(async () => {
     if (!activeFile || activeFile.boxes.length === 0) return;
+    cropAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    cropAbortControllerRef.current = controller;
     setIsCropping(true);
     try {
       if (settings.autoRotate) {
@@ -455,7 +614,8 @@ function App() {
         activeFile.sessionId,
         activeFile.currentPage,
         activeFile.boxes,
-        settings.autoRotate
+        settings.autoRotate,
+        controller.signal
       );
 
       // Remove existing images from same file/page before adding new ones
@@ -485,20 +645,35 @@ function App() {
         return [...filtered, ...imagesWithSource];
       });
     } catch (error) {
+      if (isAbortError(error)) return;
       console.error("Crop failed:", error);
       showToast("Failed to crop photos", "error");
     } finally {
-      setIsCropping(false);
+      if (cropAbortControllerRef.current === controller) {
+        cropAbortControllerRef.current = null;
+        setIsCropping(false);
+      }
     }
   }, [activeFile, activeFileIndex, settings.autoRotate, ensureModelReady, showToast]);
 
   // Handle export
   const handleExport = useCallback(async () => {
     if (!activeFile || exportImages.length === 0) return;
+    const images = buildExportPayload(exportImages);
+
+    // Block export if the naming pattern (or manual edits) produced
+    // duplicate filenames - later images would silently overwrite earlier
+    // ones in the ZIP/on disk. Surface one concrete example so the user
+    // knows what to fix.
+    const duplicate = findDuplicateName(images.map((img) => img.name));
+    if (duplicate) {
+      showToast(`Duplicate filename "${duplicate}" - fix names or naming pattern before exporting`, "error");
+      return;
+    }
+
     setIsExporting(true);
     try {
-      const images = buildExportPayload(exportImages);
-      const blob = await exportZip(activeFile.sessionId, "jpeg", 85, images);
+      const blob = await exportZip(activeFile.sessionId, "jpeg", 85, images, includeGps);
 
       // Download the blob
       const url = URL.createObjectURL(blob);
@@ -517,22 +692,30 @@ function App() {
     } finally {
       setIsExporting(false);
     }
-  }, [activeFile, exportImages, showToast]);
+  }, [activeFile, exportImages, includeGps, showToast]);
 
   // Handle export to local directory
   const doExportLocal = useCallback(async (overwrite: boolean) => {
     if (!activeFile || exportImages.length === 0) return;
+    const images = buildExportPayload(exportImages);
+
+    // Same duplicate guard as the ZIP export - see handleExport.
+    const duplicate = findDuplicateName(images.map((img) => img.name));
+    if (duplicate) {
+      showToast(`Duplicate filename "${duplicate}" - fix names or naming pattern before exporting`, "error");
+      return;
+    }
 
     setIsExporting(true);
     try {
-      const images = buildExportPayload(exportImages);
       const result = await exportLocal(
         activeFile.sessionId,
         outputDirectory,
         "jpeg",
         85,
         images,
-        overwrite
+        overwrite,
+        includeGps
       );
       showToast(`Exported ${result.count} images to ${outputDirectory}`, "success");
     } catch (error) {
@@ -548,7 +731,7 @@ function App() {
     } finally {
       setIsExporting(false);
     }
-  }, [activeFile, exportImages, outputDirectory, showToast]);
+  }, [activeFile, exportImages, outputDirectory, includeGps, showToast]);
 
   const handleExportLocal = useCallback(async () => {
     if (!outputDirectory.trim()) {
@@ -580,6 +763,7 @@ function App() {
 
   // Handle scan navigation (file + page combined)
   const handleScanNavigate = useCallback((fileIndex: number, page: number) => {
+    cancelInFlightDetection();
     setActiveFileIndex(fileIndex);
     if (files[fileIndex] && files[fileIndex].currentPage !== page) {
       setFiles((prev) =>
@@ -590,7 +774,7 @@ function App() {
         )
       );
     }
-  }, [files]);
+  }, [files, cancelInFlightDetection]);
 
   // Get current image URL
   const imageUrl = activeFile
@@ -667,6 +851,7 @@ function App() {
                 imageUrl={imageUrl}
                 boxes={activeFile?.boxes ?? []}
                 onBoxesChange={handleBoxesChange}
+                onBoxesDeleted={handleBoxesDeleted}
               />
             </div>
             {activeFile && activeFile.pageCount > 1 && (
@@ -700,6 +885,8 @@ function App() {
               outputDirectory={outputDirectory}
               onOutputDirectoryChange={setOutputDirectory}
               onBrowseOutputDirectory={handleBrowseOutputDirectory}
+              includeGps={includeGps}
+              onIncludeGpsChange={setIncludeGps}
             />
           </div>
         </div>
@@ -711,6 +898,8 @@ function App() {
           key={toast.id}
           message={toast.message}
           type={toast.type}
+          action={toast.action}
+          duration={toast.action ? 6000 : undefined}
           onClose={() => setToast(null)}
         />
       )}

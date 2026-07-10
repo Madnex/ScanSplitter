@@ -11,6 +11,18 @@ import type {
 
 const API_BASE = "/api";
 
+/**
+ * True if `error` is the rejection produced by aborting a fetch via
+ * AbortController - callers should treat this as a silent no-op (the
+ * request was intentionally superseded), not a failure to surface.
+ */
+export function isAbortError(error: unknown): boolean {
+  return (
+    (error instanceof DOMException && error.name === "AbortError") ||
+    (error instanceof Error && error.name === "AbortError")
+  );
+}
+
 export async function uploadFile(file: File): Promise<{
   sessionId: string;
   filename: string;
@@ -46,7 +58,8 @@ export async function detectBoxes(
   minArea: number,
   maxArea: number,
   detectionMode: DetectionMode = "scansplitterv2",
-  u2netLite: boolean = true
+  u2netLite: boolean = true,
+  signal?: AbortSignal
 ): Promise<{ boxes: BoundingBox[]; imageUrl: string }> {
   const response = await fetch(`${API_BASE}/detect`, {
     method: "POST",
@@ -59,6 +72,7 @@ export async function detectBoxes(
       detection_mode: detectionMode,
       u2net_lite: u2netLite,
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -83,7 +97,8 @@ export async function cropImages(
   sessionId: string,
   page: number,
   boxes: BoundingBox[],
-  autoRotate: boolean
+  autoRotate: boolean,
+  signal?: AbortSignal
 ): Promise<Omit<CroppedImage, "name" | "source" | "dateTaken">[]> {
   const response = await fetch(`${API_BASE}/crop`, {
     method: "POST",
@@ -101,6 +116,7 @@ export async function cropImages(
       })),
       auto_rotate: autoRotate,
     }),
+    signal,
   });
 
   if (!response.ok) {
@@ -128,7 +144,8 @@ export async function exportZip(
   sessionId: string,
   format: "jpeg" | "png",
   quality: number,
-  images: ExportImageData[]
+  images: ExportImageData[],
+  includeGps: boolean = false
 ): Promise<Blob> {
   const response = await fetch(`${API_BASE}/export`, {
     method: "POST",
@@ -138,6 +155,7 @@ export async function exportZip(
       format,
       quality,
       images,
+      include_gps: includeGps,
     }),
   });
 
@@ -169,7 +187,8 @@ export async function exportLocal(
   format: "jpeg" | "png",
   quality: number,
   images: ExportImageData[],
-  overwrite: boolean = false
+  overwrite: boolean = false,
+  includeGps: boolean = false
 ): Promise<{ status: string; files: string[]; count: number }> {
   const response = await fetch(`${API_BASE}/export-local`, {
     method: "POST",
@@ -181,6 +200,7 @@ export async function exportLocal(
       quality,
       images,
       overwrite,
+      include_gps: includeGps,
     }),
   });
 

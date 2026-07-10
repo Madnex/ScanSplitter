@@ -6,7 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Lightbox } from "@/components/Lightbox";
 import { NamingPatternInput } from "@/components/NamingPatternInput";
 import { estimateBase64FileSize, formatFileSize, formatDimensions } from "@/lib/utils";
-import { validatePattern } from "@/lib/naming";
+import { validatePattern, generateNamesForImages, findDuplicateName } from "@/lib/naming";
 import type { CroppedImage, NamingPattern } from "@/types";
 
 interface ResultsGalleryProps {
@@ -27,6 +27,8 @@ interface ResultsGalleryProps {
   outputDirectory: string;
   onOutputDirectoryChange: (path: string) => void;
   onBrowseOutputDirectory: () => void;
+  includeGps: boolean;
+  onIncludeGpsChange: (include: boolean) => void;
 }
 
 export function ResultsGallery({
@@ -47,6 +49,8 @@ export function ResultsGallery({
   outputDirectory,
   onOutputDirectoryChange,
   onBrowseOutputDirectory,
+  includeGps,
+  onIncludeGpsChange,
 }: ResultsGalleryProps) {
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null);
 
@@ -57,6 +61,25 @@ export function ResultsGallery({
     () => validatePattern(namingPattern.pattern),
     [namingPattern.pattern]
   );
+
+  // Would the naming pattern produce duplicate filenames across the *full*
+  // image set? Mirrors what "Apply" actually does (App.tsx's
+  // applyNamingPattern operates on all images, not just the current view),
+  // so this warning matches reality regardless of which view is active.
+  const duplicateNameWarning = useMemo(() => {
+    if (!patternValidation.valid || allImages.length === 0) return null;
+    const names = generateNamesForImages(
+      namingPattern.pattern,
+      namingPattern.startNumber,
+      namingPattern.albumName,
+      allImages.map((img) => ({
+        fileIndex: img.source.fileIndex,
+        page: img.source.page,
+        filename: img.source.filename,
+      }))
+    );
+    return findDuplicateName(names);
+  }, [allImages, namingPattern, patternValidation.valid]);
 
   const downloadImage = (image: CroppedImage) => {
     const link = document.createElement("a");
@@ -106,8 +129,23 @@ export function ResultsGallery({
             </Button>
           </div>
 
+          {/* GPS export option - shown right above the export actions it
+              affects, so it's seen before the user triggers an export. */}
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="include-gps"
+              checked={includeGps}
+              onChange={(e) => onIncludeGpsChange(e.target.checked)}
+              className="rounded"
+            />
+            <label htmlFor="include-gps" className="text-xs text-muted-foreground">
+              Include GPS location from original scan
+            </label>
+          </div>
+
           {/* Export buttons */}
-          <div className="flex gap-1">
+          <div className="flex gap-1 mt-2">
             <Button
               size="sm"
               variant="outline"
@@ -186,6 +224,7 @@ export function ResultsGallery({
                     }
                   : undefined
               }
+              duplicateWarning={duplicateNameWarning}
             />
           </div>
         </CardHeader>

@@ -1,9 +1,9 @@
 import { useState, useEffect } from "react";
-import { Calendar } from "lucide-react";
+import { Calendar, X } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { getExif } from "@/lib/api";
+import { getExif, updateExif } from "@/lib/api";
 
 interface ExifEditorProps {
   sessionId: string | null;
@@ -16,6 +16,8 @@ export function ExifEditor({ sessionId, imageCount, onApplyToAll }: ExifEditorPr
   const [make, setMake] = useState<string | null>(null);
   const [model, setModel] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(Boolean(sessionId));
+  const [isClearing, setIsClearing] = useState(false);
+  const [clearError, setClearError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!sessionId) {
@@ -70,6 +72,24 @@ export function ExifEditor({ sessionId, imageCount, onApplyToAll }: ExifEditorPr
     onApplyToAll?.(dateTaken || null);
   };
 
+  // Explicitly clears the source scan's stored EXIF date. Sends a literal
+  // `null` (not omitting the field) - the backend distinguishes "clear the
+  // date" (explicit null) from "leave unchanged" (field omitted).
+  const handleClear = async () => {
+    if (!sessionId) return;
+    setIsClearing(true);
+    setClearError(null);
+    try {
+      await updateExif(sessionId, null);
+      setDateTaken("");
+    } catch (error) {
+      console.error("Failed to clear EXIF date:", error);
+      setClearError("Failed to clear date");
+    } finally {
+      setIsClearing(false);
+    }
+  };
+
   if (!sessionId) return null;
 
   return (
@@ -100,6 +120,16 @@ export function ExifEditor({ sessionId, imageCount, onApplyToAll }: ExifEditorPr
               />
               <Button
                 size="sm"
+                variant="outline"
+                onClick={handleClear}
+                disabled={!dateTaken || isClearing}
+                className="h-8 px-2"
+                title="Clear the stored date on the original scan"
+              >
+                <X className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="sm"
                 onClick={handleApply}
                 disabled={!dateTaken || imageCount === 0}
                 className="h-8"
@@ -108,6 +138,10 @@ export function ExifEditor({ sessionId, imageCount, onApplyToAll }: ExifEditorPr
                 Apply
               </Button>
             </div>
+
+            {clearError && (
+              <p className="text-xs text-destructive">{clearError}</p>
+            )}
 
             <p className="text-xs text-muted-foreground">
               {imageCount > 0 ? `Apply to ${imageCount} photo${imageCount !== 1 ? "s" : ""}` : "Crop photos first"}

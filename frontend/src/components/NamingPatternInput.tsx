@@ -12,12 +12,17 @@ interface NamingPatternInputProps {
     photoIndex: number;
     globalIndex: number;
   };
+  // First duplicate filename the pattern would produce across the current
+  // image set, if any. Null/undefined means no duplicates (or nothing to
+  // check yet).
+  duplicateWarning?: string | null;
 }
 
 export function NamingPatternInput({
   pattern,
   onChange,
   sampleContext = { filename: "scan_001.jpg", page: 1, photoIndex: 0, globalIndex: 0 },
+  duplicateWarning = null,
 }: NamingPatternInputProps) {
   const validation = useMemo(() => validatePattern(pattern.pattern), [pattern.pattern]);
 
@@ -92,6 +97,13 @@ export function NamingPatternInput({
         <div className="text-xs text-muted-foreground">
           Preview: <span className="font-mono bg-muted px-1 rounded">{previewName}.jpg</span>
         </div>
+      )}
+
+      {/* Duplicate name warning */}
+      {validation.valid && duplicateWarning && (
+        <p className="text-xs text-amber-600 dark:text-amber-400">
+          This pattern produces duplicate filenames (e.g. "{duplicateWarning}") - exports would overwrite each other. Adjust the pattern or start number.
+        </p>
       )}
     </div>
   );

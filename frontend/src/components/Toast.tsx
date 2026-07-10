@@ -4,14 +4,20 @@ import { cn } from "@/lib/utils";
 
 export type ToastType = "success" | "error" | "info";
 
+export interface ToastAction {
+  label: string;
+  onClick: () => void;
+}
+
 interface ToastProps {
   message: string;
   type?: ToastType;
   duration?: number;
   onClose: () => void;
+  action?: ToastAction;
 }
 
-export function Toast({ message, type = "success", duration = 4000, onClose }: ToastProps) {
+export function Toast({ message, type = "success", duration = 4000, onClose, action }: ToastProps) {
   const [isExiting, setIsExiting] = useState(false);
   // Tracks the pending "close after exit animation" timeout so it can be
   // cancelled on unmount - otherwise a stale timer can fire onClose for a
@@ -41,6 +47,11 @@ export function Toast({ message, type = "success", duration = 4000, onClose }: T
     closeTimeoutRef.current = setTimeout(onClose, 300);
   };
 
+  const handleAction = () => {
+    action?.onClick();
+    handleClose();
+  };
+
   const icons = {
     success: <CheckCircle className="w-5 h-5 text-green-500" />,
     error: <XCircle className="w-5 h-5 text-red-500" />,
@@ -63,6 +74,14 @@ export function Toast({ message, type = "success", duration = 4000, onClose }: T
     >
       {icons[type]}
       <span className="text-sm font-medium">{message}</span>
+      {action && (
+        <button
+          onClick={handleAction}
+          className="text-sm font-semibold underline underline-offset-2 hover:no-underline"
+        >
+          {action.label}
+        </button>
+      )}
       <button
         onClick={handleClose}
         className="ml-2 p-1 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-colors"

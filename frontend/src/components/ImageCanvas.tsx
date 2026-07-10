@@ -8,9 +8,13 @@ interface ImageCanvasProps {
   imageUrl: string | null;
   boxes: BoundingBox[];
   onBoxesChange: (boxes: BoundingBox[]) => void;
+  // Called right before boxes are removed (Delete/Backspace, Delete button, or
+  // Reset) with the full box list as it was immediately prior to the removal,
+  // so the caller can snapshot it for undo. Not called for moves/resizes/adds.
+  onBoxesDeleted?: (previousBoxes: BoundingBox[], deletedCount: number) => void;
 }
 
-export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps) {
+export function ImageCanvas({ imageUrl, boxes, onBoxesChange, onBoxesDeleted }: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -31,10 +35,15 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
   const canvasPaddingRef = useRef(CANVAS_PADDING);
   // Ref to store latest onBoxesChange to avoid stale closures in event handlers
   const onBoxesChangeRef = useRef(onBoxesChange);
+  const onBoxesDeletedRef = useRef(onBoxesDeleted);
 
   useEffect(() => {
     onBoxesChangeRef.current = onBoxesChange;
   }, [onBoxesChange]);
+
+  useEffect(() => {
+    onBoxesDeletedRef.current = onBoxesDeleted;
+  }, [onBoxesDeleted]);
 
   // Magnifier state for precision corner dragging
   const [magnifierState, setMagnifierState] = useState<{
@@ -372,6 +381,10 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
     // Read current boxes from canvas and filter out selected
     const currentBoxes = readBoxesFromCanvas();
     const newBoxes = currentBoxes.filter((box) => !selectedIds.has(box.id));
+    const deletedCount = currentBoxes.length - newBoxes.length;
+    if (deletedCount > 0) {
+      onBoxesDeletedRef.current?.(currentBoxes, deletedCount);
+    }
     onBoxesChangeRef.current(newBoxes);
     setSelectedIds(new Set());
 
@@ -388,6 +401,9 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
   }, [selectedIds, readBoxesFromCanvas]);
 
   const handleReset = useCallback(() => {
+    if (boxes.length > 0) {
+      onBoxesDeletedRef.current?.(boxes, boxes.length);
+    }
     onBoxesChangeRef.current([]);
     setSelectedIds(new Set());
 
@@ -399,7 +415,7 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange }: ImageCanvasProps
     rects.forEach((obj) => canvas.remove(obj));
     canvas.discardActiveObject();
     canvas.renderAll();
-  }, []);
+  }, [boxes]);
 
   // Handle keyboard shortcuts
   useEffect(() => {
