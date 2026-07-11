@@ -16,6 +16,7 @@ import type {
   ProjectScanUploadResult,
   ProjectSettings,
   ProjectSummary,
+  ProjectMetadata,
 } from "@/types/projects";
 
 const API_BASE = "/api";
@@ -604,6 +605,22 @@ export async function patchProjectScan(
   });
   if (!response.ok) {
     await throwForResponse(response, `Failed to update scan: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function patchProjectMetadata(
+  projectId: string,
+  scanIds: string[] | null,
+  metadata: Partial<ProjectMetadata>
+): Promise<{ scans: ProjectScan[] }> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/metadata`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ scan_ids: scanIds, metadata }),
+  });
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to update metadata: ${response.statusText}`);
   }
   return response.json();
 }

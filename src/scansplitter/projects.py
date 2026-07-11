@@ -37,6 +37,13 @@ from .detector import (
     detect_photos_v2,
 )
 from .jobs import submit_job
+from .metadata import (
+    create_metadata_exif,
+    create_xmp_packet,
+    insert_xmp,
+    metadata_defaults,
+    normalize_metadata_patch,
+)
 from .pdf_handler import extract_pdf_page, get_pdf_page_count
 from .rotator import auto_rotate
 
@@ -209,7 +216,10 @@ class ProjectStore:
     def _read(self, pid: str) -> dict:
         pdir = self._project_dir(pid)
         with open(pdir / "project.json", encoding="utf-8") as fh:
-            return json.load(fh)
+            data = json.load(fh)
+        for scan in data.get("scans", []):
+            scan.setdefault("metadata", metadata_defaults())
+        return data
 
     def _write(self, pid: str, data: dict) -> None:
         """Atomically persist ``data`` (write tmp, then ``os.replace``)."""
@@ -300,6 +310,27 @@ class ProjectStore:
             data["updated_at"] = _now_iso()
             self._write(pid, data)
             return data
+
+    def update_metadata(
+        self, pid: str, scan_ids: list[str] | None, patch: dict[str, Any]
+    ) -> list[dict]:
+        """Atomically apply a validated partial metadata patch to scans."""
+        with self._lock_for(pid):
+            data = self._read(pid)
+            if scan_ids is not None and not scan_ids:
+                raise HTTPException(status_code=400, detail="scan_ids must not be empty")
+            targets = data["scans"] if scan_ids is None else [self._find_scan(data, sid) for sid in scan_ids]
+            try:
+                updated = [
+                    normalize_metadata_patch(patch, scan.get("metadata")) for scan in targets
+                ]
+            except ValueError as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from exc
+            for scan, metadata in zip(targets, updated, strict=True):
+                scan["metadata"] = metadata
+            data["updated_at"] = _now_iso()
+            self._write(pid, data)
+            return targets
 
     def delete_project(self, pid: str) -> None:
         pdir = self._project_dir(pid)
@@ -540,11 +571,11 @@ class ProjectStore:
         settings = data["settings"]
         out_format = (fmt or settings["format"]).lower()
         out_quality = quality if quality is not None else settings["quality"]
-        del include_gps  # accepted for API parity; project scans carry no EXIF
+        out_include_gps = include_gps if include_gps is not None else bool(settings["include_gps"])
 
         def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
             payload = self._build_export_zip(
-                pid, out_format, out_quality, progress, cancelled
+                pid, out_format, out_quality, out_include_gps, progress, cancelled
             )
             return {"__download_bytes": payload}
 
@@ -555,6 +586,7 @@ class ProjectStore:
         pid: str,
         out_format: str,
         out_quality: int,
+        include_gps: bool,
         progress: ProgressCallback,
         cancelled: CancelCheck,
     ) -> bytes:
@@ -603,8 +635,20 @@ class ProjectStore:
                     else:
                         crop_pil.save(img_buffer, "JPEG", quality=out_quality)
 
+                    payload = img_buffer.getvalue()
+                    if ext == "jpg":
+                        metadata = scan.get("metadata") or metadata_defaults()
+                        exif = create_metadata_exif(metadata, include_gps)
+                        if exif:
+                            from .exif_handler import apply_exif_to_jpeg
+
+                            payload = apply_exif_to_jpeg(payload, exif)
+                        xmp = create_xmp_packet(metadata)
+                        if xmp:
+                            payload = insert_xmp(payload, xmp)
+
                     name = _unique_name(f"{stem}_{photo_index}", ext, used_names)
-                    zf.writestr(name, img_buffer.getvalue())
+                    zf.writestr(name, payload)
 
         return buffer.getvalue()
 
@@ -627,6 +671,7 @@ def _new_scan_entry(
         "flags": [],
         "detected_count": None,
         "reviewed_at": None,
+        "metadata": metadata_defaults(),
     }
 
 

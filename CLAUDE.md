@@ -58,6 +58,8 @@ ScanSplitter detects and extracts multiple photos from scanned images using Open
   `touches_edge`, `count_mismatch`) used to auto-approve or flag scans
 - `projects.py` - Persistent project store under `~/.scansplitter/projects/`
   (`SCANSPLITTER_DATA_DIR` overrides); atomic project.json writes
+- `metadata.py` - Pure project-metadata validation plus export-time EXIF GPS/date
+  and Adobe-compatible XMP packet generation; project originals are never modified
 - `models.py` - ML model downloads, SHA-256 pinned with atomic rename
 - `cli.py` - Subcommands: `api` (web UI), `process` (batch CLI). Binding to
   a non-loopback host sets local mode off: endpoints that touch the host
@@ -69,6 +71,8 @@ ScanSplitter detects and extracts multiple photos from scanned images using Open
 - Every client-controlled name goes through `sanitize_name()`; local writes
   are contained with `resolve().is_relative_to(base)`
 - GPS EXIF is stripped on export unless the request sets `include_gps`
+- Project metadata is a partial-patch contract: omitted fields are preserved,
+  explicit null clears scalars, and latitude/longitude must be set or cleared together
 
 **Product direction:** see `docs/ROADMAP.md` (phases, principles, decisions)
 and `docs/specs/` for binding feature specs. Keep spec files updated in the

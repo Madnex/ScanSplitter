@@ -15,6 +15,7 @@ import zipfile
 from dataclasses import dataclass
 
 import fitz
+import piexif
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
@@ -294,6 +295,81 @@ def test_patch_boxes_reevaluates_flags_and_approve_flow(monkeypatch):
     # Client may not set an arbitrary status.
     bad = client.patch(f"/api/projects/{pid}/scans/{sid}", json={"status": "auto_approved"})
     assert bad.status_code == 400
+
+
+# --- Archival metadata ------------------------------------------------------
+
+
+def test_single_and_batch_metadata_updates_are_persistent_and_atomic():
+    pid = _create_project()["id"]
+    upload = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[
+            ("files", ("one.png", _photo_png(), "image/png")),
+            ("files", ("two.png", _photo_png(), "image/png")),
+        ],
+    )
+    first, second = upload.json()["scans"]
+    updated = client.patch(
+        f"/api/projects/{pid}/scans/{first['id']}/metadata",
+        json={"caption": "  Family picnic  ", "people": ["Ada", "ada", " Bob "]},
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["metadata"]["people"] == ["Ada", "Bob"]
+
+    batch = client.patch(
+        f"/api/projects/{pid}/metadata",
+        json={"scan_ids": None, "metadata": {"album": "Shoebox 2"}},
+    )
+    assert batch.status_code == 200, batch.text
+    assert all(scan["metadata"]["album"] == "Shoebox 2" for scan in batch.json()["scans"])
+    assert batch.json()["scans"][0]["metadata"]["caption"] == "Family picnic"
+
+    bad = client.patch(
+        f"/api/projects/{pid}/metadata",
+        json={"scan_ids": [first["id"], "0" * 32], "metadata": {"event": "Changed"}},
+    )
+    assert bad.status_code == 404
+    project = client.get(f"/api/projects/{pid}").json()
+    assert all(scan["metadata"]["event"] is None for scan in project["scans"])
+    assert project["scans"][1]["id"] == second["id"]
+
+
+def test_project_jpeg_export_embeds_exif_xmp_and_gates_gps(monkeypatch):
+    _install_confidence(monkeypatch, lambda *a, **k: [])
+    pid = _create_project()["id"]
+    upload = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[("files", ("archive.png", _photo_png(), "image/png"))],
+    )
+    sid = upload.json()["scans"][0]["id"]
+    box = {"id": "b1", "x": 400, "y": 300, "width": 300, "height": 200, "angle": 0}
+    client.patch(f"/api/projects/{pid}/scans/{sid}", json={"boxes": [box]})
+    client.patch(f"/api/projects/{pid}/scans/{sid}", json={"status": "approved"})
+    metadata = {
+        "date": "1975-06-01", "date_label": "summer 1975", "date_precision": "season",
+        "place_name": "Antwerp", "latitude": 51.2194, "longitude": 4.4025,
+        "caption": "At the station", "people": ["Ada"], "event": "Visit", "album": "Roll 2",
+    }
+    assert client.patch(f"/api/projects/{pid}/scans/{sid}/metadata", json=metadata).status_code == 200
+
+    def exported(include_gps):
+        started = client.post(f"/api/projects/{pid}/export", json={"format": "jpeg", "include_gps": include_gps})
+        job = _wait_for_job(started.json()["job_id"])
+        archive = zipfile.ZipFile(io.BytesIO(client.get(job["result"]["download_url"]).content))
+        return archive.read(archive.namelist()[0])
+
+    without_gps = exported(False)
+    exif = piexif.load(without_gps)
+    assert exif["Exif"][piexif.ExifIFD.DateTimeOriginal] == b"1975:06:01 00:00:00"
+    assert not exif["GPS"]
+    assert b"summer 1975" in without_gps
+    assert b"At the station" in without_gps
+    assert b"Person: Ada" in without_gps
+
+    with_gps = piexif.load(exported(True))
+    assert with_gps["GPS"][piexif.GPSIFD.GPSLatitudeRef] == b"N"
+    assert with_gps["GPS"][piexif.GPSIFD.GPSLongitudeRef] == b"E"
 
 
 # --- Export -----------------------------------------------------------------

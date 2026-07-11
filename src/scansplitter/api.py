@@ -281,6 +281,26 @@ class ProjectExportRequest(BaseModel):
     include_gps: bool | None = None
 
 
+class ProjectMetadataPatch(BaseModel):
+    """Partial archival metadata update; omitted fields are preserved."""
+
+    date: str | None = None
+    date_label: str | None = None
+    date_precision: str | None = None
+    place_name: str | None = None
+    latitude: float | None = None
+    longitude: float | None = None
+    caption: str | None = None
+    people: list[str] | None = None
+    event: str | None = None
+    album: str | None = None
+
+
+class ProjectMetadataBatchPatch(BaseModel):
+    scan_ids: list[str] | None = None
+    metadata: ProjectMetadataPatch
+
+
 # --- Helper Functions ---
 
 
@@ -1306,6 +1326,21 @@ def patch_project_scan(pid: str, sid: str, request: ScanPatchRequest):
     return get_project_store().update_scan(
         pid, sid, boxes=request.boxes, status=request.status
     )
+
+
+@app.patch("/api/projects/{pid}/scans/{sid}/metadata")
+def patch_project_scan_metadata(pid: str, sid: str, request: ProjectMetadataPatch):
+    """Partially update archival metadata for one scan."""
+    patch = request.model_dump(exclude_unset=True)
+    return get_project_store().update_metadata(pid, [sid], patch)[0]
+
+
+@app.patch("/api/projects/{pid}/metadata")
+def patch_project_metadata(pid: str, request: ProjectMetadataBatchPatch):
+    """Atomically apply archival metadata to selected scans or the whole project."""
+    patch = request.metadata.model_dump(exclude_unset=True)
+    scans = get_project_store().update_metadata(pid, request.scan_ids, patch)
+    return {"scans": scans}
 
 
 @app.delete("/api/projects/{pid}/scans/{sid}")

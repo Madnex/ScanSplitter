@@ -24,6 +24,9 @@ export function ScanThumbnail({ projectId, scan, onClick }: ScanThumbnailProps) 
       <div className="absolute top-1.5 left-1.5">
         <StatusChip status={scan.status} boxCount={scan.boxes.length} />
       </div>
+      {Object.values(scan.metadata).some((value) => Array.isArray(value) ? value.length > 0 : value != null) && (
+        <span className="absolute top-1.5 right-1.5 rounded bg-black/65 text-white text-[9px] px-1.5 py-0.5" title="Archival metadata set">META</span>
+      )}
       <div className="absolute bottom-0 inset-x-0 bg-black/60 text-white text-[10px] px-1.5 py-1 truncate opacity-0 group-hover:opacity-100 transition-opacity">
         {scan.original_name}
       </div>

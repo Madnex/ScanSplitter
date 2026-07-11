@@ -1,6 +1,6 @@
 # Phase 2 Spec — Archival Metadata
 
-*Status: binding implementation contract on branch `quality-overhaul` (2026-07-11).*
+*Status: core metadata slice implemented on branch `quality-overhaul` (2026-07-11).*
 *If implementation must deviate, update this file in the same commit.*
 
 ## Goal

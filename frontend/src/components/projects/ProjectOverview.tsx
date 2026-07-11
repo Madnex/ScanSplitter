@@ -1,8 +1,9 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Download, PlayCircle, RefreshCw, Upload } from "lucide-react";
+import { ArrowLeft, Download, PlayCircle, RefreshCw, Tags, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ui/progress";
 import { ScanThumbnail } from "@/components/projects/ScanThumbnail";
+import { MetadataEditor } from "@/components/projects/MetadataEditor";
 import { useProject } from "@/hooks/useProject";
 import { detectPendingScans, exportProject, uploadProjectScans } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -49,6 +50,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ progress: number; stage: string | null } | null>(null);
   const [isQueueingDetect, setIsQueueingDetect] = useState(false);
+  const [showMetadata, setShowMetadata] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
 
@@ -182,6 +184,10 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           <RefreshCw className={cn("w-4 h-4 mr-1", isQueueingDetect && "animate-spin")} />
           Detect Pending
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setShowMetadata(true)} disabled={scans.length === 0}>
+          <Tags className="w-4 h-4 mr-1" />
+          Metadata
+        </Button>
         <Button size="sm" onClick={handleExport} disabled={isExporting || exportableCount === 0}>
           <Download className="w-4 h-4 mr-1" />
           {isExporting ? "Exporting…" : `Export (${exportableCount})`}
@@ -288,6 +294,14 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
             />
           ))}
         </div>
+      )}
+      {showMetadata && (
+        <MetadataEditor
+          project={project}
+          onClose={() => setShowMetadata(false)}
+          onSaved={refresh}
+          showToast={showToast}
+        />
       )}
     </div>
   );

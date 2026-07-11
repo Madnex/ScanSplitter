@@ -53,6 +53,22 @@ export interface ProjectScan {
   flags: Flag[];
   detected_count: number | null;
   reviewed_at: string | null;
+  metadata: ProjectMetadata;
+}
+
+export type DatePrecision = "day" | "month" | "year" | "season" | "circa";
+
+export interface ProjectMetadata {
+  date: string | null;
+  date_label: string | null;
+  date_precision: DatePrecision | null;
+  place_name: string | null;
+  latitude: number | null;
+  longitude: number | null;
+  caption: string | null;
+  people: string[];
+  event: string | null;
+  album: string | null;
 }
 
 export interface ProjectSettings {
