@@ -2,7 +2,13 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
-from scansplitter.restoration import auto_deskew, comparison_image, estimate_skew_angle
+from scansplitter.restoration import (
+    apply_restorations,
+    auto_deskew,
+    comparison_image,
+    estimate_skew_angle,
+    restore_color_and_fade,
+)
 
 
 def _lined_image(angle: float = 0) -> Image.Image:
@@ -36,3 +42,32 @@ def test_comparison_image_labels_and_bounds_derivative():
     assert result.mode == "RGB"
     assert result.height <= 764
     assert result.width > result.height
+
+
+def test_color_restoration_reduces_yellow_cast_and_expands_faded_range():
+    ramp = np.linspace(70, 190, 300, dtype=np.uint8)
+    faded = np.tile(ramp, (180, 1))
+    warm = np.clip(faded.astype(np.int16) + 35, 0, 255).astype(np.uint8)
+    cast = np.stack((warm, faded, faded // 2), axis=2)
+    restored, metrics = restore_color_and_fade(Image.fromarray(cast))
+    before = np.asarray(Image.fromarray(cast), dtype=np.float32)
+    after = np.asarray(restored, dtype=np.float32)
+    assert abs(after[:, :, 0].mean() - after[:, :, 2].mean()) < abs(
+        before[:, :, 0].mean() - before[:, :, 2].mean()
+    )
+    before_luma = before.mean(axis=2)
+    after_luma = after.mean(axis=2)
+    assert np.ptp(np.percentile(after_luma, (1, 99))) > np.ptp(
+        np.percentile(before_luma, (1, 99))
+    )
+    assert metrics["blue_gain"] > 1
+
+
+def test_restoration_pipeline_honors_opt_in_settings():
+    source = _lined_image(2)
+    unchanged, detail = apply_restorations(source, {})
+    assert unchanged is source
+    assert detail == "no restoration enabled"
+    restored, detail = apply_restorations(source, {"auto_deskew": True, "restore_color": True})
+    assert restored is not source
+    assert "deskew" in detail and "color/fade" in detail

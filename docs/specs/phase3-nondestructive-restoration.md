@@ -1,6 +1,6 @@
 # Phase 3 — Non-destructive restoration
 
-Status: auto-deskew and before/after preview implemented. This is the binding
+Status: auto-deskew, preview, and color/fade restoration implemented. This is the binding
 contract for Phase 3 work.
 
 ## Invariants
@@ -30,9 +30,16 @@ the current stored geometry, applies restoration to an in-memory derivative,
 and returns a labeled side-by-side JPEG through a cancellable background job.
 The preview is ephemeral and is never written into the project.
 
+## Slice 3: color and fade restoration
+
+Projects gain an opt-in `restore_color` setting. Export and preview use the
+same local pipeline: capped highlight-based gray-world balancing followed by
+a gently blended luminance stretch. Channel gains are bounded to 0.85–1.18,
+preventing intentional lighting or already-balanced photos from receiving an
+extreme correction. No source scan is modified.
+
 ## Later slices
 
-- White balance and fade restoration.
 - Dust and scratch removal.
 - Optional colorization and super-resolution, with explicit model downloads.
 - Per-photo overrides where a project-wide setting is too coarse.

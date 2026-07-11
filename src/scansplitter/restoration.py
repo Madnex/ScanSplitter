@@ -66,6 +66,54 @@ def auto_deskew(image: Image.Image) -> tuple[Image.Image, float]:
     )
 
 
+def restore_color_and_fade(image: Image.Image) -> tuple[Image.Image, dict[str, float]]:
+    """Apply capped gray-world balance and a gentle luminance expansion.
+
+    Gains and contrast are deliberately bounded: archival photos often have
+    intentional warm lighting, so this corrects obvious aging casts without
+    forcing every image to mathematically neutral gray.
+    """
+    rgb = np.asarray(image.convert("RGB"), dtype=np.float32)
+    highlights = rgb.reshape(-1, 3)
+    brightness = highlights.mean(axis=1)
+    highlights = highlights[brightness >= np.percentile(brightness, 70)]
+    channel_means = highlights.mean(axis=0)
+    neutral = float(channel_means.mean())
+    gains = np.clip(neutral / np.maximum(channel_means, 1.0), 0.85, 1.18)
+    balanced = np.clip(rgb * gains, 0, 255).astype(np.uint8)
+
+    lab = cv2.cvtColor(balanced, cv2.COLOR_RGB2LAB)
+    luminance = lab[:, :, 0].astype(np.float32)
+    low, high = np.percentile(luminance, (1.0, 99.0))
+    contrast_gain = 1.0
+    if high - low >= 24 and high - low < 210:
+        stretched = np.clip((luminance - low) * 255 / (high - low), 0, 255)
+        blend = 0.35
+        lab[:, :, 0] = np.clip(luminance * (1 - blend) + stretched * blend, 0, 255)
+        contrast_gain = round(255 / float(high - low), 3)
+    restored = cv2.cvtColor(lab, cv2.COLOR_LAB2RGB)
+    return Image.fromarray(restored), {
+        "red_gain": round(float(gains[0]), 3),
+        "green_gain": round(float(gains[1]), 3),
+        "blue_gain": round(float(gains[2]), 3),
+        "contrast_gain": contrast_gain,
+    }
+
+
+def apply_restorations(image: Image.Image, settings: dict) -> tuple[Image.Image, str]:
+    """Apply enabled restoration operations in a stable order."""
+    restored = image
+    details: list[str] = []
+    if settings.get("auto_deskew"):
+        restored, angle = auto_deskew(restored)
+        details.append(f"deskew {angle:+.2f}°" if angle else "deskew not needed")
+    if settings.get("restore_color"):
+        restored, metrics = restore_color_and_fade(restored)
+        strongest = max(abs(metrics[key] - 1) for key in ("red_gain", "green_gain", "blue_gain"))
+        details.append(f"color/fade corrected ({strongest * 100:.0f}% max balance)")
+    return restored, ", ".join(details) if details else "no restoration enabled"
+
+
 def comparison_image(before: Image.Image, after: Image.Image, detail: str) -> Image.Image:
     """Compose a bounded side-by-side preview derivative."""
     target_height = min(720, max(before.height, after.height))

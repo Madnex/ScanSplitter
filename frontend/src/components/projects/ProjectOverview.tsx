@@ -158,10 +158,10 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
     if (first) onReview(first.id);
   }, [scans, onReview]);
 
-  const handleDeskewChange = useCallback(async (enabled: boolean) => {
+  const handleRestorationChange = useCallback(async (setting: "auto_deskew" | "restore_color", enabled: boolean) => {
     setIsSavingRestoration(true);
     try {
-      await patchProject(projectId, { settings: { auto_deskew: enabled } });
+      await patchProject(projectId, { settings: { [setting]: enabled } });
       await refresh();
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to save restoration settings", "error");
@@ -221,19 +221,22 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
                 Applied only to exported copies. Stored scans and crop geometry stay untouched.
               </p>
             </div>
-            <label className="flex cursor-pointer items-center gap-3 text-sm">
-              <span className="text-right">
-                <span className="block font-medium">Auto-deskew</span>
-                <span className="block text-xs text-muted-foreground">Correct up to 5°</span>
-              </span>
-              <input
-                type="checkbox"
-                className="h-4 w-4 accent-primary"
-                checked={project.settings.auto_deskew}
-                disabled={isSavingRestoration}
-                onChange={(event) => void handleDeskewChange(event.target.checked)}
-              />
-            </label>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="flex cursor-pointer items-center justify-end gap-3 text-sm">
+                <span className="text-right">
+                  <span className="block font-medium">Auto-deskew</span>
+                  <span className="block text-xs text-muted-foreground">Correct up to 5°</span>
+                </span>
+                <input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.auto_deskew} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("auto_deskew", event.target.checked)} />
+              </label>
+              <label className="flex cursor-pointer items-center justify-end gap-3 text-sm">
+                <span className="text-right">
+                  <span className="block font-medium">Color & fade</span>
+                  <span className="block text-xs text-muted-foreground">Balance casts and contrast</span>
+                </span>
+                <input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.restore_color} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("restore_color", event.target.checked)} />
+              </label>
+            </div>
           </div>
         </section>
       )}

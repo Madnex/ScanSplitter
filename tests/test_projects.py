@@ -174,6 +174,7 @@ def test_old_manifest_gets_restoration_defaults(data_dir):
     fetched = client.get(f"/api/projects/{pid}")
     assert fetched.status_code == 200
     assert fetched.json()["settings"]["auto_deskew"] is False
+    assert fetched.json()["settings"]["restore_color"] is False
 
 
 def test_create_project_requires_name():

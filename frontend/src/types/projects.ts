@@ -77,6 +77,7 @@ export interface ProjectSettings {
   max_area_ratio: number;
   auto_rotate: boolean;
   auto_deskew: boolean;
+  restore_color: boolean;
   format: "jpeg" | "png";
   quality: number;
   include_gps: boolean;

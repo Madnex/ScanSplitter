@@ -84,6 +84,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "max_area_ratio": 80.0,
     "auto_rotate": True,
     "auto_deskew": False,
+    "restore_color": False,
     "format": "jpeg",
     "quality": 85,
     "include_gps": False,
@@ -599,7 +600,7 @@ class ProjectStore:
             import numpy as np
 
             from .jobs import JobCancelled
-            from .restoration import auto_deskew, comparison_image
+            from .restoration import apply_restorations, comparison_image
 
             progress(15, "cropping photo")
             if cancelled():
@@ -615,8 +616,7 @@ class ProjectStore:
             if data["settings"]["auto_rotate"]:
                 before, _ = auto_rotate(before)
             progress(55, "applying restoration")
-            after, angle = auto_deskew(before)
-            detail = f"deskew {angle:+.2f}°" if angle else "no correction needed"
+            after, detail = apply_restorations(before, data["settings"])
             preview = comparison_image(before, after, detail)
             output = io.BytesIO()
             preview.save(output, "JPEG", quality=88)
@@ -643,7 +643,6 @@ class ProjectStore:
         data = self._read(pid)
         pdir = self._project_dir(pid)
         auto_rotate_enabled = bool(data["settings"]["auto_rotate"])
-        auto_deskew_enabled = bool(data["settings"]["auto_deskew"])
         ext = "png" if out_format == "png" else "jpg"
 
         exportable = [s for s in data["scans"] if s["status"] in _EXPORTABLE_STATUSES]
@@ -672,10 +671,9 @@ class ProjectStore:
                     crop_pil = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
                     if auto_rotate_enabled:
                         crop_pil, _ = auto_rotate(crop_pil)
-                    if auto_deskew_enabled:
-                        from .restoration import auto_deskew
+                    from .restoration import apply_restorations
 
-                        crop_pil, _ = auto_deskew(crop_pil)
+                    crop_pil, _ = apply_restorations(crop_pil, data["settings"])
 
                     img_buffer = io.BytesIO()
                     if ext == "png":
