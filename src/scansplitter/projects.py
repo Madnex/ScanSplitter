@@ -583,6 +583,47 @@ class ProjectStore:
 
         return submit_job("export", pid, worker).job_id
 
+    def submit_restoration_preview_job(self, pid: str, sid: str, box_id: str | None) -> str:
+        """Build an ephemeral before/after JPEG for one crop."""
+        data = self._read(pid)
+        scan = self._find_scan(data, sid)
+        boxes = scan["boxes"]
+        if not boxes:
+            raise HTTPException(status_code=400, detail="Scan has no photo boxes to preview")
+        box = next((item for item in boxes if item["id"] == box_id), None) if box_id else boxes[0]
+        if box is None:
+            raise HTTPException(status_code=404, detail="Photo box not found")
+
+        def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
+            import cv2
+            import numpy as np
+
+            from .jobs import JobCancelled
+            from .restoration import auto_deskew, comparison_image
+
+            progress(15, "cropping photo")
+            if cancelled():
+                raise JobCancelled
+            stored = self._project_dir(pid) / scan["stored_file"]
+            source = Image.open(stored).convert("RGB")
+            cv_image = cv2.cvtColor(np.array(source), cv2.COLOR_RGB2BGR)
+            region = _box_to_region(box, source.width, source.height)
+            cropped = crop_rotated_region(cv_image, region)
+            if cropped.size == 0:
+                raise HTTPException(status_code=400, detail="Photo box produced an empty crop")
+            before = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
+            if data["settings"]["auto_rotate"]:
+                before, _ = auto_rotate(before)
+            progress(55, "applying restoration")
+            after, angle = auto_deskew(before)
+            detail = f"deskew {angle:+.2f}°" if angle else "no correction needed"
+            preview = comparison_image(before, after, detail)
+            output = io.BytesIO()
+            preview.save(output, "JPEG", quality=88)
+            return {"detail": detail, "__download_bytes": output.getvalue()}
+
+        return submit_job("restoration-preview", pid, worker).job_id
+
     def _build_export_zip(
         self,
         pid: str,

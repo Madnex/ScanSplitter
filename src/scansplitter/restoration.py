@@ -2,7 +2,7 @@
 
 import cv2
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageDraw
 
 MAX_DESKEW_DEGREES = 5.0
 MIN_DESKEW_DEGREES = 0.25
@@ -64,3 +64,25 @@ def auto_deskew(image: Image.Image) -> tuple[Image.Image, float]:
         rgb.rotate(angle, resample=Image.Resampling.BICUBIC, expand=True, fillcolor=fill),
         angle,
     )
+
+
+def comparison_image(before: Image.Image, after: Image.Image, detail: str) -> Image.Image:
+    """Compose a bounded side-by-side preview derivative."""
+    target_height = min(720, max(before.height, after.height))
+
+    def scaled(image: Image.Image) -> Image.Image:
+        ratio = target_height / image.height
+        return image.convert("RGB").resize(
+            (max(1, round(image.width * ratio)), target_height), Image.Resampling.LANCZOS
+        )
+
+    left, right = scaled(before), scaled(after)
+    header = 44
+    canvas = Image.new("RGB", (left.width + right.width, target_height + header), "#18181b")
+    canvas.paste(left, (0, header))
+    canvas.paste(right, (left.width, header))
+    draw = ImageDraw.Draw(canvas)
+    draw.text((14, 14), "Before", fill="white")
+    draw.text((left.width + 14, 14), f"After · {detail}", fill="white")
+    draw.line((left.width, 0, left.width, canvas.height), fill="white", width=2)
+    return canvas

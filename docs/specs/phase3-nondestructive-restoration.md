@@ -1,6 +1,6 @@
 # Phase 3 — Non-destructive restoration
 
-Status: first slice implemented (auto-deskew). This document is the binding
+Status: auto-deskew and before/after preview implemented. This is the binding
 contract for Phase 3 work.
 
 ## Invariants
@@ -10,8 +10,7 @@ contract for Phase 3 work.
 - Every restoration is opt-in and its settings persist in `project.json`.
 - Long-running restoration is executed inside the existing background export
   job, with progress and cancellation.
-- Before/after comparison is required before restoration features beyond
-  auto-deskew can graduate from this phase.
+- Before/after comparison is available from review mode before export.
 
 ## Slice 1: auto-deskew
 
@@ -24,9 +23,15 @@ vertical axis. It uses a line-length-weighted median, ignores corrections below
 0.25 degrees, and declines corrections when there is insufficient evidence.
 It never converts a large rotation into a deskew operation.
 
+## Slice 2: before/after preview
+
+Review mode can request a preview for the first photo box. The server crops
+the current stored geometry, applies restoration to an in-memory derivative,
+and returns a labeled side-by-side JPEG through a cancellable background job.
+The preview is ephemeral and is never written into the project.
+
 ## Later slices
 
-- A before/after preview job and comparison control.
 - White balance and fade restoration.
 - Dust and scratch removal.
 - Optional colorization and super-resolution, with explicit model downloads.

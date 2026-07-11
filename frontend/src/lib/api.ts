@@ -63,7 +63,7 @@ export async function uploadFile(file: File): Promise<{
 }
 
 /** Kinds accepted by the `/api/jobs/{kind}` background-job endpoints. */
-export type JobKind = "detect" | "crop" | "export" | "export-local";
+export type JobKind = "detect" | "crop" | "export" | "export-local" | "restoration-preview";
 
 /** Polling representation returned by `GET /api/jobs/{job_id}`. */
 export interface JobStatus<T = unknown> {
@@ -692,4 +692,22 @@ export async function exportProject(
   );
   const safeName = projectName.trim().replace(/[^\w.-]+/g, "_") || "project";
   triggerBrowserDownload(result.download_url, `${safeName}.zip`);
+}
+
+export async function previewProjectRestoration(
+  projectId: string,
+  scanId: string,
+  boxId?: string,
+  signal?: AbortSignal,
+  onProgress?: (progress: number, stage: string | null) => void
+): Promise<{ imageUrl: string; detail: string }> {
+  const result = await runJobAt<{ download_url: string; detail: string }>(
+    `${API_BASE}/projects/${projectId}/scans/${scanId}/restoration-preview`,
+    { box_id: boxId },
+    "restoration-preview",
+    { signal, onProgress }
+  );
+  const response = await fetch(result.download_url, { signal });
+  if (!response.ok) throw new Error("Failed to load restoration preview");
+  return { imageUrl: URL.createObjectURL(await response.blob()), detail: result.detail };
 }

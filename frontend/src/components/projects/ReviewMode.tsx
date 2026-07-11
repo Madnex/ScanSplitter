@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Loader2, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Eye, Loader2, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { useProject } from "@/hooks/useProject";
 import { useReviewQueue } from "@/hooks/useReviewQueue";
-import { detectProjectScan, getProject, getProjectScanImageUrl, patchProjectScan } from "@/lib/api";
+import { detectProjectScan, getProject, getProjectScanImageUrl, patchProjectScan, previewProjectRestoration } from "@/lib/api";
 import { StatusChip } from "@/components/projects/StatusChip";
 import { cn } from "@/lib/utils";
 import type { BoundingBox } from "@/types";
@@ -41,9 +41,27 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   const savedBoxesRef = useRef<ProjectBox[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [isPreviewing, setIsPreviewing] = useState(false);
+  const [preview, setPreview] = useState<{ imageUrl: string; detail: string } | null>(null);
   const [canvasFocused, setCanvasFocused] = useState(false);
   const canvasWrapperRef = useRef<HTMLDivElement>(null);
   const detectAbortRef = useRef<AbortController | null>(null);
+  const previewAbortRef = useRef<AbortController | null>(null);
+  const previewUrlRef = useRef<string | null>(null);
+
+  const closePreview = useCallback(() => {
+    previewAbortRef.current?.abort();
+    previewAbortRef.current = null;
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+    previewUrlRef.current = null;
+    setPreview(null);
+    setIsPreviewing(false);
+  }, []);
+
+  useEffect(() => () => {
+    previewAbortRef.current?.abort();
+    if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current);
+  }, []);
 
   // Sync working boxes when the scan being reviewed changes. Deliberately
   // keyed on `scanId` alone (via a "have we synced this id yet" guard), not
@@ -154,6 +172,31 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     }
   }, [currentScan, projectId, updateScan, showToast]);
 
+  const handlePreview = useCallback(async () => {
+    if (!currentScan || boxes.length === 0) return;
+    await persistBoxesIfDirty();
+    closePreview();
+    const controller = new AbortController();
+    previewAbortRef.current = controller;
+    setIsPreviewing(true);
+    try {
+      const result = await previewProjectRestoration(
+        projectId, currentScan.id, boxes[0].id, controller.signal
+      );
+      previewUrlRef.current = result.imageUrl;
+      setPreview(result);
+    } catch (err) {
+      if (!(err instanceof DOMException && err.name === "AbortError")) {
+        showToast(err instanceof Error ? err.message : "Restoration preview failed", "error");
+      }
+    } finally {
+      if (previewAbortRef.current === controller) {
+        previewAbortRef.current = null;
+        setIsPreviewing(false);
+      }
+    }
+  }, [boxes, closePreview, currentScan, persistBoxesIfDirty, projectId, showToast]);
+
   const handleBack = useCallback(() => {
     void persistBoxesIfDirty().finally(onBack);
   }, [persistBoxesIfDirty, onBack]);
@@ -240,12 +283,27 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
             {isDetecting ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <RefreshCw className="w-4 h-4 mr-1" />}
             Re-detect
           </Button>
+          <Button size="sm" variant="outline" onClick={() => void handlePreview()} disabled={isPreviewing || boxes.length === 0}>
+            {isPreviewing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Eye className="w-4 h-4 mr-1" />}
+            Compare
+          </Button>
           <Button size="sm" onClick={() => void handleApprove()} disabled={isSaving} title="Approve & next (Enter)">
             <Check className="w-4 h-4 mr-1" />
             Approve
           </Button>
         </div>
       </div>
+      {preview && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 p-5" role="dialog" aria-modal="true" aria-label="Restoration comparison">
+          <div className="relative max-h-full max-w-6xl overflow-auto rounded-lg bg-background p-3 shadow-2xl">
+            <button onClick={closePreview} className="absolute right-5 top-5 rounded-md bg-black/70 p-1.5 text-white transition hover:bg-black focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white" aria-label="Close comparison">
+              <X className="h-5 w-5" />
+            </button>
+            <img src={preview.imageUrl} alt={`Before and after restoration comparison: ${preview.detail}`} className="max-h-[82dvh] max-w-full rounded" />
+            <p className="px-1 pt-2 text-sm text-muted-foreground">{preview.detail}. Preview uses the first photo box.</p>
+          </div>
+        </div>
+      )}
 
       {/* Body: canvas + flags */}
       <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 min-h-0">

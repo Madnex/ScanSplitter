@@ -421,6 +421,31 @@ def test_export_job_produces_zip_with_expected_names(monkeypatch):
             assert archive.read(name)
 
 
+def test_restoration_preview_job_returns_inline_jpeg(monkeypatch):
+    _install_confidence(monkeypatch, lambda *a, **k: [])
+    pid = _create_project()["id"]
+    upload = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[("files", ("tilted.png", _photo_png(), "image/png"))],
+    )
+    sid = upload.json()["scans"][0]["id"]
+    box = {"id": "photo-1", "x": 400, "y": 300, "width": 400, "height": 300, "angle": 0}
+    client.patch(f"/api/projects/{pid}/scans/{sid}", json={"boxes": [box]})
+
+    started = client.post(
+        f"/api/projects/{pid}/scans/{sid}/restoration-preview",
+        json={"box_id": "photo-1"},
+    )
+    assert started.status_code == 202
+    job = _wait_for_job(started.json()["job_id"])
+    assert job["status"] == "succeeded", job
+    assert "detail" in job["result"]
+    download = client.get(job["result"]["download_url"])
+    assert download.headers["content-type"] == "image/jpeg"
+    assert download.headers["content-disposition"].startswith("inline;")
+    assert Image.open(io.BytesIO(download.content)).format == "JPEG"
+
+
 # --- Path safety ------------------------------------------------------------
 
 

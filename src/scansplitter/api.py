@@ -281,6 +281,12 @@ class ProjectExportRequest(BaseModel):
     include_gps: bool | None = None
 
 
+class RestorationPreviewRequest(BaseModel):
+    """Select a crop for a non-destructive restoration comparison."""
+
+    box_id: str | None = None
+
+
 class ProjectMetadataPatch(BaseModel):
     """Partial archival metadata update; omitted fields are preserved."""
 
@@ -1118,15 +1124,22 @@ def download_job(job_id: str):
     job = registry.get(job_id)
     if (
         job is None
-        or job.kind != "export"
+        or job.kind not in {"export", "restoration-preview"}
         or job.status != "succeeded"
         or job.download_bytes is None
     ):
         raise HTTPException(status_code=404, detail="Job download not ready or expired")
+    is_preview = job.kind == "restoration-preview"
     return Response(
         content=job.download_bytes,
-        media_type="application/zip",
-        headers={"Content-Disposition": 'attachment; filename="scansplitter_export.zip"'},
+        media_type="image/jpeg" if is_preview else "application/zip",
+        headers={
+            "Content-Disposition": (
+                'inline; filename="restoration-preview.jpg"'
+                if is_preview
+                else 'attachment; filename="scansplitter_export.zip"'
+            )
+        },
     )
 
 
@@ -1374,6 +1387,13 @@ def export_project(pid: str, request: ProjectExportRequest):
     job_id = store.submit_export_job(
         pid, fmt=request.format, quality=request.quality, include_gps=request.include_gps
     )
+    return {"job_id": job_id}
+
+
+@app.post("/api/projects/{pid}/scans/{sid}/restoration-preview", status_code=202)
+def preview_project_restoration(pid: str, sid: str, request: RestorationPreviewRequest):
+    """Generate an ephemeral side-by-side restoration preview in a background job."""
+    job_id = get_project_store().submit_restoration_preview_job(pid, sid, request.box_id)
     return {"job_id": job_id}
 
 

@@ -2,7 +2,7 @@ import numpy as np
 import pytest
 from PIL import Image, ImageDraw
 
-from scansplitter.restoration import auto_deskew, estimate_skew_angle
+from scansplitter.restoration import auto_deskew, comparison_image, estimate_skew_angle
 
 
 def _lined_image(angle: float = 0) -> Image.Image:
@@ -29,3 +29,10 @@ def test_auto_deskew_corrects_derivative_without_mutating_source():
 def test_estimator_ignores_large_rotation_and_blank_images():
     assert estimate_skew_angle(_lined_image(12)) == 0.0
     assert estimate_skew_angle(Image.new("RGB", (300, 200), "white")) == 0.0
+
+
+def test_comparison_image_labels_and_bounds_derivative():
+    result = comparison_image(_lined_image(), _lined_image(2), "deskew +2.00°")
+    assert result.mode == "RGB"
+    assert result.height <= 764
+    assert result.width > result.height
