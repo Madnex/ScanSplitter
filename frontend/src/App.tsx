@@ -65,6 +65,16 @@ function App() {
   const [isExporting, setIsExporting] = useState(false);
   const [isBrowsingOutputDirectory, setIsBrowsingOutputDirectory] = useState(false);
 
+  // Background-job progress for the operations that now run through
+  // runJob (detect/crop/export/export-local). null means "not running" -
+  // the progress bar in the corresponding panel only renders while its
+  // matching isDetecting/isCropping/isExporting flag is also true. Detect
+  // progress is only tracked for non-silent (manual) runs, matching
+  // isDetecting's existing silent-auto-detect exclusion below.
+  const [detectProgress, setDetectProgress] = useState<{ progress: number; stage: string | null } | null>(null);
+  const [cropProgress, setCropProgress] = useState<{ progress: number; stage: string | null } | null>(null);
+  const [exportProgress, setExportProgress] = useState<{ progress: number; stage: string | null } | null>(null);
+
   // Output directory (persisted to localStorage)
   const [outputDirectory, setOutputDirectory] = useState<string>(() =>
     localStorage.getItem("scansplitter_output_dir") ?? ""
@@ -252,7 +262,10 @@ function App() {
         f.sessionId === target.sessionId ? { ...f, detectionStatus: 'detecting' as const } : f
       )
     );
-    if (!options.silent) setIsDetecting(true);
+    if (!options.silent) {
+      setIsDetecting(true);
+      setDetectProgress({ progress: 0, stage: null });
+    }
 
     try {
       if (settings.detectionMode === "u2net") {
@@ -270,7 +283,8 @@ function App() {
         settings.maxArea,
         settings.detectionMode,
         settings.u2netLite,
-        controller.signal
+        controller.signal,
+        options.silent ? undefined : (progress, stage) => setDetectProgress({ progress, stage })
       );
 
       // Belt-and-braces staleness guard: only apply if the target file is
@@ -302,7 +316,10 @@ function App() {
       // request of record (a superseding call already replaced them).
       if (detectAbortControllerRef.current === controller) {
         detectAbortControllerRef.current = null;
-        if (!options.silent) setIsDetecting(false);
+        if (!options.silent) {
+          setIsDetecting(false);
+          setDetectProgress(null);
+        }
       }
     }
   }, [settings.minArea, settings.maxArea, settings.detectionMode, settings.u2netLite, ensureModelReady, showToast]);
@@ -606,6 +623,7 @@ function App() {
     const controller = new AbortController();
     cropAbortControllerRef.current = controller;
     setIsCropping(true);
+    setCropProgress({ progress: 0, stage: null });
     try {
       if (settings.autoRotate) {
         await ensureModelReady("orientation");
@@ -615,7 +633,8 @@ function App() {
         activeFile.currentPage,
         activeFile.boxes,
         settings.autoRotate,
-        controller.signal
+        controller.signal,
+        (progress, stage) => setCropProgress({ progress, stage })
       );
 
       // Remove existing images from same file/page before adding new ones
@@ -652,6 +671,7 @@ function App() {
       if (cropAbortControllerRef.current === controller) {
         cropAbortControllerRef.current = null;
         setIsCropping(false);
+        setCropProgress(null);
       }
     }
   }, [activeFile, activeFileIndex, settings.autoRotate, ensureModelReady, showToast]);
@@ -672,18 +692,20 @@ function App() {
     }
 
     setIsExporting(true);
+    setExportProgress({ progress: 0, stage: null });
     try {
-      const blob = await exportZip(activeFile.sessionId, "jpeg", 85, images, includeGps);
-
-      // Download the blob
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = "scansplitter_export.zip";
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
+      // exportZip now runs through the export job and triggers the browser
+      // download itself once the job resolves with a download_url - no blob
+      // handling needed here anymore.
+      await exportZip(
+        activeFile.sessionId,
+        "jpeg",
+        85,
+        images,
+        includeGps,
+        undefined,
+        (progress, stage) => setExportProgress({ progress, stage })
+      );
 
       showToast(`Downloaded ${exportImages.length} images as ZIP`, "success");
     } catch (error) {
@@ -691,6 +713,7 @@ function App() {
       showToast("Failed to export photos", "error");
     } finally {
       setIsExporting(false);
+      setExportProgress(null);
     }
   }, [activeFile, exportImages, includeGps, showToast]);
 
@@ -707,6 +730,7 @@ function App() {
     }
 
     setIsExporting(true);
+    setExportProgress({ progress: 0, stage: null });
     try {
       const result = await exportLocal(
         activeFile.sessionId,
@@ -715,7 +739,9 @@ function App() {
         85,
         images,
         overwrite,
-        includeGps
+        includeGps,
+        undefined,
+        (progress, stage) => setExportProgress({ progress, stage })
       );
       showToast(`Exported ${result.count} images to ${outputDirectory}`, "success");
     } catch (error) {
@@ -730,6 +756,7 @@ function App() {
       showToast(error instanceof Error ? error.message : "Failed to export photos", "error");
     } finally {
       setIsExporting(false);
+      setExportProgress(null);
     }
   }, [activeFile, exportImages, outputDirectory, includeGps, showToast]);
 
@@ -820,6 +847,8 @@ function App() {
               onCrop={handleCrop}
               isDetecting={isDetecting}
               isCropping={isCropping}
+              detectProgress={detectProgress}
+              cropProgress={cropProgress}
               hasBoxes={(activeFile?.boxes.length ?? 0) > 0}
               modelStatuses={modelStatuses}
             />
@@ -881,6 +910,7 @@ function App() {
               onDateChange={handleImageDateChange}
               onRotate={handleImageRotate}
               isExporting={isExporting}
+              exportProgress={exportProgress}
               isBrowsingOutputDirectory={isBrowsingOutputDirectory}
               outputDirectory={outputDirectory}
               onOutputDirectoryChange={setOutputDirectory}

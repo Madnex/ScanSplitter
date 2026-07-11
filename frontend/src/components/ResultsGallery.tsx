@@ -3,11 +3,17 @@ import { Download, FolderDown, FolderOpen, RotateCcw, RotateCw, Expand, Wand2, C
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { ProgressBar } from "@/components/ui/progress";
 import { Lightbox } from "@/components/Lightbox";
 import { NamingPatternInput } from "@/components/NamingPatternInput";
 import { estimateBase64FileSize, formatFileSize, formatDimensions } from "@/lib/utils";
 import { validatePattern, generateNamesForImages, findDuplicateName } from "@/lib/naming";
 import type { CroppedImage, NamingPattern } from "@/types";
+
+interface JobProgress {
+  progress: number;
+  stage: string | null;
+}
 
 interface ResultsGalleryProps {
   allImages: CroppedImage[];
@@ -23,6 +29,7 @@ interface ResultsGalleryProps {
   onDateChange: (id: string, date: string | null) => void;
   onRotate: (id: string, direction: "left" | "right") => void;
   isExporting: boolean;
+  exportProgress?: JobProgress | null;
   isBrowsingOutputDirectory: boolean;
   outputDirectory: string;
   onOutputDirectoryChange: (path: string) => void;
@@ -45,6 +52,7 @@ export function ResultsGallery({
   onDateChange,
   onRotate,
   isExporting,
+  exportProgress = null,
   isBrowsingOutputDirectory,
   outputDirectory,
   onOutputDirectoryChange,
@@ -167,6 +175,14 @@ export function ResultsGallery({
               ZIP
             </Button>
           </div>
+
+          {isExporting && exportProgress && (
+            <ProgressBar
+              className="mt-2"
+              value={exportProgress.progress}
+              label={exportProgress.stage ?? "starting"}
+            />
+          )}
 
           {/* Output directory */}
           <div className="mt-2">

@@ -1,8 +1,14 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
+import { ProgressBar } from "@/components/ui/progress";
 import { Loader2 } from "lucide-react";
 import type { DetectionSettings, ModelKey, ModelStatus } from "@/types";
+
+interface JobProgress {
+  progress: number;
+  stage: string | null;
+}
 
 interface SettingsPanelProps {
   settings: DetectionSettings;
@@ -11,6 +17,8 @@ interface SettingsPanelProps {
   onCrop: () => void;
   isDetecting: boolean;
   isCropping: boolean;
+  detectProgress?: JobProgress | null;
+  cropProgress?: JobProgress | null;
   hasBoxes: boolean;
   modelStatuses?: Record<ModelKey, ModelStatus> | null;
 }
@@ -22,6 +30,8 @@ export function SettingsPanel({
   onCrop,
   isDetecting,
   isCropping,
+  detectProgress = null,
+  cropProgress = null,
   hasBoxes,
   modelStatuses = null,
 }: SettingsPanelProps) {
@@ -189,6 +199,12 @@ export function SettingsPanel({
           >
             {isDetecting ? "Detecting..." : "Detect Photos"}
           </Button>
+          {isDetecting && detectProgress && (
+            <ProgressBar
+              value={detectProgress.progress}
+              label={detectProgress.stage ?? "starting"}
+            />
+          )}
           <Button
             onClick={onCrop}
             disabled={isCropping || !hasBoxes}
@@ -197,6 +213,12 @@ export function SettingsPanel({
           >
             {isCropping ? "Cropping..." : "Crop Selected"}
           </Button>
+          {isCropping && cropProgress && (
+            <ProgressBar
+              value={cropProgress.progress}
+              label={cropProgress.stage ?? "starting"}
+            />
+          )}
         </div>
       </CardContent>
     </Card>
