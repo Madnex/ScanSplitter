@@ -4,9 +4,11 @@ from PIL import Image, ImageDraw
 
 from scansplitter.restoration import (
     apply_restorations,
+    archival_upscale,
     auto_deskew,
     comparison_image,
     estimate_skew_angle,
+    remove_dust_and_scratches,
     restore_color_and_fade,
 )
 
@@ -71,3 +73,20 @@ def test_restoration_pipeline_honors_opt_in_settings():
     restored, detail = apply_restorations(source, {"auto_deskew": True, "restore_color": True})
     assert restored is not source
     assert "deskew" in detail and "color/fade" in detail
+
+
+def test_dust_removal_repairs_isolated_defect_without_global_blur():
+    image = np.full((120, 160, 3), 140, dtype=np.uint8)
+    image[60, 80] = 255
+    restored, repaired = remove_dust_and_scratches(Image.fromarray(image))
+    pixels = np.asarray(restored)
+    assert repaired > 0
+    assert abs(int(pixels[60, 80, 0]) - 140) < 10
+    assert np.array_equal(pixels[20, 20], image[20, 20])
+
+
+def test_archival_upscale_is_two_times_and_non_mutating():
+    source = _lined_image()
+    result = archival_upscale(source)
+    assert result.size == (source.width * 2, source.height * 2)
+    assert source.size == (640, 420)

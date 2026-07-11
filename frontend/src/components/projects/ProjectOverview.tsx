@@ -160,7 +160,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
     if (first) onReview(first.id);
   }, [scans, onReview]);
 
-  const handleRestorationChange = useCallback(async (setting: "auto_deskew" | "restore_color", enabled: boolean) => {
+  const handleRestorationChange = useCallback(async (setting: "auto_deskew" | "restore_color" | "remove_dust" | "upscale_2x", enabled: boolean) => {
     setIsSavingRestoration(true);
     try {
       await patchProject(projectId, { settings: { [setting]: enabled } });
@@ -226,7 +226,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
                 Applied only to exported copies. Stored scans and crop geometry stay untouched.
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
               <label className="flex cursor-pointer items-center justify-end gap-3 text-sm">
                 <span className="text-right">
                   <span className="block font-medium">Auto-deskew</span>
@@ -241,6 +241,8 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
                 </span>
                 <input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.restore_color} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("restore_color", event.target.checked)} />
               </label>
+              <label className="flex cursor-pointer items-center justify-end gap-3 text-sm"><span className="text-right"><span className="block font-medium">Dust & scratches</span><span className="block text-xs text-muted-foreground">Repair sparse defects</span></span><input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.remove_dust} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("remove_dust", event.target.checked)} /></label>
+              <label className="flex cursor-pointer items-center justify-end gap-3 text-sm"><span className="text-right"><span className="block font-medium">2× upscale</span><span className="block text-xs text-muted-foreground">Non-generative Lanczos</span></span><input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.upscale_2x} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("upscale_2x", event.target.checked)} /></label>
             </div>
           </div>
         </section>

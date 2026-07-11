@@ -85,6 +85,8 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_rotate": True,
     "auto_deskew": False,
     "restore_color": False,
+    "remove_dust": False,
+    "upscale_2x": False,
     "format": "jpeg",
     "quality": 85,
     "include_gps": False,
@@ -677,7 +679,8 @@ class ProjectStore:
             if data["settings"]["auto_rotate"]:
                 before, _ = auto_rotate(before)
             progress(55, "applying restoration")
-            after, detail = apply_restorations(before, data["settings"])
+            effective_settings = {**data["settings"], **box.get("restoration", {})}
+            after, detail = apply_restorations(before, effective_settings)
             preview = comparison_image(before, after, detail)
             output = io.BytesIO()
             preview.save(output, "JPEG", quality=88)
@@ -734,7 +737,8 @@ class ProjectStore:
                         crop_pil, _ = auto_rotate(crop_pil)
                     from .restoration import apply_restorations
 
-                    crop_pil, _ = apply_restorations(crop_pil, data["settings"])
+                    effective_settings = {**data["settings"], **box.get("restoration", {})}
+                    crop_pil, _ = apply_restorations(crop_pil, effective_settings)
 
                     img_buffer = io.BytesIO()
                     if ext == "png":
@@ -787,7 +791,7 @@ def _new_scan_entry(
 
 def _normalize_box(box: dict) -> dict:
     """Coerce a client box into the stored center-based shape."""
-    return {
+    normalized = {
         "id": str(box.get("id") or _new_id()[:8]),
         "x": float(box["x"]),
         "y": float(box["y"]),
@@ -795,6 +799,14 @@ def _normalize_box(box: dict) -> dict:
         "height": float(box["height"]),
         "angle": float(box.get("angle", 0.0)),
     }
+    overrides = box.get("restoration")
+    if isinstance(overrides, dict):
+        normalized["restoration"] = {
+            key: bool(value)
+            for key, value in overrides.items()
+            if key in {"auto_deskew", "restore_color", "remove_dust", "upscale_2x"}
+        }
+    return normalized
 
 
 def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:

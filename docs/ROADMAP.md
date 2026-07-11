@@ -68,15 +68,15 @@ Spec: [docs/specs/phase2-archival-metadata.md](specs/phase2-archival-metadata.md
 - Front/back pairing with OCR: scan the back, read the handwriting, attach
   date and note to the front.
 
-## Phase 3 — Non-destructive restoration 🔨
+## Phase 3 — Non-destructive restoration ✅
 
 Spec: [docs/specs/phase3-nondestructive-restoration.md](specs/phase3-nondestructive-restoration.md)
 
 - ✅ Opt-in auto-deskew for the 1–5° tilt that 90° auto-rotate can't fix.
 - ✅ Color & fade restoration (white-balance yellowed prints); optional
   colorization remains planned.
-- Dust & scratch removal.
-- Opt-in super-resolution for low-DPI scans.
+- ✅ Dust & scratch removal.
+- ✅ Opt-in non-generative 2× archival upscale for low-DPI scans.
 - Always before/after; never overwrite the archival crop. Runs as
   background jobs.
 
@@ -102,6 +102,8 @@ Spec: [docs/specs/phase3-nondestructive-restoration.md](specs/phase3-nondestruct
 - Lowering `requires-python` below 3.13 (owner decision, 2026-07-11).
 - Hosted/multi-user deployment: no auth layer exists; local-first by design.
   Scanning is a local act — a hosted instance adds little.
+- Core semantic colorization: invented colors are not archival facts. A future
+  plugin may provide clearly labeled colorized derivatives with provenance.
 
 ## Open operational items
 

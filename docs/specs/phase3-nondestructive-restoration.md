@@ -1,6 +1,6 @@
 # Phase 3 — Non-destructive restoration
 
-Status: auto-deskew, preview, and color/fade restoration implemented. This is the binding
+Status: complete. This is the binding
 contract for Phase 3 work.
 
 ## Invariants
@@ -40,6 +40,14 @@ extreme correction. No source scan is modified.
 
 ## Later slices
 
-- Dust and scratch removal.
-- Optional colorization and super-resolution, with explicit model downloads.
-- Per-photo overrides where a project-wide setting is too coarse.
+## Slice 4: defect repair and archival upscale
+
+Sparse dust and thin scratches are detected using bounded morphological masks;
+only small connected components are inpainted. The optional 2× upscale uses
+Lanczos and restrained sharpening and is explicitly non-generative. Restoration
+keys can also be stored on an individual photo box to override project defaults.
+
+Semantic colorization is deliberately excluded: generated colors are not
+historical facts and conflict with library-grade archival output. It remains
+possible for a future plugin to provide colorized derivatives with provenance,
+but core exports do not invent colors.

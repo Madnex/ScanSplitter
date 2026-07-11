@@ -100,6 +100,41 @@ def restore_color_and_fade(image: Image.Image) -> tuple[Image.Image, dict[str, f
     }
 
 
+def remove_dust_and_scratches(image: Image.Image) -> tuple[Image.Image, float]:
+    """Repair sparse, high-contrast specks and thin scratches conservatively."""
+    rgb = np.asarray(image.convert("RGB"))
+    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
+    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
+    bright = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, kernel)
+    dark = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
+    defects = np.maximum(bright, dark)
+    threshold = max(22, int(np.percentile(defects, 99.7)))
+    mask = np.where(defects >= threshold, 255, 0).astype(np.uint8)
+    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
+    filtered = np.zeros_like(mask)
+    max_area = max(12, int(mask.size * 0.00015))
+    for label in range(1, count):
+        x, y, width, height, area = stats[label]
+        thin = min(width, height) <= 3 and max(width, height) <= 80
+        speck = area <= max_area and width <= 18 and height <= 18
+        if speck or thin:
+            filtered[labels == label] = 255
+    ratio = float(np.count_nonzero(filtered) / filtered.size)
+    if ratio == 0 or ratio > 0.02:
+        return image, 0.0
+    repaired = cv2.inpaint(rgb, filtered, 2, cv2.INPAINT_TELEA)
+    return Image.fromarray(repaired), round(ratio * 100, 3)
+
+
+def archival_upscale(image: Image.Image, factor: int = 2) -> Image.Image:
+    """Non-generative Lanczos upscale with a restrained unsharp pass."""
+    rgb = np.asarray(image.convert("RGB"))
+    enlarged = cv2.resize(rgb, None, fx=factor, fy=factor, interpolation=cv2.INTER_LANCZOS4)
+    blurred = cv2.GaussianBlur(enlarged, (0, 0), 1.0)
+    sharpened = cv2.addWeighted(enlarged, 1.18, blurred, -0.18, 0)
+    return Image.fromarray(sharpened)
+
+
 def apply_restorations(image: Image.Image, settings: dict) -> tuple[Image.Image, str]:
     """Apply enabled restoration operations in a stable order."""
     restored = image
@@ -111,6 +146,12 @@ def apply_restorations(image: Image.Image, settings: dict) -> tuple[Image.Image,
         restored, metrics = restore_color_and_fade(restored)
         strongest = max(abs(metrics[key] - 1) for key in ("red_gain", "green_gain", "blue_gain"))
         details.append(f"color/fade corrected ({strongest * 100:.0f}% max balance)")
+    if settings.get("remove_dust"):
+        restored, repaired = remove_dust_and_scratches(restored)
+        details.append(f"dust/scratches repaired ({repaired:.3f}% pixels)")
+    if settings.get("upscale_2x"):
+        restored = archival_upscale(restored)
+        details.append("2× archival upscale")
     return restored, ", ".join(details) if details else "no restoration enabled"
 
 

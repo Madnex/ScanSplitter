@@ -25,6 +25,7 @@ export interface ProjectBox {
   width: number;
   height: number;
   angle: number; // degrees
+  restoration?: Partial<Pick<ProjectSettings, "auto_deskew" | "restore_color" | "remove_dust" | "upscale_2x">>;
 }
 
 export interface Flag {
@@ -81,6 +82,8 @@ export interface ProjectSettings {
   auto_rotate: boolean;
   auto_deskew: boolean;
   restore_color: boolean;
+  remove_dust: boolean;
+  upscale_2x: boolean;
   format: "jpeg" | "png";
   quality: number;
   include_gps: boolean;

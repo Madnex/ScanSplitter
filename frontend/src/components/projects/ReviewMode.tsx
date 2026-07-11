@@ -9,6 +9,7 @@ import { StatusChip } from "@/components/projects/StatusChip";
 import { cn } from "@/lib/utils";
 import type { BoundingBox } from "@/types";
 import type { ProjectBox } from "@/types/projects";
+import type { ProjectSettings } from "@/types/projects";
 
 interface ReviewModeProps {
   projectId: string;
@@ -23,8 +24,8 @@ interface ReviewModeProps {
 function toBoundingBox(box: ProjectBox): BoundingBox {
   return { id: box.id, centerX: box.x, centerY: box.y, width: box.width, height: box.height, angle: box.angle };
 }
-function toProjectBox(box: BoundingBox): ProjectBox {
-  return { id: box.id, x: box.centerX, y: box.centerY, width: box.width, height: box.height, angle: box.angle };
+function toProjectBox(box: BoundingBox, saved?: ProjectBox): ProjectBox {
+  return { id: box.id, x: box.centerX, y: box.centerY, width: box.width, height: box.height, angle: box.angle, ...(saved?.restoration ? { restoration: saved.restoration } : {}) };
 }
 function boxesEqual(a: ProjectBox[], b: ProjectBox[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -91,7 +92,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   // to do next without waiting on a state update to land.
   const persistBoxesIfDirty = useCallback(async (): Promise<void> => {
     if (!currentScan) return;
-    const current = boxes.map(toProjectBox);
+    const current = boxes.map((box) => toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id)));
     if (boxesEqual(current, savedBoxesRef.current)) return;
     setIsSaving(true);
     try {
@@ -121,7 +122,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     if (!currentScan) return;
     setIsSaving(true);
     try {
-      const current = boxes.map(toProjectBox);
+      const current = boxes.map((box) => toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id)));
       const updated = await patchProjectScan(projectId, currentScan.id, {
         boxes: current,
         status: "approved",
@@ -200,6 +201,22 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   const handleBack = useCallback(() => {
     void persistBoxesIfDirty().finally(onBack);
   }, [persistBoxesIfDirty, onBack]);
+
+  const setFirstPhotoOverride = useCallback(async (key: "auto_deskew" | "restore_color" | "remove_dust" | "upscale_2x", value: string) => {
+    if (!currentScan || boxes.length === 0) return;
+    const current = boxes.map((box) => toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id)));
+    const first = current[0];
+    const restoration = { ...(first.restoration ?? {}) };
+    if (value === "inherit") delete restoration[key]; else restoration[key] = value === "on";
+    first.restoration = restoration;
+    setIsSaving(true);
+    try {
+      const updated = await patchProjectScan(projectId, currentScan.id, { boxes: current });
+      updateScan(updated.id, () => updated);
+      savedBoxesRef.current = updated.boxes;
+    } catch (err) { showToast(err instanceof Error ? err.message : "Failed to save override", "error"); }
+    finally { setIsSaving(false); }
+  }, [boxes, currentScan, projectId, showToast, updateScan]);
 
   // Keyboard map (standard input-focus guard, matching ImageCanvas/App).
   useEffect(() => {
@@ -336,6 +353,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
               ))}
             </ul>
           )}
+          {boxes.length > 0 && <div className="mt-6 border-t pt-4"><h3 className="text-sm font-semibold">First photo restoration</h3><p className="mb-2 text-xs text-muted-foreground">Override project defaults for this crop.</p>{([['auto_deskew','Deskew'],['restore_color','Color & fade'],['remove_dust','Dust & scratches'],['upscale_2x','2× upscale']] as Array<[keyof Pick<ProjectSettings, "auto_deskew" | "restore_color" | "remove_dust" | "upscale_2x">, string]>).map(([key, label]) => { const value = currentScan.boxes[0]?.restoration?.[key]; return <label key={key} className="mb-2 flex items-center justify-between gap-2 text-xs"><span>{label}</span><select className="h-8 rounded border bg-background px-2" value={value === undefined ? "inherit" : value ? "on" : "off"} onChange={(event) => void setFirstPhotoOverride(key, event.target.value)}><option value="inherit">Project default</option><option value="on">On</option><option value="off">Off</option></select></label>; })}</div>}
         </div>
       </div>
     </div>
