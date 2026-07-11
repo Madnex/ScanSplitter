@@ -73,8 +73,8 @@ Spec: [docs/specs/phase2-archival-metadata.md](specs/phase2-archival-metadata.md
 Spec: [docs/specs/phase3-nondestructive-restoration.md](specs/phase3-nondestructive-restoration.md)
 
 - ✅ Opt-in auto-deskew for the 1–5° tilt that 90° auto-rotate can't fix.
-- ✅ Color & fade restoration (white-balance yellowed prints); optional
-  colorization remains planned.
+- ✅ Color & fade restoration (white-balance yellowed prints). Semantic
+  colorization is intentionally excluded; see decisions below.
 - ✅ Dust & scratch removal.
 - ✅ Opt-in non-generative 2× archival upscale for low-DPI scans.
 - Always before/after; never overwrite the archival crop. Runs as
