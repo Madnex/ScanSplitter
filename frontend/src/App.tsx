@@ -12,10 +12,13 @@ import { Toast, type ToastType, type ToastAction } from "@/components/Toast";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { Button } from "@/components/ui/button";
+import { ProjectsRoot } from "@/components/projects/ProjectsRoot";
 import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, isAbortError, FileConflictError, getModelStatuses, selectDirectory, startModelDownload } from "@/lib/api";
 import { generateNamesForImages, findDuplicateName } from "@/lib/naming";
 import { buildExportPayload } from "@/lib/utils";
 import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern, ModelKey, ModelStatus } from "@/types";
+
+type AppMode = "quick" | "projects";
 
 // Max number of prior box-states kept per scan (file+page) for delete undo.
 const MAX_UNDO_ENTRIES = 20;
@@ -28,6 +31,11 @@ interface DetectionTarget {
 }
 
 function App() {
+  // Top-level mode: "quick" is the entire pre-existing single-session flow
+  // below, unchanged; "projects" is the new persistent-projects flow, fully
+  // self-contained in src/components/projects/ + src/hooks/.
+  const [mode, setMode] = useState<AppMode>("quick");
+
   // File state
   const [files, setFiles] = useState<UploadedFile[]>([]);
   const [activeFileIndex, setActiveFileIndex] = useState(0);
@@ -825,17 +833,42 @@ function App() {
               </p>
             </div>
           </div>
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => setShowShortcuts(true)}
-            title="Keyboard shortcuts (?)"
-          >
-            <HelpCircle className="w-5 h-5" />
-          </Button>
+          <div className="flex items-center gap-3">
+            <div className="flex items-center rounded-md border p-0.5 bg-muted/50">
+              <button
+                onClick={() => setMode("quick")}
+                className={`px-3 py-1 text-sm rounded transition-colors ${
+                  mode === "quick" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Quick
+              </button>
+              <button
+                onClick={() => setMode("projects")}
+                className={`px-3 py-1 text-sm rounded transition-colors ${
+                  mode === "projects" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
+                }`}
+              >
+                Projects
+              </button>
+            </div>
+            {mode === "quick" && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => setShowShortcuts(true)}
+                title="Keyboard shortcuts (?)"
+              >
+                <HelpCircle className="w-5 h-5" />
+              </Button>
+            )}
+          </div>
         </header>
 
+        {mode === "projects" && <ProjectsRoot />}
+
         {/* Main layout */}
+        {mode === "quick" && (
         <div className="flex-1 grid grid-cols-1 lg:grid-cols-[250px_1fr_320px] gap-4 min-h-0">
           {/* Left panel - Settings */}
           <div className="space-y-4 overflow-y-auto">
@@ -920,6 +953,7 @@ function App() {
             />
           </div>
         </div>
+        )}
       </div>
 
       {/* Toast notifications */}

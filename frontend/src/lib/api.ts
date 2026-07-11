@@ -8,6 +8,15 @@ import type {
   ModelStatus,
   UploadResponse,
 } from "@/types";
+import type {
+  DetectPendingResult,
+  Project,
+  ProjectBox,
+  ProjectScan,
+  ProjectScanUploadResult,
+  ProjectSettings,
+  ProjectSummary,
+} from "@/types/projects";
 
 const API_BASE = "/api";
 
@@ -128,6 +137,33 @@ async function pollJob<T>(
 }
 
 /**
+ * Poll a job to completion, same as `pollJob`, but also best-effort DELETEs
+ * the job server-side if polling is aborted - so an abandoned job doesn't
+ * keep doing work nobody wants anymore. Shared by `runJob` (which starts the
+ * job itself via `POST /api/jobs/{kind}`) and callers that start a job via
+ * some other endpoint (e.g. the per-project detect/export routes) and just
+ * need to poll the resulting `job_id`.
+ */
+async function pollJobWithCleanup<T>(
+  jobId: string,
+  kind: JobKind,
+  signal?: AbortSignal,
+  onProgress?: (progress: number, stage: string | null) => void
+): Promise<T> {
+  try {
+    return await pollJob<T>(jobId, kind, signal, onProgress);
+  } catch (error) {
+    if (isAbortError(error)) {
+      // Fire-and-forget: tell the backend to stop working on a job we no
+      // longer care about. Never let a slow/failed DELETE delay the abort
+      // from propagating to the caller.
+      void fetch(`${API_BASE}/jobs/${jobId}`, { method: "DELETE" }).catch(() => {});
+    }
+    throw error;
+  }
+}
+
+/**
  * Run a long operation through the background-job endpoints: POST
  * `/api/jobs/{kind}` to start it, then poll `GET /api/jobs/{job_id}` until
  * it reaches a terminal state, reporting progress along the way.
@@ -159,18 +195,49 @@ export async function runJob<T>(
   }
 
   const { job_id: jobId }: { job_id: string } = await startResponse.json();
+  return pollJobWithCleanup<T>(jobId, kind, signal, onProgress);
+}
 
-  try {
-    return await pollJob<T>(jobId, kind, signal, onProgress);
-  } catch (error) {
-    if (isAbortError(error)) {
-      // Fire-and-forget: tell the backend to stop working on a job we no
-      // longer care about. Never let a slow/failed DELETE delay the abort
-      // from propagating to the caller.
-      void fetch(`${API_BASE}/jobs/${jobId}`, { method: "DELETE" }).catch(() => {});
-    }
-    throw error;
+/**
+ * Start a job via an arbitrary POST endpoint (rather than the generic
+ * `/api/jobs/{kind}` starter `runJob` uses) and poll it to completion. Used
+ * by the per-project job endpoints (detect one scan, project export), which
+ * are routed under `/api/projects/...` but still return the same
+ * `202 {job_id}` shape and are pollable via `GET /api/jobs/{job_id}`.
+ */
+async function runJobAt<T>(
+  url: string,
+  body: unknown,
+  kind: JobKind,
+  options: {
+    signal?: AbortSignal;
+    onProgress?: (progress: number, stage: string | null) => void;
+  } = {}
+): Promise<T> {
+  const { signal, onProgress } = options;
+
+  const startResponse = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body ?? {}),
+    signal,
+  });
+
+  if (!startResponse.ok) {
+    await throwForResponse(startResponse, `Failed to start ${kind} job: ${startResponse.statusText}`);
   }
+
+  const { job_id: jobId }: { job_id: string } = await startResponse.json();
+  return pollJobWithCleanup<T>(jobId, kind, signal, onProgress);
+}
+
+/** Parses a `{detail}` JSON error body (if present) and throws with that
+ * message, falling back to `fallback` otherwise. Used by the projects API
+ * functions for friendlier error-toast text than a bare status code. */
+async function throwForResponse(response: Response, fallback: string): Promise<never> {
+  const body = await response.json().catch(() => null);
+  const message = body && typeof body.detail === "string" ? body.detail : fallback;
+  throw new Error(message);
 }
 
 export async function detectBoxes(
@@ -427,4 +494,185 @@ export async function startModelDownload(model: ModelKey): Promise<ModelStatus> 
     throw new Error(message);
   }
   return response.json();
+}
+
+// ---------------------------------------------------------------------------
+// Projects ("Projects" mode) - see docs/specs/phase1-projects-review-queue.md
+// for the full REST contract this section implements.
+// ---------------------------------------------------------------------------
+
+export async function listProjects(): Promise<{ projects: ProjectSummary[] }> {
+  const response = await fetch(`${API_BASE}/projects`);
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to list projects: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function createProject(name: string): Promise<Project> {
+  const response = await fetch(`${API_BASE}/projects`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to create project: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function getProject(projectId: string): Promise<Project> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}`);
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to load project: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function patchProject(
+  projectId: string,
+  patch: { name?: string; settings?: Partial<ProjectSettings> }
+): Promise<Project> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to update project: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function deleteProject(projectId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}`, { method: "DELETE" });
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to delete project: ${response.statusText}`);
+  }
+}
+
+/**
+ * Upload one or more scan files (images or PDFs) into a project. PDFs
+ * expand server-side into one scan per page. When `detect` is true (the
+ * default) the backend also queues one detect job per newly created scan;
+ * the caller doesn't need to do anything further to pick those up - poll
+ * `getProject` (see `useProject`) until no scan is `pending`/`detecting`.
+ */
+export async function uploadProjectScans(
+  projectId: string,
+  files: File[],
+  detect: boolean = true
+): Promise<ProjectScanUploadResult> {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append("files", file);
+  }
+  const response = await fetch(
+    `${API_BASE}/projects/${projectId}/scans?detect=${detect ? "true" : "false"}`,
+    { method: "POST", body: formData }
+  );
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to upload scans: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/** URL for a scan's full-size image, or its cached 320px-wide thumbnail. */
+export function getProjectScanImageUrl(
+  projectId: string,
+  scanId: string,
+  thumb: boolean = false
+): string {
+  return `${API_BASE}/projects/${projectId}/scans/${scanId}/image${thumb ? "?thumb=true" : ""}`;
+}
+
+/**
+ * PATCH a scan's boxes and/or status. Setting `boxes` re-runs confidence
+ * evaluation server-side and updates `flags` accordingly - callers should
+ * apply the returned scan (which reflects that) rather than assuming the
+ * boxes they sent are the final state.
+ */
+export async function patchProjectScan(
+  projectId: string,
+  scanId: string,
+  patch: { boxes?: ProjectBox[]; status?: "approved" | "needs_review" }
+): Promise<ProjectScan> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/scans/${scanId}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(patch),
+  });
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to update scan: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+export async function deleteProjectScan(projectId: string, scanId: string): Promise<void> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/scans/${scanId}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to delete scan: ${response.statusText}`);
+  }
+}
+
+/**
+ * Re-run detection for a single scan. The job persists boxes/flags/status
+ * into the project server-side on success, so this deliberately returns
+ * void rather than a job result - callers should re-fetch the project (or
+ * just rely on `useProject`'s poll-while-pending/detecting loop) to observe
+ * the updated scan.
+ */
+export async function detectProjectScan(
+  projectId: string,
+  scanId: string,
+  signal?: AbortSignal,
+  onProgress?: (progress: number, stage: string | null) => void
+): Promise<void> {
+  await runJobAt<unknown>(
+    `${API_BASE}/projects/${projectId}/scans/${scanId}/detect`,
+    undefined,
+    "detect",
+    { signal, onProgress }
+  );
+}
+
+/**
+ * Queue detect jobs for every `pending`/`failed` scan in the project. Fires
+ * and forgets - the returned job list is informational only; progress is
+ * observed by polling `getProject` (matching the spec's "poll while any
+ * scan is pending/detecting" overview behavior) rather than by tracking
+ * each individual job here.
+ */
+export async function detectPendingScans(projectId: string): Promise<DetectPendingResult> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/detect-pending`, {
+    method: "POST",
+  });
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to queue detection: ${response.statusText}`);
+  }
+  return response.json();
+}
+
+/**
+ * Run the project export job (crops every approved + auto_approved scan's
+ * boxes and zips them) and trigger the browser download once it succeeds,
+ * matching the existing `exportZip` download pattern.
+ */
+export async function exportProject(
+  projectId: string,
+  projectName: string,
+  options: { format?: "jpeg" | "png"; quality?: number; include_gps?: boolean } = {},
+  signal?: AbortSignal,
+  onProgress?: (progress: number, stage: string | null) => void
+): Promise<void> {
+  const result = await runJobAt<{ download_url: string }>(
+    `${API_BASE}/projects/${projectId}/export`,
+    options,
+    "export",
+    { signal, onProgress }
+  );
+  const safeName = projectName.trim().replace(/[^\w.-]+/g, "_") || "project";
+  triggerBrowserDownload(result.download_url, `${safeName}.zip`);
 }
