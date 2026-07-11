@@ -7,6 +7,8 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import Any, Callable
 
+from fastapi import HTTPException
+
 
 class JobCancelled(Exception):
     """Raised by cooperative workers when cancellation was requested."""
@@ -26,6 +28,8 @@ class Job:
     session_id: str
     created_at: float
     updated_at: float
+    error_status: int | None = None
+    error_detail: Any | None = None
     cancel_flag: threading.Event = field(default_factory=threading.Event, repr=False)
     download_bytes: bytes | None = field(default=None, repr=False)
 
@@ -141,6 +145,15 @@ def submit_job(
             )
         except JobCancelled:
             registry.update(job.job_id, status="cancelled", stage="cancelled")
+        except HTTPException as error:
+            registry.update(
+                job.job_id,
+                status="failed",
+                stage="failed",
+                error=str(error.detail),
+                error_status=error.status_code,
+                error_detail=error.detail,
+            )
         except Exception as error:
             registry.update(job.job_id, status="failed", stage="failed", error=str(error))
 

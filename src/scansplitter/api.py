@@ -1001,6 +1001,8 @@ def _job_payload(job) -> dict:
         "stage": job.stage,
         "result": job.result,
         "error": job.error,
+        "error_status": job.error_status,
+        "error_detail": job.error_detail,
     }
 
 
