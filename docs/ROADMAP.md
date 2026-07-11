@@ -42,7 +42,7 @@ loop hundreds of times per sitting — every click removed compounds.
 - ✅ CI (ruff + pytest + frontend lint/build + wheel content check),
   Dependabot, release smoke tests.
 
-## Phase 1 — Throughput & trust 🔨
+## Phase 1 — Throughput & trust ✅
 
 *Turns an hour of clicking into ten minutes of review.*
 Spec: [docs/specs/phase1-projects-review-queue.md](specs/phase1-projects-review-queue.md)
@@ -55,12 +55,15 @@ Spec: [docs/specs/phase1-projects-review-queue.md](specs/phase1-projects-review-
   ones (box touching edge, odd aspect ratio, count/area outliers).
 - Progress everywhere, powered by the job endpoints.
 
-## Phase 2 — Metadata a genealogist would keep ⬜
+## Phase 2 — Metadata a genealogist would keep 🔨
+
+Spec: [docs/specs/phase2-archival-metadata.md](specs/phase2-archival-metadata.md)
 
 - Batch-apply per scan: one time/place/event written to every crop.
 - Approximate dates as first-class ("1975", "circa 1980", "summer '75"),
   written as valid EXIF.
-- Place name → GPS geotag.
+- Place name + coordinates → GPS geotag. Optional name lookup is a later,
+  explicitly network-enabled enhancement; metadata editing itself stays local.
 - Captions, people tags, album/roll grouping as XMP keywords.
 - Front/back pairing with OCR: scan the back, read the handwriting, attach
   date and note to the front.

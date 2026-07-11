@@ -1,6 +1,6 @@
 # Phase 1 Spec — Persistent Projects, Bulk Upload, Review Queue
 
-*Status: in implementation on branch `quality-overhaul` (2026-07-11).*
+*Status: complete on branch `quality-overhaul` (2026-07-11).*
 *This document is the contract between backend and frontend work. If the
 implementation must deviate, update this file in the same commit.*
 
