@@ -130,13 +130,16 @@ All endpoints follow existing conventions: sync `def` (threadpool), 404 via
 | `DELETE /api/projects/{pid}/scans/{sid}` | – | `{"status":"deleted"}` |
 | `POST /api/projects/{pid}/scans/{sid}/detect` | – | `202 {"job_id"}` (re-detect one scan; job result also persisted into the project) |
 | `POST /api/projects/{pid}/detect-pending` | – | `202 {"jobs":[{scan_id, job_id}]}` (all `pending`/`failed` scans) |
-| `POST /api/projects/{pid}/export` | `{format?, quality?, include_gps?}` (defaults from project settings) | `202 {"job_id"}` — job crops every **approved + auto_approved** scan's boxes and zips; result `{download_url}` like the existing export job |
+| `POST /api/projects/{pid}/export` | `{format?, quality?, include_gps?}` (defaults from project settings) | `202 {"job_id"}` — job crops every **approved + auto_approved** scan's boxes and zips; result `{download_url}` like the existing export job. Note: project scans are re-encoded on ingest and carry no EXIF, so `include_gps` is accepted for API parity but is a no-op in Phase 1 (EXIF-carrying project exports arrive with Phase 2 metadata). |
 
 Job integration: project detect jobs reuse `jobs.submit_job` with kind
 `"detect"`; on success the worker persists boxes + flags + status into the
 project before marking the job succeeded, so a poller can rely on either
 the job result or a project re-fetch. Naming inside the export zip:
-`{original_name_stem}_{photo_index}.{ext}`, collision-suffixed.
+`{original_name_stem}_{photo_index}.{ext}` where `photo_index` is 1-based
+per box within its scan; cross-scan stem collisions get `_2`/`_3` suffixes.
+PDF-page scans share the PDF filename as `original_name` (all pages same
+stem) and rely on collision-suffixing to disambiguate.
 
 ## Frontend
 

@@ -5,8 +5,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 ## Commands
 
 ```bash
-# Install dependencies
+# Install dependencies (includes dev group: pytest, ruff, httpx)
 uv sync
+
+# Lint and test (CI runs both on every push/PR)
+uv run ruff check src tests
+uv run pytest
 
 # Run web UI (FastAPI + React with interactive bounding box editor)
 uv run scansplitter api
@@ -43,8 +47,32 @@ ScanSplitter detects and extracts multiple photos from scanned images using Open
 
 **Interfaces:**
 - `api.py` - FastAPI backend with REST endpoints for the React frontend
-- `session.py` - Session management for temporary file storage
-- `cli.py` - Subcommands: `api` (web UI), `process` (batch CLI)
+- `session.py` - Session management for temporary file storage (idle-based
+  expiry) plus `sanitize_name()`, the mandatory sanitizer for every
+  client-supplied name that reaches a filesystem or zip path
+- `jobs.py` - Background job registry + thread pool; long operations run as
+  jobs with progress/stage/cancellation (see `/api/jobs/*` endpoints);
+  failed jobs preserve HTTPException status/detail as
+  `error_status`/`error_detail`
+- `confidence.py` - Pure scan-confidence heuristics (flags like
+  `touches_edge`, `count_mismatch`) used to auto-approve or flag scans
+- `projects.py` - Persistent project store under `~/.scansplitter/projects/`
+  (`SCANSPLITTER_DATA_DIR` overrides); atomic project.json writes
+- `models.py` - ML model downloads, SHA-256 pinned with atomic rename
+- `cli.py` - Subcommands: `api` (web UI), `process` (batch CLI). Binding to
+  a non-loopback host sets local mode off: endpoints that touch the host
+  filesystem (`/api/select-directory`, `/api/export-local`) return 403
+
+**Conventions:**
+- Endpoints are sync `def` (FastAPI threadpool) because the work is
+  CPU-bound OpenCV/ONNX; never introduce blocking work in an `async def`
+- Every client-controlled name goes through `sanitize_name()`; local writes
+  are contained with `resolve().is_relative_to(base)`
+- GPS EXIF is stripped on export unless the request sets `include_gps`
+
+**Product direction:** see `docs/ROADMAP.md` (phases, principles, decisions)
+and `docs/specs/` for binding feature specs. Keep spec files updated in the
+same commit when an implementation deviates.
 
 **Frontend** (`frontend/`):
 - React + TypeScript + Vite

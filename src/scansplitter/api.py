@@ -32,6 +32,7 @@ from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
 from .jobs import JobCancelled, registry, submit_job
 from .models import get_model_statuses, start_model_download
 from .pdf_handler import extract_pdf_page, get_pdf_page_count
+from .projects import get_project_store
 from .rotator import auto_rotate
 from .session import Session, get_session_manager, sanitize_name
 
@@ -250,6 +251,34 @@ class ModelDownloadRequest(BaseModel):
     """Request to download an ML model in the background."""
 
     model: str  # "orientation", "u2net_lite", or "u2net_full"
+
+
+class ProjectCreateRequest(BaseModel):
+    """Request to create a persistent project."""
+
+    name: str
+
+
+class ProjectPatchRequest(BaseModel):
+    """Partial update of a project's name and/or settings."""
+
+    name: str | None = None
+    settings: dict | None = None
+
+
+class ScanPatchRequest(BaseModel):
+    """Update a scan's boxes and/or review status."""
+
+    boxes: list[dict] | None = None
+    status: str | None = None
+
+
+class ProjectExportRequest(BaseModel):
+    """Request to export a project's approved scans (defaults from settings)."""
+
+    format: str | None = None
+    quality: int | None = None
+    include_gps: bool | None = None
 
 
 # --- Helper Functions ---
@@ -1177,6 +1206,140 @@ async def update_exif(request: UpdateExifRequest):
     # Field omitted entirely: leave existing date state untouched.
 
     return {"status": "ok"}
+
+
+# --- Persistent project endpoints ---
+
+
+@app.get("/api/projects")
+def list_projects():
+    """List all persistent projects with per-status counts."""
+    return {"projects": get_project_store().list_projects()}
+
+
+@app.post("/api/projects")
+def create_project(request: ProjectCreateRequest):
+    """Create a new project. Returns the full project JSON."""
+    return get_project_store().create_project(request.name)
+
+
+@app.get("/api/projects/{pid}")
+def get_project(pid: str):
+    """Return a project's full JSON (scans included)."""
+    return get_project_store().get_project(pid)
+
+
+@app.patch("/api/projects/{pid}")
+def patch_project(pid: str, request: ProjectPatchRequest):
+    """Update a project's name and/or settings (partial)."""
+    return get_project_store().update_project(pid, name=request.name, settings=request.settings)
+
+
+@app.delete("/api/projects/{pid}")
+def delete_project(pid: str):
+    """Delete a project and all of its scans."""
+    get_project_store().delete_project(pid)
+    return {"status": "deleted"}
+
+
+@app.post("/api/projects/{pid}/scans")
+def add_project_scans(pid: str, files: list[UploadFile] = File(...), detect: bool = True):
+    """Upload one or more scans (PDFs expand to one scan per page).
+
+    Sync endpoint on purpose: FastAPI runs it in a worker thread so the
+    streaming reads and image decoding never block the event loop.
+    """
+    store = get_project_store()
+    store.get_project(pid)  # validate id / existence before reading uploads
+
+    uploaded: list[tuple[str, bytes]] = []
+    for upload in files:
+        if upload.filename is None:
+            raise HTTPException(status_code=400, detail="No filename provided")
+        ext = Path(upload.filename).suffix.lower()
+        if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Unsupported file type: {ext or 'no extension'}. "
+                    f"Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}"
+                ),
+            )
+
+        size = 0
+        chunks: list[bytes] = []
+        while True:
+            chunk = upload.file.read(_UPLOAD_CHUNK_SIZE)
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > MAX_UPLOAD_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)",
+                )
+            chunks.append(chunk)
+        uploaded.append((upload.filename, b"".join(chunks)))
+
+    scans = store.add_scans(pid, uploaded)
+
+    jobs = []
+    if detect:
+        for scan in scans:
+            job_id = store.submit_detect_job(pid, scan["id"])
+            scan["status"] = "detecting"
+            jobs.append({"scan_id": scan["id"], "job_id": job_id})
+
+    return {"scans": scans, "jobs": jobs}
+
+
+@app.get("/api/projects/{pid}/scans/{sid}/image")
+def get_project_scan_image(pid: str, sid: str, thumb: bool = False):
+    """Serve a stored scan image (or its cached 320px thumbnail)."""
+    payload, media_type = get_project_store().scan_image_bytes(pid, sid, thumb=thumb)
+    return Response(content=payload, media_type=media_type)
+
+
+@app.patch("/api/projects/{pid}/scans/{sid}")
+def patch_project_scan(pid: str, sid: str, request: ScanPatchRequest):
+    """Update a scan's boxes (re-runs confidence) and/or review status."""
+    return get_project_store().update_scan(
+        pid, sid, boxes=request.boxes, status=request.status
+    )
+
+
+@app.delete("/api/projects/{pid}/scans/{sid}")
+def delete_project_scan(pid: str, sid: str):
+    """Delete a single scan and its on-disk artifacts."""
+    get_project_store().delete_scan(pid, sid)
+    return {"status": "deleted"}
+
+
+@app.post("/api/projects/{pid}/scans/{sid}/detect", status_code=202)
+def redetect_project_scan(pid: str, sid: str):
+    """Re-run detection for a single scan (result persisted into the project)."""
+    store = get_project_store()
+    store.get_scan(pid, sid)  # validate before queueing
+    return {"job_id": store.submit_detect_job(pid, sid)}
+
+
+@app.post("/api/projects/{pid}/detect-pending", status_code=202)
+def detect_pending_scans(pid: str):
+    """Queue detection for every pending or failed scan in the project."""
+    store = get_project_store()
+    store.get_project(pid)
+    return {"jobs": store.submit_detect_pending(pid)}
+
+
+@app.post("/api/projects/{pid}/export", status_code=202)
+def export_project(pid: str, request: ProjectExportRequest):
+    """Crop and zip every approved + auto-approved scan as a background job."""
+    store = get_project_store()
+    store.get_project(pid)
+    job_id = store.submit_export_job(
+        pid, fmt=request.format, quality=request.quality, include_gps=request.include_gps
+    )
+    return {"job_id": job_id}
 
 
 def create_app() -> FastAPI:
