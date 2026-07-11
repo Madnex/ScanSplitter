@@ -489,6 +489,57 @@ def test_restoration_preview_job_returns_inline_jpeg(monkeypatch):
     assert Image.open(io.BytesIO(download.content)).format == "JPEG"
 
 
+def test_phase4_export_adds_master_folders_and_manifests(monkeypatch):
+    _install_confidence(monkeypatch, lambda *a, **k: [])
+    pid = _create_project()["id"]
+    scan = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[("files", ("archive.png", _photo_png(), "image/png"))],
+    ).json()["scans"][0]
+    box = {"id": "b1", "x": 400, "y": 300, "width": 300, "height": 200, "angle": 0}
+    client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"boxes": [box]})
+    client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"status": "approved"})
+    client.patch(
+        f"/api/projects/{pid}/scans/{scan['id']}/metadata",
+        json={"date": "1975-01-01", "date_precision": "year", "album": "Family", "event": "Picnic"},
+    )
+    started = client.post(
+        f"/api/projects/{pid}/export",
+        json={"master_format": "tiff", "organize_folders": True, "manifest_format": "both"},
+    )
+    job = _wait_for_job(started.json()["job_id"])
+    archive = zipfile.ZipFile(io.BytesIO(client.get(job["result"]["download_url"]).content))
+    names = archive.namelist()
+    assert "Family/1975/Picnic/archive_1.jpg" in names
+    assert "masters/Family/1975/Picnic/archive_1.tif" in names
+    assert "digitization-manifest.json" in names
+    assert "digitization-manifest.csv" in names
+    manifest = json.loads(archive.read("digitization-manifest.json"))
+    assert manifest[0]["box_id"] == "b1"
+    assert len(manifest[0]["sha256"]) == 64
+
+
+def test_watched_folder_delivery_writes_canonical_artifacts(monkeypatch, tmp_path):
+    _install_confidence(monkeypatch, lambda *a, **k: [])
+    pid = _create_project()["id"]
+    scan = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[("files", ("one.png", _photo_png(), "image/png"))],
+    ).json()["scans"][0]
+    box = {"id": "b1", "x": 400, "y": 300, "width": 300, "height": 200, "angle": 0}
+    client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"boxes": [box]})
+    client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"status": "approved"})
+    destination = tmp_path / "watched"
+    started = client.post(
+        f"/api/projects/{pid}/deliver",
+        json={"target": "folder", "destination": str(destination)},
+    )
+    job = _wait_for_job(started.json()["job_id"])
+    assert job["status"] == "succeeded", job
+    assert (destination / "Unsorted" / "one_1.jpg").exists()
+    assert (destination / "digitization-manifest.json").exists()
+
+
 # --- Path safety ------------------------------------------------------------
 
 

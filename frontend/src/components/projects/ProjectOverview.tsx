@@ -1,10 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Download, PlayCircle, RefreshCw, SlidersHorizontal, Tags, Upload } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, PlayCircle, RefreshCw, Send, SlidersHorizontal, Tags, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ui/progress";
 import { ScanThumbnail } from "@/components/projects/ScanThumbnail";
 import { MetadataEditor } from "@/components/projects/MetadataEditor";
 import { BackPairingEditor } from "@/components/projects/BackPairingEditor";
+import { DeliveryDialog } from "@/components/projects/DeliveryDialog";
 import { useProject } from "@/hooks/useProject";
 import { detectPendingScans, exportProject, patchProject, uploadProjectScans } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -53,6 +54,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
   const [isQueueingDetect, setIsQueueingDetect] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showPairing, setShowPairing] = useState(false);
+  const [showDelivery, setShowDelivery] = useState(false);
   const [showRestoration, setShowRestoration] = useState(false);
   const [isSavingRestoration, setIsSavingRestoration] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -139,6 +141,9 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           format: project.settings.format,
           quality: project.settings.quality,
           include_gps: project.settings.include_gps,
+          master_format: project.settings.master_format,
+          organize_folders: project.settings.organize_folders,
+          manifest_format: project.settings.manifest_format,
         },
         controller.signal,
         (progress, stage) => setExportProgress({ progress, stage })
@@ -215,6 +220,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           <Download className="w-4 h-4 mr-1" />
           {isExporting ? "Exporting…" : `Export (${exportableCount})`}
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setShowDelivery(true)} disabled={exportableCount === 0}><Send className="mr-1 h-4 w-4" />Deliver</Button>
       </div>
 
       {showRestoration && (
@@ -245,6 +251,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
               <label className="flex cursor-pointer items-center justify-end gap-3 text-sm"><span className="text-right"><span className="block font-medium">2× upscale</span><span className="block text-xs text-muted-foreground">Non-generative Lanczos</span></span><input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.upscale_2x} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("upscale_2x", event.target.checked)} /></label>
             </div>
           </div>
+          <div className="mt-3 flex flex-wrap items-end gap-3 border-t pt-3"><label className="text-xs">Lossless master<select className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.master_format ?? ""} onChange={(event) => void patchProject(projectId, { settings: { master_format: (event.target.value || null) as "png" | "tiff" | null } }).then(refresh)}><option value="">None</option><option value="png">PNG</option><option value="tiff">TIFF</option></select></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={project.settings.organize_folders} onChange={(event) => void patchProject(projectId, { settings: { organize_folders: event.target.checked } }).then(refresh)} />Folders by album/year/event</label><label className="text-xs">Manifest<select className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.manifest_format ?? ""} onChange={(event) => void patchProject(projectId, { settings: { manifest_format: (event.target.value || null) as "json" | "csv" | "both" | null } }).then(refresh)}><option value="">None</option><option value="json">JSON</option><option value="csv">CSV</option><option value="both">JSON + CSV</option></select></label></div>
         </section>
       )}
 
@@ -360,6 +367,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
       {showPairing && (
         <BackPairingEditor project={project} onClose={() => setShowPairing(false)} onSaved={refresh} showToast={showToast} />
       )}
+      {showDelivery && <DeliveryDialog project={project} onClose={() => setShowDelivery(false)} showToast={showToast} />}
     </div>
   );
 }

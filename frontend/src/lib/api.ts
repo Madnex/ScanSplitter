@@ -63,7 +63,7 @@ export async function uploadFile(file: File): Promise<{
 }
 
 /** Kinds accepted by the `/api/jobs/{kind}` background-job endpoints. */
-export type JobKind = "detect" | "crop" | "export" | "export-local" | "restoration-preview" | "ocr";
+export type JobKind = "detect" | "crop" | "export" | "export-local" | "restoration-preview" | "ocr" | "project-delivery";
 
 /** Polling representation returned by `GET /api/jobs/{job_id}`. */
 export interface JobStatus<T = unknown> {
@@ -706,7 +706,7 @@ export async function detectPendingScans(projectId: string): Promise<DetectPendi
 export async function exportProject(
   projectId: string,
   projectName: string,
-  options: { format?: "jpeg" | "png"; quality?: number; include_gps?: boolean } = {},
+  options: { format?: "jpeg" | "png"; quality?: number; include_gps?: boolean; master_format?: "png" | "tiff" | null; organize_folders?: boolean; manifest_format?: "json" | "csv" | "both" | null } = {},
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string | null) => void
 ): Promise<void> {
@@ -718,6 +718,14 @@ export async function exportProject(
   );
   const safeName = projectName.trim().replace(/[^\w.-]+/g, "_") || "project";
   triggerBrowserDownload(result.download_url, `${safeName}.zip`);
+}
+
+export async function deliverProject(
+  projectId: string,
+  config: Record<string, unknown>,
+  onProgress?: (progress: number, stage: string | null) => void
+): Promise<{ target: string; count: number }> {
+  return runJobAt(`${API_BASE}/projects/${projectId}/deliver`, config, "project-delivery", { onProgress });
 }
 
 export async function previewProjectRestoration(

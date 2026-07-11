@@ -80,13 +80,15 @@ Spec: [docs/specs/phase3-nondestructive-restoration.md](specs/phase3-nondestruct
 - Always before/after; never overwrite the archival crop. Runs as
   background jobs.
 
-## Phase 4 — Land where the memories live ⬜
+## Phase 4 — Land where the memories live ✅
 
-- Direct library targets: Immich, watched folder for Apple/Google Photos,
+Spec: [docs/specs/phase4-library-delivery.md](specs/phase4-library-delivery.md)
+
+- ✅ Direct library targets: Immich, watched folder for Apple/Google Photos,
   Nextcloud.
-- Optional lossless TIFF/PNG master alongside JPEG.
-- Folder structure from metadata (album/year/event).
-- Digitization manifest (CSV/JSON provenance record).
+- ✅ Optional lossless TIFF/PNG master alongside JPEG.
+- ✅ Folder structure from metadata (album/year/event).
+- ✅ Digitization manifest (CSV/JSON provenance record).
 
 ## Quick wins (schedulable anytime)
 

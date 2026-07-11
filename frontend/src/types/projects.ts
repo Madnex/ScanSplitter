@@ -87,6 +87,9 @@ export interface ProjectSettings {
   format: "jpeg" | "png";
   quality: number;
   include_gps: boolean;
+  master_format: "png" | "tiff" | null;
+  organize_folders: boolean;
+  manifest_format: "json" | "csv" | "both" | null;
 }
 
 export interface Project {

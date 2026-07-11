@@ -13,6 +13,8 @@ parameters are validated (hex only) before any path is constructed, so there
 is no client-controlled path anywhere in this module.
 """
 
+import csv
+import hashlib
 import io
 import json
 import os
@@ -90,6 +92,9 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "format": "jpeg",
     "quality": 85,
     "include_gps": False,
+    "master_format": None,
+    "organize_folders": False,
+    "manifest_format": None,
 }
 
 _ID_RE = re.compile(r"[0-9a-f]{32}\Z")
@@ -632,20 +637,53 @@ class ProjectStore:
         fmt: str | None = None,
         quality: int | None = None,
         include_gps: bool | None = None,
+        master_format: str | None = None,
+        organize_folders: bool | None = None,
+        manifest_format: str | None = None,
     ) -> str:
         data = self._read(pid)  # validates the project exists up front
         settings = data["settings"]
         out_format = (fmt or settings["format"]).lower()
         out_quality = quality if quality is not None else settings["quality"]
         out_include_gps = include_gps if include_gps is not None else bool(settings["include_gps"])
+        out_master = master_format if master_format is not None else settings["master_format"]
+        out_organize = organize_folders if organize_folders is not None else bool(settings["organize_folders"])
+        out_manifest = manifest_format if manifest_format is not None else settings["manifest_format"]
 
         def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
             payload = self._build_export_zip(
-                pid, out_format, out_quality, out_include_gps, progress, cancelled
+                pid, out_format, out_quality, out_include_gps, progress, cancelled,
+                out_master, out_organize, out_manifest,
             )
             return {"__download_bytes": payload}
 
         return submit_job("export", pid, worker).job_id
+
+    def submit_delivery_job(self, pid: str, target: str, config: dict[str, Any]) -> str:
+        """Build canonical artifacts and send them to one explicit target."""
+        self._read(pid)
+
+        def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
+            from .delivery import upload_immich, upload_nextcloud, write_watched_folder
+
+            progress(5, "building export artifacts")
+            payload = self._build_export_zip(
+                pid, "jpeg", 90, bool(config.get("include_gps")), progress, cancelled,
+                config.get("master_format"), bool(config.get("organize_folders", True)),
+                config.get("manifest_format", "both"),
+            )
+            progress(92, f"delivering to {target}")
+            if target == "folder":
+                count = write_watched_folder(payload, Path(config["destination"]))
+            elif target == "nextcloud":
+                count = upload_nextcloud(payload, config["base_url"], config["username"], config["password"], config.get("folder", "ScanSplitter"))
+            elif target == "immich":
+                count = upload_immich(payload, config["server_url"], config["api_key"])
+            else:
+                raise HTTPException(status_code=400, detail="Unknown delivery target")
+            return {"target": target, "count": count}
+
+        return submit_job("project-delivery", pid, worker).job_id
 
     def submit_restoration_preview_job(self, pid: str, sid: str, box_id: str | None) -> str:
         """Build an ephemeral before/after JPEG for one crop."""
@@ -696,6 +734,9 @@ class ProjectStore:
         include_gps: bool,
         progress: ProgressCallback,
         cancelled: CancelCheck,
+        master_format: str | None = None,
+        organize_folders: bool = False,
+        manifest_format: str | None = None,
     ) -> bytes:
         import zipfile
 
@@ -713,6 +754,7 @@ class ProjectStore:
 
         buffer = io.BytesIO()
         used_names: set[str] = set()
+        records: list[dict[str, Any]] = []
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             total = max(1, len(exportable))
             for index, scan in enumerate(exportable):
@@ -726,6 +768,8 @@ class ProjectStore:
                 pil = Image.open(stored).convert("RGB")
                 cv_image = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
                 stem = _sanitize_stem(scan["original_name"])
+                metadata = scan.get("metadata") or metadata_defaults()
+                folder = _metadata_folder(metadata) if organize_folders else ""
 
                 for photo_index, box in enumerate(scan["boxes"], 1):
                     region = _box_to_region(box, pil.width, pil.height)
@@ -758,8 +802,40 @@ class ProjectStore:
                         if xmp:
                             payload = insert_xmp(payload, xmp)
 
-                    name = _unique_name(f"{stem}_{photo_index}", ext, used_names)
+                    base = f"{folder}/{stem}_{photo_index}" if folder else f"{stem}_{photo_index}"
+                    name = _unique_name(base, ext, used_names)
                     zf.writestr(name, payload)
+                    master_name = None
+                    if master_format in {"png", "tiff"}:
+                        master_ext = "png" if master_format == "png" else "tif"
+                        master_buffer = io.BytesIO()
+                        if master_ext == "png":
+                            crop_pil.save(master_buffer, "PNG", optimize=True)
+                        else:
+                            crop_pil.save(master_buffer, "TIFF", compression="tiff_deflate")
+                        master_base = f"masters/{folder}/{stem}_{photo_index}" if folder else f"masters/{stem}_{photo_index}"
+                        master_name = _unique_name(master_base, master_ext, used_names)
+                        zf.writestr(master_name, master_buffer.getvalue())
+                    records.append({
+                        "project_id": pid,
+                        "scan_id": scan["id"],
+                        "box_id": box["id"],
+                        "source": scan["original_name"],
+                        "output": name,
+                        "master": master_name,
+                        "sha256": hashlib.sha256(payload).hexdigest(),
+                        "metadata": metadata,
+                        "restoration": {**data["settings"], **box.get("restoration", {})},
+                    })
+
+            if manifest_format in {"json", "both"}:
+                zf.writestr("digitization-manifest.json", json.dumps(records, indent=2))
+            if manifest_format in {"csv", "both"}:
+                csv_buffer = io.StringIO()
+                writer = csv.DictWriter(csv_buffer, fieldnames=["project_id", "scan_id", "box_id", "source", "output", "master", "sha256"])
+                writer.writeheader()
+                writer.writerows({key: record[key] for key in writer.fieldnames} for record in records)
+                zf.writestr("digitization-manifest.csv", csv_buffer.getvalue())
 
         return buffer.getvalue()
 
@@ -847,6 +923,14 @@ def _sanitize_stem(name: str) -> str:
     stem = Path(name).stem or "photo"
     cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", stem).strip("_") or "photo"
     return cleaned
+
+
+def _metadata_folder(metadata: dict) -> str:
+    parts = []
+    for value in (metadata.get("album"), (metadata.get("date") or "")[:4], metadata.get("event")):
+        if value:
+            parts.append(_sanitize_stem(str(value)))
+    return "/".join(parts) or "Unsorted"
 
 
 def _unique_name(base: str, ext: str, used: set[str]) -> str:

@@ -279,6 +279,9 @@ class ProjectExportRequest(BaseModel):
     format: str | None = None
     quality: int | None = None
     include_gps: bool | None = None
+    master_format: str | None = None
+    organize_folders: bool | None = None
+    manifest_format: str | None = None
 
 
 class RestorationPreviewRequest(BaseModel):
@@ -302,6 +305,21 @@ class OcrAcceptRequest(BaseModel):
 
 class GeocodeRequest(BaseModel):
     query: str
+
+
+class ProjectDeliveryRequest(BaseModel):
+    target: str
+    destination: str | None = None
+    server_url: str | None = None
+    api_key: str | None = None
+    base_url: str | None = None
+    username: str | None = None
+    password: str | None = None
+    folder: str | None = None
+    include_gps: bool = False
+    master_format: str | None = None
+    organize_folders: bool = True
+    manifest_format: str | None = "both"
 
 
 class ProjectMetadataPatch(BaseModel):
@@ -1427,9 +1445,26 @@ def export_project(pid: str, request: ProjectExportRequest):
     store = get_project_store()
     store.get_project(pid)
     job_id = store.submit_export_job(
-        pid, fmt=request.format, quality=request.quality, include_gps=request.include_gps
+        pid, fmt=request.format, quality=request.quality, include_gps=request.include_gps,
+        master_format=request.master_format, organize_folders=request.organize_folders,
+        manifest_format=request.manifest_format,
     )
     return {"job_id": job_id}
+
+
+@app.post("/api/projects/{pid}/deliver", status_code=202)
+def deliver_project(pid: str, request: ProjectDeliveryRequest):
+    """Deliver canonical project artifacts; secrets remain request-scoped."""
+    config = request.model_dump(exclude_none=True)
+    target = config.pop("target")
+    if target == "folder" and not _local_features_enabled():
+        raise HTTPException(status_code=403, detail="Local folder delivery is disabled")
+    required = {"folder": {"destination"}, "immich": {"server_url", "api_key"}, "nextcloud": {"base_url", "username", "password"}}.get(target)
+    if required is None:
+        raise HTTPException(status_code=400, detail="Unknown delivery target")
+    if missing := sorted(required - config.keys()):
+        raise HTTPException(status_code=400, detail=f"Missing delivery fields: {', '.join(missing)}")
+    return {"job_id": get_project_store().submit_delivery_job(pid, target, config)}
 
 
 @app.post("/api/projects/{pid}/scans/{sid}/restoration-preview", status_code=202)
