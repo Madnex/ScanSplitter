@@ -6,6 +6,7 @@ by explicit bounding boxes and exports use in-memory image data.
 
 import base64
 import io
+import time
 import zipfile
 from importlib.metadata import version
 
@@ -109,6 +110,18 @@ def _crop(session_id: str, box_id="box1") -> dict:
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def _wait_for_job(job_id: str) -> dict:
+    deadline = time.monotonic() + 10
+    while time.monotonic() < deadline:
+        response = client.get(f"/api/jobs/{job_id}")
+        assert response.status_code == 200, response.text
+        job = response.json()
+        if job["status"] in {"succeeded", "failed", "cancelled"}:
+            return job
+        time.sleep(0.01)
+    pytest.fail(f"job {job_id} did not finish")
 
 
 def test_upload_traversal_filename_is_sanitized():
@@ -359,6 +372,85 @@ def test_exif_update_omitting_date_leaves_it_unchanged():
 
 def test_version_matches_installed_metadata():
     assert scansplitter.__version__ == version("scansplitter")
+
+
+def test_detect_job_matches_synchronous_result():
+    data = _upload()
+    request = {
+        "session_id": data["session_id"],
+        "page": 1,
+        "detection_mode": "scansplitterv1",
+    }
+    synchronous = client.post("/api/detect", json=request)
+    assert synchronous.status_code == 200, synchronous.text
+
+    submitted = client.post("/api/jobs/detect", json=request)
+    assert submitted.status_code == 202, submitted.text
+    job = _wait_for_job(submitted.json()["job_id"])
+
+    assert job["status"] == "succeeded", job
+    assert job["result"]["boxes"] == synchronous.json()["boxes"]
+
+
+def test_crop_job_returns_images():
+    data = _upload()
+    request = {
+        "session_id": data["session_id"],
+        "page": 1,
+        "boxes": [
+            {
+                "id": "job-box",
+                "center_x": 32,
+                "center_y": 24,
+                "width": 40,
+                "height": 30,
+                "angle": 0,
+            }
+        ],
+        "auto_rotate": False,
+    }
+    submitted = client.post("/api/jobs/crop", json=request)
+    assert submitted.status_code == 202, submitted.text
+    job = _wait_for_job(submitted.json()["job_id"])
+
+    assert job["status"] == "succeeded", job
+    assert len(job["result"]["images"]) == 1
+    assert job["result"]["images"][0]["id"] == "job-box"
+    assert job["result"]["images"][0]["data"]
+
+
+def test_export_job_downloads_valid_zip():
+    data = _upload()
+    request = {
+        "session_id": data["session_id"],
+        "format": "jpeg",
+        "images": [{"id": "a", "data": _png_base64(), "name": "photo"}],
+    }
+    submitted = client.post("/api/jobs/export", json=request)
+    assert submitted.status_code == 202, submitted.text
+    job = _wait_for_job(submitted.json()["job_id"])
+
+    assert job["status"] == "succeeded", job
+    download = client.get(job["result"]["download_url"])
+    assert download.status_code == 200, download.text
+    assert download.headers["content-type"] == "application/zip"
+    with zipfile.ZipFile(io.BytesIO(download.content)) as archive:
+        assert archive.namelist() == ["photo.jpg"]
+        assert archive.read("photo.jpg")
+
+
+def test_unknown_job_returns_404():
+    assert client.get("/api/jobs/not-a-job").status_code == 404
+
+
+def test_export_local_job_respects_non_local_mode(monkeypatch, tmp_path):
+    data = _upload()
+    monkeypatch.setenv("SCANSPLITTER_LOCAL_MODE", "0")
+    response = client.post(
+        "/api/jobs/export-local",
+        json={"session_id": data["session_id"], "output_directory": str(tmp_path)},
+    )
+    assert response.status_code == 403, response.text
 
 
 if __name__ == "__main__":

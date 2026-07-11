@@ -146,6 +146,11 @@ class SessionManager:
         if session is None:
             return False
 
+        # Imported lazily to avoid coupling session creation to the job executor.
+        from .jobs import registry
+
+        registry.drop_session(session_id)
+
         # Remove directory
         if session.directory.exists():
             shutil.rmtree(session.directory, ignore_errors=True)

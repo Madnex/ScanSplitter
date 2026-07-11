@@ -8,12 +8,13 @@ import subprocess
 import sys
 import uuid
 import zipfile
+from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, Response
+from fastapi.responses import Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
@@ -28,6 +29,7 @@ from .detector import (
     detect_photos_v2,
 )
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
+from .jobs import JobCancelled, registry, submit_job
 from .models import get_model_statuses, start_model_download
 from .pdf_handler import extract_pdf_page, get_pdf_page_count
 from .rotator import auto_rotate
@@ -50,6 +52,22 @@ _PAGE_CACHE_MAX_ENTRIES = 4
 
 # Get the static directory path relative to this file
 STATIC_DIR = Path(__file__).parent / "static"
+
+ProgressCallback = Callable[[int, str], None]
+CancelCheck = Callable[[], bool]
+
+
+def _noop_progress(percent: int, stage: str) -> None:
+    del percent, stage
+
+
+def _never_cancelled() -> bool:
+    return False
+
+
+def _check_cancelled(is_cancelled: CancelCheck) -> None:
+    if is_cancelled():
+        raise JobCancelled
 
 
 def _local_features_enabled() -> bool:
@@ -549,9 +567,12 @@ async def models_download(request: ModelDownloadRequest):
         raise HTTPException(status_code=400, detail=str(e)) from e
 
 
-@app.post("/api/detect", response_model=DetectResponse)
-def detect_boxes(request: DetectRequest):
-    """Detect bounding boxes in an image. Sync: runs in a worker thread."""
+def run_detect(
+    request: DetectRequest,
+    progress_cb: ProgressCallback = _noop_progress,
+    is_cancelled: CancelCheck = _never_cancelled,
+) -> DetectResponse:
+    """Run detection for both synchronous requests and background jobs."""
     session = get_session_or_404(request.session_id)
 
     # Get first file (we only support one at a time for now)
@@ -559,7 +580,11 @@ def detect_boxes(request: DetectRequest):
         raise HTTPException(status_code=400, detail="No files uploaded")
 
     filename = list(session.files.keys())[0]
+    progress_cb(5, "rendering page")
+    _check_cancelled(is_cancelled)
     image = load_page_image(session, filename, request.page)
+    progress_cb(20, "preprocessing")
+    _check_cancelled(is_cancelled)
 
     detection_mode = request.detection_mode
     if detection_mode in ("classic", "ScanSplitterv2", "v2"):
@@ -570,6 +595,7 @@ def detect_boxes(request: DetectRequest):
     # Run detection based on mode
     if detection_mode == "u2net":
         # Use U2-Net deep learning detection
+        progress_cb(35, "running model")
         regions = detect_photos_u2net(
             image,
             min_area_ratio=request.min_area / 100,
@@ -577,6 +603,7 @@ def detect_boxes(request: DetectRequest):
             lite=request.u2net_lite,
         )
     elif detection_mode == "scansplitterv1":
+        progress_cb(45, "detecting")
         regions = detect_photos_v1(
             image,
             min_area_ratio=request.min_area / 100,
@@ -584,6 +611,7 @@ def detect_boxes(request: DetectRequest):
         )
     else:
         # Use ScanSplitterv2 contour-based detection with enhancements
+        progress_cb(45, "detecting")
         regions = detect_photos_v2(
             image,
             min_area_ratio=request.min_area / 100,
@@ -597,6 +625,8 @@ def detect_boxes(request: DetectRequest):
             border_padding=request.border_padding,
         )
 
+    _check_cancelled(is_cancelled)
+    progress_cb(85, "scoring rotations")
     # Convert to BoundingBox format
     boxes = []
     for region in regions:
@@ -617,9 +647,18 @@ def detect_boxes(request: DetectRequest):
     return DetectResponse(boxes=boxes, image_url=image_url)
 
 
-@app.post("/api/crop", response_model=CropResponse)
-def crop_images(request: CropRequest):
-    """Crop images using user-adjusted bounding boxes. Sync: worker thread."""
+@app.post("/api/detect", response_model=DetectResponse)
+def detect_boxes(request: DetectRequest):
+    """Detect bounding boxes in an image. Sync: runs in a worker thread."""
+    return run_detect(request)
+
+
+def run_crop(
+    request: CropRequest,
+    progress_cb: ProgressCallback = _noop_progress,
+    is_cancelled: CancelCheck = _never_cancelled,
+) -> CropResponse:
+    """Crop images for both synchronous requests and background jobs."""
     import cv2
     import numpy as np
 
@@ -629,6 +668,7 @@ def crop_images(request: CropRequest):
         raise HTTPException(status_code=400, detail="No files uploaded")
 
     filename = list(session.files.keys())[0]
+    progress_cb(5, "rendering page")
     image = load_page_image(session, filename, request.page)
 
     # Drop results from previous crop calls so legacy exports can't mix
@@ -641,7 +681,10 @@ def crop_images(request: CropRequest):
     cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
     cropped_images = []
-    for box in request.boxes:
+    total = len(request.boxes)
+    for index, box in enumerate(request.boxes, 1):
+        _check_cancelled(is_cancelled)
+        progress_cb(10 + int(85 * (index - 1) / max(total, 1)), f"cropping image {index}/{total}")
         # Convert box to DetectedRegion
         region = box_to_detected_region(box, image)
 
@@ -679,9 +722,18 @@ def crop_images(request: CropRequest):
     return CropResponse(images=cropped_images)
 
 
-@app.post("/api/export")
-def export_zip(request: ExportRequest):
-    """Export cropped images as a ZIP file. Sync: runs in a worker thread."""
+@app.post("/api/crop", response_model=CropResponse)
+def crop_images(request: CropRequest):
+    """Crop images using user-adjusted bounding boxes. Sync: worker thread."""
+    return run_crop(request)
+
+
+def run_export_zip(
+    request: ExportRequest,
+    progress_cb: ProgressCallback = _noop_progress,
+    is_cancelled: CancelCheck = _never_cancelled,
+) -> bytes:
+    """Build an export ZIP for both synchronous requests and background jobs."""
     session = get_session_or_404(request.session_id)
 
     # Get original EXIF data for potential reuse
@@ -697,7 +749,10 @@ def export_zip(request: ExportRequest):
         ext = "png" if request.format.lower() == "png" else "jpg"
 
         with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
-            for img_data in request.images:
+            total = len(request.images)
+            for index, img_data in enumerate(request.images, 1):
+                _check_cancelled(is_cancelled)
+                progress_cb(int(90 * (index - 1) / max(total, 1)), f"encoding image {index}/{total}")
                 # Decode base64 and re-encode in requested format
                 img_bytes = base64.b64decode(img_data.data)
                 img = Image.open(io.BytesIO(img_bytes))
@@ -721,11 +776,7 @@ def export_zip(request: ExportRequest):
                 filename = f"{sanitize_name(img_data.name, default='photo')}.{ext}"
                 zf.writestr(filename, buffer.getvalue())
 
-        return FileResponse(
-            zip_path,
-            media_type="application/zip",
-            filename="scansplitter_export.zip",
-        )
+        return zip_path.read_bytes()
 
     # Legacy fallback: use cached images from session
     if not session.cropped_images:
@@ -743,7 +794,10 @@ def export_zip(request: ExportRequest):
 
     zip_path = session.directory / "export.zip"
     with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        total = len(session.cropped_images)
         for i, img_path in enumerate(session.cropped_images, 1):
+            _check_cancelled(is_cancelled)
+            progress_cb(int(90 * (i - 1) / max(total, 1)), f"encoding image {i}/{total}")
             if img_path.exists():
                 # Re-encode in requested format
                 img = Image.open(img_path)
@@ -769,16 +823,25 @@ def export_zip(request: ExportRequest):
 
                 zf.writestr(filename, buffer.getvalue())
 
-    return FileResponse(
-        zip_path,
+    return zip_path.read_bytes()
+
+
+@app.post("/api/export")
+def export_zip(request: ExportRequest):
+    """Export cropped images as a ZIP file. Sync: runs in a worker thread."""
+    return Response(
+        content=run_export_zip(request),
         media_type="application/zip",
-        filename="scansplitter_export.zip",
+        headers={"Content-Disposition": 'attachment; filename="scansplitter_export.zip"'},
     )
 
 
-@app.post("/api/export-local")
-def export_local(request: ExportLocalRequest):
-    """Export cropped images to a local directory. Sync: worker thread."""
+def run_export_local(
+    request: ExportLocalRequest,
+    progress_cb: ProgressCallback = _noop_progress,
+    is_cancelled: CancelCheck = _never_cancelled,
+) -> dict:
+    """Export locally for both synchronous requests and background jobs."""
     if not _local_features_enabled():
         raise HTTPException(
             status_code=403,
@@ -843,7 +906,10 @@ def export_local(request: ExportLocalRequest):
     try:
         # Use provided image data if available (includes client-side rotations)
         if request.images:
-            for img_data in request.images:
+            total = len(request.images)
+            for index, img_data in enumerate(request.images, 1):
+                _check_cancelled(is_cancelled)
+                progress_cb(int(90 * (index - 1) / max(total, 1)), f"encoding image {index}/{total}")
                 # Decode base64 and re-encode in requested format
                 img_bytes = base64.b64decode(img_data.data)
                 img = Image.open(io.BytesIO(img_bytes))
@@ -883,7 +949,10 @@ def export_local(request: ExportLocalRequest):
                 clear_date=clear_date,
             )
 
+            total = len(session.cropped_images)
             for i, img_path in enumerate(session.cropped_images, 1):
+                _check_cancelled(is_cancelled)
+                progress_cb(int(90 * (i - 1) / max(total, 1)), f"encoding image {i}/{total}")
                 if img_path.exists():
                     img = Image.open(img_path)
 
@@ -914,6 +983,114 @@ def export_local(request: ExportLocalRequest):
         raise HTTPException(status_code=500, detail=f"Export failed: {str(e)}") from e
 
     return {"status": "success", "files": exported_files, "count": len(exported_files)}
+
+
+@app.post("/api/export-local")
+def export_local(request: ExportLocalRequest):
+    """Export cropped images to a local directory. Sync: worker thread."""
+    return run_export_local(request)
+
+
+def _job_payload(job) -> dict:
+    """Return the stable public polling representation of a job."""
+    return {
+        "job_id": job.job_id,
+        "kind": job.kind,
+        "status": job.status,
+        "progress": job.progress,
+        "stage": job.stage,
+        "result": job.result,
+        "error": job.error,
+    }
+
+
+@app.post("/api/jobs/detect", status_code=202)
+def create_detect_job(request: DetectRequest):
+    get_session_or_404(request.session_id)
+
+    def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
+        response = run_detect(request, progress, cancelled)
+        return {"boxes": [box.model_dump() for box in response.boxes]}
+
+    return {"job_id": submit_job("detect", request.session_id, worker).job_id}
+
+
+@app.post("/api/jobs/crop", status_code=202)
+def create_crop_job(request: CropRequest):
+    get_session_or_404(request.session_id)
+
+    def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
+        response = run_crop(request, progress, cancelled)
+        return {"images": [image.model_dump() for image in response.images]}
+
+    return {"job_id": submit_job("crop", request.session_id, worker).job_id}
+
+
+@app.post("/api/jobs/export", status_code=202)
+def create_export_job(request: ExportRequest):
+    get_session_or_404(request.session_id)
+
+    def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
+        data = run_export_zip(request, progress, cancelled)
+        return {"__download_bytes": data}
+
+    job = submit_job("export", request.session_id, worker)
+    return {"job_id": job.job_id}
+
+
+@app.post("/api/jobs/export-local", status_code=202)
+def create_export_local_job(request: ExportLocalRequest):
+    if not _local_features_enabled():
+        raise HTTPException(
+            status_code=403,
+            detail="Local filesystem export is disabled when the server is not bound to localhost",
+        )
+    get_session_or_404(request.session_id)
+
+    def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
+        response = run_export_local(request, progress, cancelled)
+        return {"files": response["files"], "count": response["count"]}
+
+    return {"job_id": submit_job("export-local", request.session_id, worker).job_id}
+
+
+@app.get("/api/jobs/{job_id}")
+def get_job(job_id: str):
+    job = registry.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    return _job_payload(job)
+
+
+@app.get("/api/jobs/{job_id}/download")
+def download_job(job_id: str):
+    job = registry.get(job_id)
+    if (
+        job is None
+        or job.kind != "export"
+        or job.status != "succeeded"
+        or job.download_bytes is None
+    ):
+        raise HTTPException(status_code=404, detail="Job download not ready or expired")
+    return Response(
+        content=job.download_bytes,
+        media_type="application/zip",
+        headers={"Content-Disposition": 'attachment; filename="scansplitter_export.zip"'},
+    )
+
+
+@app.delete("/api/jobs/{job_id}")
+def cancel_job(job_id: str):
+    job = registry.get(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="Job not found")
+    if job.status in {"succeeded", "failed", "cancelled"}:
+        return {"status": "cancelled" if job.status == "cancelled" else "already done"}
+    job.cancel_flag.set()
+    if job.status == "queued":
+        registry.update(job_id, status="cancelled", stage="cancelled")
+        return {"status": "cancelled"}
+    return {"status": "cancelling"}
 
 
 @app.post("/api/select-directory", response_model=SelectDirectoryResponse)
