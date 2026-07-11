@@ -378,6 +378,23 @@ def test_front_back_pairing_ocr_and_acceptance(monkeypatch):
     project = client.get(f"/api/projects/{pid}").json()
     assert project["scans"][0]["metadata"]["caption"] == "Back inscription: June 1975"
 
+    accepted = client.post(
+        f"/api/projects/{pid}/scans/{back['id']}/ocr/accept",
+        json={"text": "x" * 3000, "append_to_front_caption": True},
+    )
+    assert accepted.status_code == 200, accepted.text
+    project = client.get(f"/api/projects/{pid}").json()
+    assert len(project["scans"][0]["metadata"]["caption"]) == 2000
+
+    assert client.delete(f"/api/projects/{pid}/scans/{front['id']}").status_code == 200
+    project = client.get(f"/api/projects/{pid}").json()
+    assert project["scans"][0]["back_of"] is None
+    accepted = client.post(
+        f"/api/projects/{pid}/scans/{back['id']}/ocr/accept",
+        json={"text": "orphaned back", "append_to_front_caption": True},
+    )
+    assert accepted.status_code == 200, accepted.text
+
 
 def test_geocode_is_explicit_and_names_provider(monkeypatch):
     class Response:
@@ -529,15 +546,123 @@ def test_watched_folder_delivery_writes_canonical_artifacts(monkeypatch, tmp_pat
     box = {"id": "b1", "x": 400, "y": 300, "width": 300, "height": 200, "angle": 0}
     client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"boxes": [box]})
     client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"status": "approved"})
+    client.patch(f"/api/projects/{pid}", json={"settings": {"format": "png", "quality": 73}})
     destination = tmp_path / "watched"
+    destination.mkdir()
     started = client.post(
         f"/api/projects/{pid}/deliver",
         json={"target": "folder", "destination": str(destination)},
     )
     job = _wait_for_job(started.json()["job_id"])
     assert job["status"] == "succeeded", job
-    assert (destination / "Unsorted" / "one_1.jpg").exists()
+    assert (destination / "Unsorted" / "one_1.png").exists()
     assert (destination / "digitization-manifest.json").exists()
+
+
+def test_delivery_validation_and_overwrite(monkeypatch, tmp_path):
+    _install_confidence(monkeypatch, lambda *a, **k: [])
+    pid = _create_project()["id"]
+    assert client.post(
+        f"/api/projects/{pid}/deliver", json={"target": "folder", "destination": ""}
+    ).status_code == 400
+    assert client.post(
+        f"/api/projects/{pid}/deliver",
+        json={"target": "folder", "destination": str(tmp_path / "missing")},
+    ).status_code == 400
+
+    scan = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[("files", ("one.png", _photo_png(), "image/png"))],
+    ).json()["scans"][0]
+    box = {"id": "b1", "x": 400, "y": 300, "width": 300, "height": 200, "angle": 0}
+    client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"boxes": [box]})
+    client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"status": "approved"})
+    destination = tmp_path / "watched"
+    destination.mkdir()
+    first = client.post(
+        f"/api/projects/{pid}/deliver",
+        json={"target": "folder", "destination": str(destination)},
+    )
+    assert _wait_for_job(first.json()["job_id"])["status"] == "succeeded"
+    conflict = client.post(
+        f"/api/projects/{pid}/deliver",
+        json={"target": "folder", "destination": str(destination)},
+    )
+    failed = _wait_for_job(conflict.json()["job_id"])
+    assert failed["status"] == "failed"
+    assert failed["error_status"] == 409
+    overwrite = client.post(
+        f"/api/projects/{pid}/deliver",
+        json={"target": "folder", "destination": str(destination), "overwrite": True},
+    )
+    assert _wait_for_job(overwrite.json()["job_id"])["status"] == "succeeded"
+
+
+def test_export_privacy_folders_and_non_jpeg_metadata(monkeypatch):
+    _install_confidence(monkeypatch, lambda *a, **k: [])
+    pid = _create_project()["id"]
+    scan = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[("files", ("archive.png", _photo_png(), "image/png"))],
+    ).json()["scans"][0]
+    box = {"id": "b1", "x": 400, "y": 300, "width": 300, "height": 200, "angle": 0}
+    client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"boxes": [box]})
+    client.patch(f"/api/projects/{pid}/scans/{scan['id']}", json={"status": "approved"})
+    client.patch(
+        f"/api/projects/{pid}/scans/{scan['id']}/metadata",
+        json={
+            "date": "1975-06-01",
+            "latitude": 51.2,
+            "longitude": 4.4,
+            "caption": "Station",
+            "album": "St. Petersburg 1987",
+        },
+    )
+    client.patch(
+        f"/api/projects/{pid}",
+        json={"settings": {"include_gps": True}},
+    )
+
+    def export(**options):
+        started = client.post(f"/api/projects/{pid}/export", json=options)
+        assert started.status_code == 202, started.text
+        job = _wait_for_job(started.json()["job_id"])
+        assert job["status"] == "succeeded", job
+        return zipfile.ZipFile(io.BytesIO(client.get(job["result"]["download_url"]).content))
+
+    without_gps = export(
+        format="png", master_format="tiff", organize_folders=True, manifest_format="json"
+    )
+    manifest = json.loads(without_gps.read("digitization-manifest.json"))[0]
+    assert "latitude" not in manifest["metadata"]
+    assert "longitude" not in manifest["metadata"]
+    png_name = "St._Petersburg_1987/1975/archive_1.png"
+    assert png_name in without_gps.namelist()
+    png = Image.open(io.BytesIO(without_gps.read(png_name)))
+    assert png.getexif().get_ifd(34665)[piexif.ExifIFD.DateTimeOriginal] == "1975:06:01 00:00:00"
+    assert "Station" in png.info["XML:com.adobe.xmp"]
+    assert not png.getexif().get_ifd(34853)
+
+    tiff_bytes = without_gps.read("masters/St._Petersburg_1987/1975/archive_1.tif")
+    tiff = Image.open(io.BytesIO(tiff_bytes))
+    assert tiff.getexif().get_ifd(34665)[piexif.ExifIFD.DateTimeOriginal] == "1975:06:01 00:00:00"
+    assert b"Station" in tiff.tag_v2[700]
+
+    with_gps = export(include_gps=True, manifest_format="json")
+    metadata = json.loads(with_gps.read("digitization-manifest.json"))[0]["metadata"]
+    assert metadata["latitude"] == 51.2
+    assert metadata["longitude"] == 4.4
+
+
+def test_settings_and_export_artifact_enums_are_lowercase_only():
+    pid = _create_project()["id"]
+    response = client.patch(
+        f"/api/projects/{pid}", json={"settings": {"master_format": "TIFF"}}
+    )
+    assert response.status_code == 400
+    assert client.post(
+        f"/api/projects/{pid}/export", json={"manifest_format": "JSON"}
+    ).status_code == 400
 
 
 # --- Path safety ------------------------------------------------------------

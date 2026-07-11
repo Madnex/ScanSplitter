@@ -81,5 +81,5 @@ export function useProject(projectId: string | null) {
     });
   }, []);
 
-  return { project, isLoading, error, refresh, updateScan, removeScan };
+  return { project, isLoading, error, refresh, setProject, updateScan, removeScan };
 }

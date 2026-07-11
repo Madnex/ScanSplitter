@@ -49,6 +49,10 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   const detectAbortRef = useRef<AbortController | null>(null);
   const previewAbortRef = useRef<AbortController | null>(null);
   const previewUrlRef = useRef<string | null>(null);
+  const currentProjectBoxes = useCallback(
+    () => boxes.map((box) => toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id))),
+    [boxes]
+  );
 
   const closePreview = useCallback(() => {
     previewAbortRef.current?.abort();
@@ -92,7 +96,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   // to do next without waiting on a state update to land.
   const persistBoxesIfDirty = useCallback(async (): Promise<void> => {
     if (!currentScan) return;
-    const current = boxes.map((box) => toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id)));
+    const current = currentProjectBoxes();
     if (boxesEqual(current, savedBoxesRef.current)) return;
     setIsSaving(true);
     try {
@@ -104,7 +108,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     } finally {
       setIsSaving(false);
     }
-  }, [boxes, currentScan, projectId, updateScan, showToast]);
+  }, [currentProjectBoxes, currentScan, projectId, updateScan, showToast]);
 
   const goTo = useCallback(
     async (targetId: string | null) => {
@@ -122,7 +126,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     if (!currentScan) return;
     setIsSaving(true);
     try {
-      const current = boxes.map((box) => toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id)));
+      const current = currentProjectBoxes();
       const updated = await patchProjectScan(projectId, currentScan.id, {
         boxes: current,
         status: "approved",
@@ -141,7 +145,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     } finally {
       setIsSaving(false);
     }
-  }, [boxes, currentScan, projectId, updateScan, queue, showToast, onBack]);
+  }, [currentProjectBoxes, currentScan, projectId, updateScan, queue, showToast, onBack]);
 
   const handleRedetect = useCallback(async () => {
     if (!currentScan) return;
@@ -204,7 +208,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
 
   const setFirstPhotoOverride = useCallback(async (key: "auto_deskew" | "restore_color" | "remove_dust" | "upscale_2x", value: string) => {
     if (!currentScan || boxes.length === 0) return;
-    const current = boxes.map((box) => toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id)));
+    const current = currentProjectBoxes();
     const first = current[0];
     const restoration = { ...(first.restoration ?? {}) };
     if (value === "inherit") delete restoration[key]; else restoration[key] = value === "on";
@@ -216,7 +220,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
       savedBoxesRef.current = updated.boxes;
     } catch (err) { showToast(err instanceof Error ? err.message : "Failed to save override", "error"); }
     finally { setIsSaving(false); }
-  }, [boxes, currentScan, projectId, showToast, updateScan]);
+  }, [boxes.length, currentProjectBoxes, currentScan, projectId, showToast, updateScan]);
 
   // Keyboard map (standard input-focus guard, matching ImageCanvas/App).
   useEffect(() => {

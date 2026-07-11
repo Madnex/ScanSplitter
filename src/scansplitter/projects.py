@@ -29,7 +29,7 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
-from PIL import Image
+from PIL import Image, PngImagePlugin
 
 from .detector import (
     DetectedRegion,
@@ -48,6 +48,7 @@ from .metadata import (
 )
 from .pdf_handler import extract_pdf_page, get_pdf_page_count
 from .rotator import auto_rotate
+from .session import sanitize_name
 
 ProgressCallback = Callable[[int, str], None]
 CancelCheck = Callable[[], bool]
@@ -79,6 +80,8 @@ PROJECT_STATUSES = (
 
 # Statuses whose boxes are included in an export.
 _EXPORTABLE_STATUSES = {"approved", "auto_approved"}
+MASTER_FORMATS = {"png", "tiff"}
+MANIFEST_FORMATS = {"json", "csv", "both"}
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "detection_mode": "scansplitterv2",
@@ -318,6 +321,16 @@ class ProjectStore:
                 merged = dict(data["settings"])
                 for key, value in settings.items():
                     if key in DEFAULT_SETTINGS:
+                        if key == "master_format" and value is not None and value not in MASTER_FORMATS:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="master_format must be one of: png, tiff",
+                            )
+                        if key == "manifest_format" and value is not None and value not in MANIFEST_FORMATS:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="manifest_format must be one of: json, csv, both",
+                            )
                         merged[key] = value
                 data["settings"] = merged
             data["updated_at"] = _now_iso()
@@ -396,9 +409,13 @@ class ProjectStore:
                 front = self._find_scan(data, front_sid)
                 current = (front.get("metadata") or metadata_defaults()).get("caption")
                 note = f"Back inscription: {clean}"
-                front["metadata"] = normalize_metadata_patch(
-                    {"caption": f"{current}\n\n{note}" if current else note}, front.get("metadata")
-                )
+                caption = (f"{current}\n\n{note}" if current else note)[:2000]
+                try:
+                    front["metadata"] = normalize_metadata_patch(
+                        {"caption": caption}, front.get("metadata")
+                    )
+                except ValueError as exc:
+                    raise HTTPException(status_code=400, detail=str(exc)) from exc
             data["updated_at"] = _now_iso()
             self._write(pid, data)
             return back
@@ -537,6 +554,9 @@ class ProjectStore:
             data = self._read(pid)
             scan = self._find_scan(data, sid)
             data["scans"] = [s for s in data["scans"] if s["id"] != sid]
+            for remaining in data["scans"]:
+                if remaining.get("back_of") == sid:
+                    remaining["back_of"] = None
             data["updated_at"] = _now_iso()
             self._write(pid, data)
         # Remove the on-disk artifacts (best effort, outside the manifest lock).
@@ -645,10 +665,11 @@ class ProjectStore:
         settings = data["settings"]
         out_format = (fmt or settings["format"]).lower()
         out_quality = quality if quality is not None else settings["quality"]
-        out_include_gps = include_gps if include_gps is not None else bool(settings["include_gps"])
+        out_include_gps = bool(include_gps) if include_gps is not None else False
         out_master = master_format if master_format is not None else settings["master_format"]
         out_organize = organize_folders if organize_folders is not None else bool(settings["organize_folders"])
         out_manifest = manifest_format if manifest_format is not None else settings["manifest_format"]
+        _validate_artifact_formats(out_master, out_manifest)
 
         def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
             payload = self._build_export_zip(
@@ -661,26 +682,46 @@ class ProjectStore:
 
     def submit_delivery_job(self, pid: str, target: str, config: dict[str, Any]) -> str:
         """Build canonical artifacts and send them to one explicit target."""
-        self._read(pid)
+        data = self._read(pid)
+        settings = data["settings"]
+        from .delivery import DELIVERY_REQUIRED_FIELDS
+
+        if target not in DELIVERY_REQUIRED_FIELDS:
+            raise HTTPException(status_code=400, detail="Unknown delivery target")
+        master_format = config.get("master_format", settings["master_format"])
+        manifest_format = config.get("manifest_format", settings["manifest_format"])
+        organize_folders = config.get("organize_folders", settings["organize_folders"])
+        if target == "immich":
+            master_format = None
+            manifest_format = None
+            organize_folders = False
+        _validate_artifact_formats(master_format, manifest_format)
 
         def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
             from .delivery import upload_immich, upload_nextcloud, write_watched_folder
 
             progress(5, "building export artifacts")
             payload = self._build_export_zip(
-                pid, "jpeg", 90, bool(config.get("include_gps")), progress, cancelled,
-                config.get("master_format"), bool(config.get("organize_folders", True)),
-                config.get("manifest_format", "both"),
+                pid, settings["format"].lower(), settings["quality"], bool(config.get("include_gps")),
+                progress, cancelled, master_format, bool(organize_folders), manifest_format,
             )
             progress(92, f"delivering to {target}")
-            if target == "folder":
-                count = write_watched_folder(payload, Path(config["destination"]))
-            elif target == "nextcloud":
-                count = upload_nextcloud(payload, config["base_url"], config["username"], config["password"], config.get("folder", "ScanSplitter"))
-            elif target == "immich":
-                count = upload_immich(payload, config["server_url"], config["api_key"])
-            else:
-                raise HTTPException(status_code=400, detail="Unknown delivery target")
+            dispatch = {
+                "folder": lambda: write_watched_folder(
+                    payload, Path(config["destination"]), bool(config.get("overwrite", False))
+                ),
+                "nextcloud": lambda: upload_nextcloud(
+                    payload,
+                    config["base_url"],
+                    config["username"],
+                    config["password"],
+                    config.get("folder", "ScanSplitter"),
+                ),
+                "immich": lambda: upload_immich(
+                    payload, config["server_url"], config["api_key"]
+                ),
+            }
+            count = dispatch[target]()
             return {"target": target, "count": count}
 
         return submit_job("project-delivery", pid, worker).job_id
@@ -755,6 +796,7 @@ class ProjectStore:
         buffer = io.BytesIO()
         used_names: set[str] = set()
         records: list[dict[str, Any]] = []
+        wants_manifest = manifest_format in MANIFEST_FORMATS
         with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             total = max(1, len(exportable))
             for index, scan in enumerate(exportable):
@@ -784,49 +826,38 @@ class ProjectStore:
                     effective_settings = {**data["settings"], **box.get("restoration", {})}
                     crop_pil, _ = apply_restorations(crop_pil, effective_settings)
 
-                    img_buffer = io.BytesIO()
-                    if ext == "png":
-                        crop_pil.save(img_buffer, "PNG", optimize=True)
-                    else:
-                        crop_pil.save(img_buffer, "JPEG", quality=out_quality)
-
-                    payload = img_buffer.getvalue()
-                    if ext == "jpg":
-                        metadata = scan.get("metadata") or metadata_defaults()
-                        exif = create_metadata_exif(metadata, include_gps)
-                        if exif:
-                            from .exif_handler import apply_exif_to_jpeg
-
-                            payload = apply_exif_to_jpeg(payload, exif)
-                        xmp = create_xmp_packet(metadata)
-                        if xmp:
-                            payload = insert_xmp(payload, xmp)
+                    payload = _encode_image(
+                        crop_pil, ext, out_quality, metadata, include_gps
+                    )
 
                     base = f"{folder}/{stem}_{photo_index}" if folder else f"{stem}_{photo_index}"
                     name = _unique_name(base, ext, used_names)
                     zf.writestr(name, payload)
                     master_name = None
-                    if master_format in {"png", "tiff"}:
+                    if master_format in MASTER_FORMATS:
                         master_ext = "png" if master_format == "png" else "tif"
-                        master_buffer = io.BytesIO()
-                        if master_ext == "png":
-                            crop_pil.save(master_buffer, "PNG", optimize=True)
-                        else:
-                            crop_pil.save(master_buffer, "TIFF", compression="tiff_deflate")
                         master_base = f"masters/{folder}/{stem}_{photo_index}" if folder else f"masters/{stem}_{photo_index}"
                         master_name = _unique_name(master_base, master_ext, used_names)
-                        zf.writestr(master_name, master_buffer.getvalue())
-                    records.append({
-                        "project_id": pid,
-                        "scan_id": scan["id"],
-                        "box_id": box["id"],
-                        "source": scan["original_name"],
-                        "output": name,
-                        "master": master_name,
-                        "sha256": hashlib.sha256(payload).hexdigest(),
-                        "metadata": metadata,
-                        "restoration": {**data["settings"], **box.get("restoration", {})},
-                    })
+                        zf.writestr(
+                            master_name,
+                            _encode_image(crop_pil, master_ext, out_quality, metadata, include_gps),
+                        )
+                    if wants_manifest:
+                        manifest_metadata = dict(metadata)
+                        if not include_gps:
+                            manifest_metadata.pop("latitude", None)
+                            manifest_metadata.pop("longitude", None)
+                        records.append({
+                            "project_id": pid,
+                            "scan_id": scan["id"],
+                            "box_id": box["id"],
+                            "source": scan["original_name"],
+                            "output": name,
+                            "master": master_name,
+                            "sha256": hashlib.sha256(payload).hexdigest(),
+                            "metadata": manifest_metadata,
+                            "restoration": {**data["settings"], **box.get("restoration", {})},
+                        })
 
             if manifest_format in {"json", "both"}:
                 zf.writestr("digitization-manifest.json", json.dumps(records, indent=2))
@@ -929,8 +960,52 @@ def _metadata_folder(metadata: dict) -> str:
     parts = []
     for value in (metadata.get("album"), (metadata.get("date") or "")[:4], metadata.get("event")):
         if value:
-            parts.append(_sanitize_stem(str(value)))
+            parts.append(sanitize_name(str(value), default="Unsorted"))
     return "/".join(parts) or "Unsorted"
+
+
+def _validate_artifact_formats(master_format: str | None, manifest_format: str | None) -> None:
+    if master_format is not None and master_format not in MASTER_FORMATS:
+        raise HTTPException(status_code=400, detail="master_format must be one of: png, tiff")
+    if manifest_format is not None and manifest_format not in MANIFEST_FORMATS:
+        raise HTTPException(status_code=400, detail="manifest_format must be one of: json, csv, both")
+
+
+def _encode_image(
+    image: Image.Image,
+    ext: str,
+    quality: int,
+    metadata: dict[str, Any],
+    include_gps: bool,
+) -> bytes:
+    output = io.BytesIO()
+    exif = create_metadata_exif(metadata, include_gps)
+    xmp = create_xmp_packet(metadata)
+    if ext == "jpg":
+        image.save(output, "JPEG", quality=quality)
+        payload = output.getvalue()
+        if exif:
+            from .exif_handler import apply_exif_to_jpeg
+
+            payload = apply_exif_to_jpeg(payload, exif)
+        return insert_xmp(payload, xmp) if xmp else payload
+    if ext == "png":
+        pnginfo = PngImagePlugin.PngInfo()
+        if xmp:
+            pnginfo.add_itxt("XML:com.adobe.xmp", xmp.decode("utf-8"))
+        image.save(output, "PNG", optimize=True, exif=exif or b"", pnginfo=pnginfo)
+        return output.getvalue()
+    tiff_exif = Image.Exif()
+    if exif:
+        tiff_exif.load(exif)
+    if xmp:
+        tiff_exif[700] = xmp
+    image.save(
+        output,
+        "TIFF",
+        exif=tiff_exif,
+    )
+    return output.getvalue()
 
 
 def _unique_name(base: str, ext: str, used: set[str]) -> str:

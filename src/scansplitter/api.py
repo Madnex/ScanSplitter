@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 import scansplitter
 
+from .delivery import DELIVERY_REQUIRED_FIELDS
 from .detector import (
     DetectedRegion,
     crop_rotated_region,
@@ -32,7 +33,7 @@ from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
 from .jobs import JobCancelled, registry, submit_job
 from .models import get_model_statuses, start_model_download
 from .pdf_handler import extract_pdf_page, get_pdf_page_count
-from .projects import get_project_store
+from .projects import MANIFEST_FORMATS, MASTER_FORMATS, get_project_store
 from .rotator import auto_rotate
 from .session import Session, get_session_manager, sanitize_name
 
@@ -320,6 +321,7 @@ class ProjectDeliveryRequest(BaseModel):
     master_format: str | None = None
     organize_folders: bool = True
     manifest_format: str | None = "both"
+    overwrite: bool = False
 
 
 class ProjectMetadataPatch(BaseModel):
@@ -1456,14 +1458,24 @@ def export_project(pid: str, request: ProjectExportRequest):
 def deliver_project(pid: str, request: ProjectDeliveryRequest):
     """Deliver canonical project artifacts; secrets remain request-scoped."""
     config = request.model_dump(exclude_none=True)
+    config = {
+        key: value.strip() if isinstance(value, str) else value
+        for key, value in config.items()
+    }
     target = config.pop("target")
     if target == "folder" and not _local_features_enabled():
         raise HTTPException(status_code=403, detail="Local folder delivery is disabled")
-    required = {"folder": {"destination"}, "immich": {"server_url", "api_key"}, "nextcloud": {"base_url", "username", "password"}}.get(target)
+    required = DELIVERY_REQUIRED_FIELDS.get(target)
     if required is None:
         raise HTTPException(status_code=400, detail="Unknown delivery target")
-    if missing := sorted(required - config.keys()):
+    if missing := sorted(field for field in required if not config.get(field)):
         raise HTTPException(status_code=400, detail=f"Missing delivery fields: {', '.join(missing)}")
+    if config.get("master_format") is not None and config["master_format"] not in MASTER_FORMATS:
+        raise HTTPException(status_code=400, detail="master_format must be one of: png, tiff")
+    if config.get("manifest_format") is not None and config["manifest_format"] not in MANIFEST_FORMATS:
+        raise HTTPException(status_code=400, detail="manifest_format must be one of: json, csv, both")
+    if target == "folder" and not Path(config["destination"]).expanduser().is_dir():
+        raise HTTPException(status_code=400, detail="Destination must be an existing directory")
     return {"job_id": get_project_store().submit_delivery_job(pid, target, config)}
 
 

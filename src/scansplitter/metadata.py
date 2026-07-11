@@ -182,11 +182,24 @@ def create_xmp_packet(metadata: dict[str, Any]) -> bytes | None:
 
 
 def insert_xmp(jpeg_bytes: bytes, packet: bytes) -> bytes:
-    """Insert an Adobe XMP APP1 segment immediately after JPEG SOI."""
+    """Insert Adobe XMP after leading JFIF and Exif segments."""
     if not jpeg_bytes.startswith(b"\xff\xd8"):
         return jpeg_bytes
     payload = b"http://ns.adobe.com/xap/1.0/\x00" + packet
     if len(payload) + 2 > 65535:
-        raise ValueError("XMP packet is too large")
+        return jpeg_bytes
     segment = b"\xff\xe1" + struct.pack(">H", len(payload) + 2) + payload
-    return jpeg_bytes[:2] + segment + jpeg_bytes[2:]
+    offset = 2
+    while offset + 4 <= len(jpeg_bytes) and jpeg_bytes[offset] == 0xFF:
+        marker = jpeg_bytes[offset + 1]
+        if marker not in {0xE0, 0xE1}:
+            break
+        length = struct.unpack(">H", jpeg_bytes[offset + 2 : offset + 4])[0]
+        end = offset + 2 + length
+        if end > len(jpeg_bytes):
+            break
+        marker_payload = jpeg_bytes[offset + 4 : end]
+        if marker == 0xE1 and not marker_payload.startswith(b"Exif\x00\x00"):
+            break
+        offset = end
+    return jpeg_bytes[:offset] + segment + jpeg_bytes[offset:]

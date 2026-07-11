@@ -21,13 +21,16 @@ def transcribe_image(path: Path, language: str = "eng") -> str:
             status_code=503,
             detail="Local OCR requires Tesseract. Install tesseract and retry.",
         )
-    result = subprocess.run(
-        [executable, str(path), "stdout", "-l", language, "--psm", "6"],
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=False,
-    )
+    try:
+        result = subprocess.run(
+            [executable, str(path), "stdout", "-l", language, "--psm", "6"],
+            capture_output=True,
+            text=True,
+            timeout=120,
+            check=False,
+        )
+    except subprocess.TimeoutExpired as exc:
+        raise HTTPException(status_code=504, detail="OCR timed out after 120s") from exc
     if result.returncode != 0:
         raise HTTPException(status_code=422, detail=result.stderr.strip() or "OCR failed")
     return "\n".join(line.strip() for line in result.stdout.splitlines() if line.strip())[:10_000]

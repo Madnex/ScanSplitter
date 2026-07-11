@@ -9,7 +9,7 @@ import { DeliveryDialog } from "@/components/projects/DeliveryDialog";
 import { useProject } from "@/hooks/useProject";
 import { detectPendingScans, exportProject, patchProject, uploadProjectScans } from "@/lib/api";
 import { cn } from "@/lib/utils";
-import type { ProjectScan } from "@/types/projects";
+import type { ProjectScan, ProjectSettings } from "@/types/projects";
 
 interface ProjectOverviewProps {
   projectId: string;
@@ -46,7 +46,7 @@ function matchesFilter(scan: ProjectScan, filter: FilterTab): boolean {
 }
 
 export function ProjectOverview({ projectId, onBack, onReview, showToast }: ProjectOverviewProps) {
-  const { project, isLoading, error, refresh } = useProject(projectId);
+  const { project, isLoading, error, refresh, setProject } = useProject(projectId);
   const [filter, setFilter] = useState<FilterTab>("all");
   const [isUploading, setIsUploading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
@@ -56,7 +56,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
   const [showPairing, setShowPairing] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
   const [showRestoration, setShowRestoration] = useState(false);
-  const [isSavingRestoration, setIsSavingRestoration] = useState(false);
+  const [isSavingSettings, setIsSavingSettings] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
 
@@ -165,17 +165,17 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
     if (first) onReview(first.id);
   }, [scans, onReview]);
 
-  const handleRestorationChange = useCallback(async (setting: "auto_deskew" | "restore_color" | "remove_dust" | "upscale_2x", enabled: boolean) => {
-    setIsSavingRestoration(true);
+  const handleSettingsChange = useCallback(async (settings: Partial<ProjectSettings>) => {
+    setIsSavingSettings(true);
     try {
-      await patchProject(projectId, { settings: { [setting]: enabled } });
-      await refresh();
+      const updated = await patchProject(projectId, { settings });
+      setProject(updated);
     } catch (err) {
-      showToast(err instanceof Error ? err.message : "Failed to save restoration settings", "error");
+      showToast(err instanceof Error ? err.message : "Failed to save project settings", "error");
     } finally {
-      setIsSavingRestoration(false);
+      setIsSavingSettings(false);
     }
-  }, [projectId, refresh, showToast]);
+  }, [projectId, setProject, showToast]);
 
   if (isLoading && !project) {
     return <p className="text-sm text-muted-foreground">Loading project…</p>;
@@ -238,20 +238,20 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
                   <span className="block font-medium">Auto-deskew</span>
                   <span className="block text-xs text-muted-foreground">Correct up to 5°</span>
                 </span>
-                <input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.auto_deskew} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("auto_deskew", event.target.checked)} />
+                <input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.auto_deskew} disabled={isSavingSettings} onChange={(event) => void handleSettingsChange({ auto_deskew: event.target.checked })} />
               </label>
               <label className="flex cursor-pointer items-center justify-end gap-3 text-sm">
                 <span className="text-right">
                   <span className="block font-medium">Color & fade</span>
                   <span className="block text-xs text-muted-foreground">Balance casts and contrast</span>
                 </span>
-                <input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.restore_color} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("restore_color", event.target.checked)} />
+                <input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.restore_color} disabled={isSavingSettings} onChange={(event) => void handleSettingsChange({ restore_color: event.target.checked })} />
               </label>
-              <label className="flex cursor-pointer items-center justify-end gap-3 text-sm"><span className="text-right"><span className="block font-medium">Dust & scratches</span><span className="block text-xs text-muted-foreground">Repair sparse defects</span></span><input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.remove_dust} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("remove_dust", event.target.checked)} /></label>
-              <label className="flex cursor-pointer items-center justify-end gap-3 text-sm"><span className="text-right"><span className="block font-medium">2× upscale</span><span className="block text-xs text-muted-foreground">Non-generative Lanczos</span></span><input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.upscale_2x} disabled={isSavingRestoration} onChange={(event) => void handleRestorationChange("upscale_2x", event.target.checked)} /></label>
+              <label className="flex cursor-pointer items-center justify-end gap-3 text-sm"><span className="text-right"><span className="block font-medium">Dust & scratches</span><span className="block text-xs text-muted-foreground">Repair sparse defects</span></span><input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.remove_dust} disabled={isSavingSettings} onChange={(event) => void handleSettingsChange({ remove_dust: event.target.checked })} /></label>
+              <label className="flex cursor-pointer items-center justify-end gap-3 text-sm"><span className="text-right"><span className="block font-medium">2× upscale</span><span className="block text-xs text-muted-foreground">Non-generative Lanczos</span></span><input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.upscale_2x} disabled={isSavingSettings} onChange={(event) => void handleSettingsChange({ upscale_2x: event.target.checked })} /></label>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap items-end gap-3 border-t pt-3"><label className="text-xs">Lossless master<select className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.master_format ?? ""} onChange={(event) => void patchProject(projectId, { settings: { master_format: (event.target.value || null) as "png" | "tiff" | null } }).then(refresh)}><option value="">None</option><option value="png">PNG</option><option value="tiff">TIFF</option></select></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" checked={project.settings.organize_folders} onChange={(event) => void patchProject(projectId, { settings: { organize_folders: event.target.checked } }).then(refresh)} />Folders by album/year/event</label><label className="text-xs">Manifest<select className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.manifest_format ?? ""} onChange={(event) => void patchProject(projectId, { settings: { manifest_format: (event.target.value || null) as "json" | "csv" | "both" | null } }).then(refresh)}><option value="">None</option><option value="json">JSON</option><option value="csv">CSV</option><option value="both">JSON + CSV</option></select></label></div>
+          <div className="mt-3 flex flex-wrap items-end gap-3 border-t pt-3"><label className="text-xs">Lossless master<select disabled={isSavingSettings} className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.master_format ?? ""} onChange={(event) => void handleSettingsChange({ master_format: (event.target.value || null) as "png" | "tiff" | null })}><option value="">None</option><option value="png">PNG</option><option value="tiff">TIFF</option></select></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" disabled={isSavingSettings} checked={project.settings.organize_folders} onChange={(event) => void handleSettingsChange({ organize_folders: event.target.checked })} />Folders by album/year/event</label><label className="text-xs">Manifest<select disabled={isSavingSettings} className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.manifest_format ?? ""} onChange={(event) => void handleSettingsChange({ manifest_format: (event.target.value || null) as "json" | "csv" | "both" | null })}><option value="">None</option><option value="json">JSON</option><option value="csv">CSV</option><option value="both">JSON + CSV</option></select></label></div>
         </section>
       )}
 

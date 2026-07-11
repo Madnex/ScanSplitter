@@ -25,20 +25,35 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
     [project.scans, scope]
   );
   const [form, setForm] = useState<ProjectMetadata>(initial);
+  const [dirty, setDirty] = useState<Set<keyof ProjectMetadata>>(() => new Set());
+  const [peopleInput, setPeopleInput] = useState(() => initial.people.join(", "));
   const [saving, setSaving] = useState(false);
   const [lookingUp, setLookingUp] = useState(false);
 
   const changeScope = (next: string) => {
     setScope(next);
-    setForm(next === "all" ? empty : (project.scans.find((scan) => scan.id === next)?.metadata ?? empty));
+    const nextForm = next === "all" ? empty : (project.scans.find((scan) => scan.id === next)?.metadata ?? empty);
+    setForm(nextForm);
+    setPeopleInput(nextForm.people.join(", "));
+    setDirty(new Set());
   };
-  const set = <K extends keyof ProjectMetadata>(key: K, value: ProjectMetadata[K]) =>
+  const set = <K extends keyof ProjectMetadata>(key: K, value: ProjectMetadata[K]) => {
     setForm((current) => ({ ...current, [key]: value }));
+    setDirty((current) => new Set(current).add(key));
+  };
 
   const save = async () => {
     setSaving(true);
     try {
-      await patchProjectMetadata(project.id, scope === "all" ? null : [scope], form);
+      const metadata: Partial<ProjectMetadata> = {};
+      dirty.forEach((key) => {
+        if (key === "people") {
+          metadata.people = [...new Set(peopleInput.split(",").map((value) => value.trim()).filter(Boolean))];
+        } else {
+          Object.assign(metadata, { [key]: form[key] });
+        }
+      });
+      await patchProjectMetadata(project.id, scope === "all" ? null : [scope], metadata);
       await onSaved();
       showToast(`Metadata applied to ${scope === "all" ? `${project.scans.length} scans` : "1 scan"}`);
       onClose();
@@ -54,6 +69,7 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
       const first = response.results[0];
       if (!first) return showToast("No matching place found", "info");
       setForm((current) => ({ ...current, place_name: first.name, latitude: first.latitude, longitude: first.longitude }));
+      setDirty((current) => new Set([...current, "place_name", "latitude", "longitude"]));
       showToast(`Coordinates from ${response.provider}`, "info");
     } catch (error) { showToast(error instanceof Error ? error.message : "Place lookup failed", "error"); }
     finally { setLookingUp(false); }
@@ -84,7 +100,7 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
           <label className="text-sm">Latitude<Input type="number" step="any" value={form.latitude ?? ""} onChange={(e) => set("latitude", e.target.value === "" ? null : Number(e.target.value))} /></label>
           <label className="text-sm">Longitude<Input type="number" step="any" value={form.longitude ?? ""} onChange={(e) => set("longitude", e.target.value === "" ? null : Number(e.target.value))} /></label>
           <label className="text-sm sm:col-span-2">Caption<textarea className="mt-1 w-full min-h-20 rounded-md border bg-background px-3 py-2 text-sm" value={form.caption ?? ""} onChange={(e) => set("caption", text(e.target.value))} /></label>
-          <label className="text-sm sm:col-span-2">People<Input placeholder="Ada Lovelace, Charles Babbage" value={form.people.join(", ")} onChange={(e) => set("people", e.target.value.split(",").map((v) => v.trim()).filter(Boolean))} /></label>
+          <label className="text-sm sm:col-span-2">People<Input placeholder="Ada Lovelace, Charles Babbage" value={peopleInput} onChange={(e) => { setPeopleInput(e.target.value); setDirty((current) => new Set(current).add("people")); }} /></label>
           <label className="text-sm">Event<Input placeholder="Family reunion" value={form.event ?? ""} onChange={(e) => set("event", text(e.target.value))} /></label>
           <label className="text-sm">Album / roll<Input placeholder="Shoebox 3" value={form.album ?? ""} onChange={(e) => set("album", text(e.target.value))} /></label>
         </div>
