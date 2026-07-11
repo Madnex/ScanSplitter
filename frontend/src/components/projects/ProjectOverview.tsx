@@ -1,9 +1,10 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Download, PlayCircle, RefreshCw, SlidersHorizontal, Tags, Upload } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, PlayCircle, RefreshCw, SlidersHorizontal, Tags, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ui/progress";
 import { ScanThumbnail } from "@/components/projects/ScanThumbnail";
 import { MetadataEditor } from "@/components/projects/MetadataEditor";
+import { BackPairingEditor } from "@/components/projects/BackPairingEditor";
 import { useProject } from "@/hooks/useProject";
 import { detectPendingScans, exportProject, patchProject, uploadProjectScans } from "@/lib/api";
 import { cn } from "@/lib/utils";
@@ -51,6 +52,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
   const [exportProgress, setExportProgress] = useState<{ progress: number; stage: string | null } | null>(null);
   const [isQueueingDetect, setIsQueueingDetect] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
+  const [showPairing, setShowPairing] = useState(false);
   const [showRestoration, setShowRestoration] = useState(false);
   const [isSavingRestoration, setIsSavingRestoration] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -202,6 +204,9 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           <Tags className="w-4 h-4 mr-1" />
           Metadata
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setShowPairing(true)} disabled={scans.length < 2}>
+          <BookOpen className="w-4 h-4 mr-1" />Front/back
+        </Button>
         <Button size="sm" variant="outline" onClick={() => setShowRestoration((value) => !value)}>
           <SlidersHorizontal className="w-4 h-4 mr-1" />
           Restore
@@ -349,6 +354,9 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           onSaved={refresh}
           showToast={showToast}
         />
+      )}
+      {showPairing && (
+        <BackPairingEditor project={project} onClose={() => setShowPairing(false)} onSaved={refresh} showToast={showToast} />
       )}
     </div>
   );

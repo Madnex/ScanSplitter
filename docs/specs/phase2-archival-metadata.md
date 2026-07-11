@@ -1,6 +1,6 @@
 # Phase 2 Spec — Archival Metadata
 
-*Status: core metadata slice implemented on branch `quality-overhaul` (2026-07-11).*
+*Status: complete (2026-07-11).*
 *If implementation must deviate, update this file in the same commit.*
 
 ## Goal
@@ -16,13 +16,11 @@ This phase builds on persistent Projects mode. Quick mode remains unchanged.
 1. **Core metadata (this implementation):** dates (including approximate
    dates), place + coordinates, caption, people, event and album; batch edit;
    EXIF/XMP export.
-2. **Front/back pairing + OCR (later Phase 2 work):** pair scans, transcribe a
-   back locally, review the transcription, and copy accepted facts to the
-   front. It is deliberately excluded from the core slice because pairing and
-   OCR model/runtime choices need their own contract and tests.
-3. **Place-name lookup (later optional enhancement):** coordinates may be
-   entered directly in the core slice. Any geocoder must be opt-in, identify
-   its network provider, and never run merely because the editor is opened.
+2. **Front/back pairing + OCR:** one-to-one scan pairing, local Tesseract OCR,
+   reviewed transcription, and explicit attachment to the front caption.
+3. **Place-name lookup:** an explicit button calls OpenStreetMap Nominatim,
+   identifies the provider, and never sends a request merely because the
+   editor is opened.
 
 ## Stored schema
 

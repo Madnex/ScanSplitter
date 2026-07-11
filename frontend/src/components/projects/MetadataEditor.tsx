@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { patchProjectMetadata } from "@/lib/api";
+import { geocodePlace, patchProjectMetadata } from "@/lib/api";
 import type { DatePrecision, Project, ProjectMetadata } from "@/types/projects";
 
 interface MetadataEditorProps {
@@ -26,6 +26,7 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
   );
   const [form, setForm] = useState<ProjectMetadata>(initial);
   const [saving, setSaving] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
 
   const changeScope = (next: string) => {
     setScope(next);
@@ -44,6 +45,18 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
     } catch (error) {
       showToast(error instanceof Error ? error.message : "Failed to save metadata", "error");
     } finally { setSaving(false); }
+  };
+  const lookup = async () => {
+    if (!form.place_name) return;
+    setLookingUp(true);
+    try {
+      const response = await geocodePlace(form.place_name);
+      const first = response.results[0];
+      if (!first) return showToast("No matching place found", "info");
+      setForm((current) => ({ ...current, place_name: first.name, latitude: first.latitude, longitude: first.longitude }));
+      showToast(`Coordinates from ${response.provider}`, "info");
+    } catch (error) { showToast(error instanceof Error ? error.message : "Place lookup failed", "error"); }
+    finally { setLookingUp(false); }
   };
 
   return (
@@ -67,7 +80,7 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
             </select>
           </label>
           <label className="text-sm sm:col-span-2">Archival date wording<Input placeholder="circa 1980, summer 1975…" value={form.date_label ?? ""} onChange={(e) => set("date_label", text(e.target.value))} /></label>
-          <label className="text-sm sm:col-span-2">Place<Input placeholder="Antwerp, Belgium" value={form.place_name ?? ""} onChange={(e) => set("place_name", text(e.target.value))} /></label>
+          <label className="text-sm sm:col-span-2">Place<Input placeholder="Antwerp, Belgium" value={form.place_name ?? ""} onChange={(e) => set("place_name", text(e.target.value))} /><Button type="button" size="sm" variant="outline" className="mt-2" onClick={lookup} disabled={lookingUp || !form.place_name}>{lookingUp ? "Looking up…" : "Look up with OpenStreetMap"}</Button></label>
           <label className="text-sm">Latitude<Input type="number" step="any" value={form.latitude ?? ""} onChange={(e) => set("latitude", e.target.value === "" ? null : Number(e.target.value))} /></label>
           <label className="text-sm">Longitude<Input type="number" step="any" value={form.longitude ?? ""} onChange={(e) => set("longitude", e.target.value === "" ? null : Number(e.target.value))} /></label>
           <label className="text-sm sm:col-span-2">Caption<textarea className="mt-1 w-full min-h-20 rounded-md border bg-background px-3 py-2 text-sm" value={form.caption ?? ""} onChange={(e) => set("caption", text(e.target.value))} /></label>

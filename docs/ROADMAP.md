@@ -55,7 +55,7 @@ Spec: [docs/specs/phase1-projects-review-queue.md](specs/phase1-projects-review-
   ones (box touching edge, odd aspect ratio, count/area outliers).
 - Progress everywhere, powered by the job endpoints.
 
-## Phase 2 — Metadata a genealogist would keep 🔨
+## Phase 2 — Metadata a genealogist would keep ✅
 
 Spec: [docs/specs/phase2-archival-metadata.md](specs/phase2-archival-metadata.md)
 

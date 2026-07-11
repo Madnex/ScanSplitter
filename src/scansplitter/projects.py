@@ -222,6 +222,9 @@ class ProjectStore:
         data["settings"] = {**DEFAULT_SETTINGS, **data.get("settings", {})}
         for scan in data.get("scans", []):
             scan.setdefault("metadata", metadata_defaults())
+            scan.setdefault("back_of", None)
+            scan.setdefault("ocr_text", None)
+            scan.setdefault("ocr_reviewed", False)
         return data
 
     def _write(self, pid: str, data: dict) -> None:
@@ -334,6 +337,64 @@ class ProjectStore:
             data["updated_at"] = _now_iso()
             self._write(pid, data)
             return targets
+
+    def pair_scans(self, pid: str, front_sid: str, back_sid: str | None) -> dict:
+        """Pair one optional back scan to a front, maintaining a one-to-one relationship."""
+        if back_sid == front_sid:
+            raise HTTPException(status_code=400, detail="A scan cannot be its own back")
+        with self._lock_for(pid):
+            data = self._read(pid)
+            front = self._find_scan(data, front_sid)
+            if back_sid is not None:
+                back = self._find_scan(data, back_sid)
+                for scan in data["scans"]:
+                    if scan.get("back_of") == front_sid:
+                        scan["back_of"] = None
+                back["back_of"] = front_sid
+            else:
+                for scan in data["scans"]:
+                    if scan.get("back_of") == front_sid:
+                        scan["back_of"] = None
+            data["updated_at"] = _now_iso()
+            self._write(pid, data)
+            return front
+
+    def submit_ocr_job(self, pid: str, sid: str, language: str = "eng") -> str:
+        scan = self.get_scan(pid, sid)
+
+        def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
+            from .archival import transcribe_image
+            from .jobs import JobCancelled
+
+            progress(15, "preparing local OCR")
+            if cancelled():
+                raise JobCancelled
+            text = transcribe_image(self._project_dir(pid) / scan["stored_file"], language)
+            progress(85, "saving transcription")
+            self._persist_scan_fields(pid, sid, {"ocr_text": text, "ocr_reviewed": False})
+            return {"scan_id": sid, "text": text}
+
+        return submit_job("ocr", pid, worker).job_id
+
+    def accept_ocr(self, pid: str, back_sid: str, text: str, append_caption: bool) -> dict:
+        """Review a transcription and optionally attach it to the paired front caption."""
+        clean = text.strip()[:10_000]
+        with self._lock_for(pid):
+            data = self._read(pid)
+            back = self._find_scan(data, back_sid)
+            back["ocr_text"] = clean or None
+            back["ocr_reviewed"] = True
+            front_sid = back.get("back_of")
+            if append_caption and front_sid and clean:
+                front = self._find_scan(data, front_sid)
+                current = (front.get("metadata") or metadata_defaults()).get("caption")
+                note = f"Back inscription: {clean}"
+                front["metadata"] = normalize_metadata_patch(
+                    {"caption": f"{current}\n\n{note}" if current else note}, front.get("metadata")
+                )
+            data["updated_at"] = _now_iso()
+            self._write(pid, data)
+            return back
 
     def delete_project(self, pid: str) -> None:
         pdir = self._project_dir(pid)
@@ -718,6 +779,9 @@ def _new_scan_entry(
         "detected_count": None,
         "reviewed_at": None,
         "metadata": metadata_defaults(),
+        "back_of": None,
+        "ocr_text": None,
+        "ocr_reviewed": False,
     }
 
 

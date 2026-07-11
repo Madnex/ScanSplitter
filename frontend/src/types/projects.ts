@@ -54,6 +54,9 @@ export interface ProjectScan {
   detected_count: number | null;
   reviewed_at: string | null;
   metadata: ProjectMetadata;
+  back_of: string | null;
+  ocr_text: string | null;
+  ocr_reviewed: boolean;
 }
 
 export type DatePrecision = "day" | "month" | "year" | "season" | "circa";

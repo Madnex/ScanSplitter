@@ -287,6 +287,23 @@ class RestorationPreviewRequest(BaseModel):
     box_id: str | None = None
 
 
+class ScanPairRequest(BaseModel):
+    back_scan_id: str | None = None
+
+
+class OcrRequest(BaseModel):
+    language: str = "eng"
+
+
+class OcrAcceptRequest(BaseModel):
+    text: str
+    append_to_front_caption: bool = True
+
+
+class GeocodeRequest(BaseModel):
+    query: str
+
+
 class ProjectMetadataPatch(BaseModel):
     """Partial archival metadata update; omitted fields are preserved."""
 
@@ -1354,6 +1371,31 @@ def patch_project_metadata(pid: str, request: ProjectMetadataBatchPatch):
     patch = request.metadata.model_dump(exclude_unset=True)
     scans = get_project_store().update_metadata(pid, request.scan_ids, patch)
     return {"scans": scans}
+
+
+@app.post("/api/projects/{pid}/scans/{sid}/pair")
+def pair_project_scan(pid: str, sid: str, request: ScanPairRequest):
+    return get_project_store().pair_scans(pid, sid, request.back_scan_id)
+
+
+@app.post("/api/projects/{pid}/scans/{sid}/ocr", status_code=202)
+def ocr_project_scan(pid: str, sid: str, request: OcrRequest):
+    return {"job_id": get_project_store().submit_ocr_job(pid, sid, request.language)}
+
+
+@app.post("/api/projects/{pid}/scans/{sid}/ocr/accept")
+def accept_project_ocr(pid: str, sid: str, request: OcrAcceptRequest):
+    return get_project_store().accept_ocr(
+        pid, sid, request.text, request.append_to_front_caption
+    )
+
+
+@app.post("/api/geocode")
+def geocode_place(request: GeocodeRequest):
+    """Explicit network lookup through the named OpenStreetMap provider."""
+    from .archival import lookup_place
+
+    return lookup_place(request.query)
 
 
 @app.delete("/api/projects/{pid}/scans/{sid}")

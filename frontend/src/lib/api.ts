@@ -63,7 +63,7 @@ export async function uploadFile(file: File): Promise<{
 }
 
 /** Kinds accepted by the `/api/jobs/{kind}` background-job endpoints. */
-export type JobKind = "detect" | "crop" | "export" | "export-local" | "restoration-preview";
+export type JobKind = "detect" | "crop" | "export" | "export-local" | "restoration-preview" | "ocr";
 
 /** Polling representation returned by `GET /api/jobs/{job_id}`. */
 export interface JobStatus<T = unknown> {
@@ -622,6 +622,32 @@ export async function patchProjectMetadata(
   if (!response.ok) {
     await throwForResponse(response, `Failed to update metadata: ${response.statusText}`);
   }
+  return response.json();
+}
+
+export async function pairProjectScans(projectId: string, frontId: string, backId: string | null): Promise<ProjectScan> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/scans/${frontId}/pair`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ back_scan_id: backId }),
+  });
+  if (!response.ok) await throwForResponse(response, "Failed to pair scans");
+  return response.json();
+}
+
+export async function ocrProjectScan(projectId: string, scanId: string): Promise<{ text: string }> {
+  return runJobAt<{ text: string }>(`${API_BASE}/projects/${projectId}/scans/${scanId}/ocr`, { language: "eng" }, "ocr");
+}
+
+export async function acceptProjectOcr(projectId: string, scanId: string, text: string): Promise<ProjectScan> {
+  const response = await fetch(`${API_BASE}/projects/${projectId}/scans/${scanId}/ocr/accept`, {
+    method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text, append_to_front_caption: true }),
+  });
+  if (!response.ok) await throwForResponse(response, "Failed to accept transcription");
+  return response.json();
+}
+
+export async function geocodePlace(query: string): Promise<{ provider: string; results: Array<{ name: string; latitude: number; longitude: number }> }> {
+  const response = await fetch(`${API_BASE}/geocode`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ query }) });
+  if (!response.ok) await throwForResponse(response, "Place lookup failed");
   return response.json();
 }
 

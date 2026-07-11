@@ -350,6 +350,48 @@ def test_single_and_batch_metadata_updates_are_persistent_and_atomic():
     assert project["scans"][1]["id"] == second["id"]
 
 
+def test_front_back_pairing_ocr_and_acceptance(monkeypatch):
+    pid = _create_project()["id"]
+    upload = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[
+            ("files", ("front.png", _photo_png(), "image/png")),
+            ("files", ("back.png", _photo_png(), "image/png")),
+        ],
+    ).json()["scans"]
+    front, back = upload
+    paired = client.post(
+        f"/api/projects/{pid}/scans/{front['id']}/pair", json={"back_scan_id": back["id"]}
+    )
+    assert paired.status_code == 200
+    assert client.get(f"/api/projects/{pid}").json()["scans"][1]["back_of"] == front["id"]
+
+    monkeypatch.setattr("scansplitter.archival.transcribe_image", lambda path, language: "June 1975")
+    started = client.post(f"/api/projects/{pid}/scans/{back['id']}/ocr", json={"language": "eng"})
+    job = _wait_for_job(started.json()["job_id"])
+    assert job["result"]["text"] == "June 1975"
+    accepted = client.post(
+        f"/api/projects/{pid}/scans/{back['id']}/ocr/accept",
+        json={"text": "June 1975", "append_to_front_caption": True},
+    )
+    assert accepted.json()["ocr_reviewed"] is True
+    project = client.get(f"/api/projects/{pid}").json()
+    assert project["scans"][0]["metadata"]["caption"] == "Back inscription: June 1975"
+
+
+def test_geocode_is_explicit_and_names_provider(monkeypatch):
+    class Response:
+        def __enter__(self): return self
+        def __exit__(self, *args): return None
+        def read(self): return b'[{"display_name":"Antwerp, Belgium","lat":"51.2","lon":"4.4"}]'
+
+    monkeypatch.setattr("urllib.request.urlopen", lambda request, timeout: Response())
+    response = client.post("/api/geocode", json={"query": "Antwerp"})
+    assert response.status_code == 200
+    assert response.json()["provider"] == "OpenStreetMap Nominatim"
+    assert response.json()["results"][0]["latitude"] == 51.2
+
+
 def test_project_jpeg_export_embeds_exif_xmp_and_gates_gps(monkeypatch):
     _install_confidence(monkeypatch, lambda *a, **k: [])
     pid = _create_project()["id"]
