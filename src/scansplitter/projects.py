@@ -83,6 +83,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
     "auto_rotate": True,
+    "auto_deskew": False,
     "format": "jpeg",
     "quality": 85,
     "include_gps": False,
@@ -217,6 +218,7 @@ class ProjectStore:
         pdir = self._project_dir(pid)
         with open(pdir / "project.json", encoding="utf-8") as fh:
             data = json.load(fh)
+        data["settings"] = {**DEFAULT_SETTINGS, **data.get("settings", {})}
         for scan in data.get("scans", []):
             scan.setdefault("metadata", metadata_defaults())
         return data
@@ -600,6 +602,7 @@ class ProjectStore:
         data = self._read(pid)
         pdir = self._project_dir(pid)
         auto_rotate_enabled = bool(data["settings"]["auto_rotate"])
+        auto_deskew_enabled = bool(data["settings"]["auto_deskew"])
         ext = "png" if out_format == "png" else "jpg"
 
         exportable = [s for s in data["scans"] if s["status"] in _EXPORTABLE_STATUSES]
@@ -628,6 +631,10 @@ class ProjectStore:
                     crop_pil = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
                     if auto_rotate_enabled:
                         crop_pil, _ = auto_rotate(crop_pil)
+                    if auto_deskew_enabled:
+                        from .restoration import auto_deskew
+
+                        crop_pil, _ = auto_deskew(crop_pil)
 
                     img_buffer = io.BytesIO()
                     if ext == "png":

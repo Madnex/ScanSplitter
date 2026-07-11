@@ -1,11 +1,11 @@
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ArrowLeft, Download, PlayCircle, RefreshCw, Tags, Upload } from "lucide-react";
+import { ArrowLeft, Download, PlayCircle, RefreshCw, SlidersHorizontal, Tags, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ui/progress";
 import { ScanThumbnail } from "@/components/projects/ScanThumbnail";
 import { MetadataEditor } from "@/components/projects/MetadataEditor";
 import { useProject } from "@/hooks/useProject";
-import { detectPendingScans, exportProject, uploadProjectScans } from "@/lib/api";
+import { detectPendingScans, exportProject, patchProject, uploadProjectScans } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { ProjectScan } from "@/types/projects";
 
@@ -51,6 +51,8 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
   const [exportProgress, setExportProgress] = useState<{ progress: number; stage: string | null } | null>(null);
   const [isQueueingDetect, setIsQueueingDetect] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
+  const [showRestoration, setShowRestoration] = useState(false);
+  const [isSavingRestoration, setIsSavingRestoration] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const exportAbortRef = useRef<AbortController | null>(null);
 
@@ -156,6 +158,18 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
     if (first) onReview(first.id);
   }, [scans, onReview]);
 
+  const handleDeskewChange = useCallback(async (enabled: boolean) => {
+    setIsSavingRestoration(true);
+    try {
+      await patchProject(projectId, { settings: { auto_deskew: enabled } });
+      await refresh();
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to save restoration settings", "error");
+    } finally {
+      setIsSavingRestoration(false);
+    }
+  }, [projectId, refresh, showToast]);
+
   if (isLoading && !project) {
     return <p className="text-sm text-muted-foreground">Loading project…</p>;
   }
@@ -188,11 +202,41 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           <Tags className="w-4 h-4 mr-1" />
           Metadata
         </Button>
+        <Button size="sm" variant="outline" onClick={() => setShowRestoration((value) => !value)}>
+          <SlidersHorizontal className="w-4 h-4 mr-1" />
+          Restore
+        </Button>
         <Button size="sm" onClick={handleExport} disabled={isExporting || exportableCount === 0}>
           <Download className="w-4 h-4 mr-1" />
           {isExporting ? "Exporting…" : `Export (${exportableCount})`}
         </Button>
       </div>
+
+      {showRestoration && (
+        <section className="mb-4 rounded-lg bg-muted/45 px-4 py-3" aria-labelledby="restoration-heading">
+          <div className="flex items-start justify-between gap-5">
+            <div>
+              <h3 id="restoration-heading" className="text-sm font-semibold">Non-destructive restoration</h3>
+              <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
+                Applied only to exported copies. Stored scans and crop geometry stay untouched.
+              </p>
+            </div>
+            <label className="flex cursor-pointer items-center gap-3 text-sm">
+              <span className="text-right">
+                <span className="block font-medium">Auto-deskew</span>
+                <span className="block text-xs text-muted-foreground">Correct up to 5°</span>
+              </span>
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-primary"
+                checked={project.settings.auto_deskew}
+                disabled={isSavingRestoration}
+                onChange={(event) => void handleDeskewChange(event.target.checked)}
+              />
+            </label>
+          </div>
+        </section>
+      )}
 
       {isExporting && exportProgress && (
         <div className="mb-4">

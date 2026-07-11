@@ -8,6 +8,7 @@ the parallel ``confidence`` module.
 """
 
 import io
+import json
 import sys
 import time
 import types
@@ -160,6 +161,19 @@ def test_project_crud():
     # Delete
     assert client.delete(f"/api/projects/{pid}").json() == {"status": "deleted"}
     assert client.get(f"/api/projects/{pid}").status_code == 404
+
+
+def test_old_manifest_gets_restoration_defaults(data_dir):
+    created = _create_project("Legacy")
+    pid = created["id"]
+    manifest = data_dir / "projects" / pid / "project.json"
+    payload = json.loads(manifest.read_text())
+    payload["settings"].pop("auto_deskew")
+    manifest.write_text(json.dumps(payload))
+
+    fetched = client.get(f"/api/projects/{pid}")
+    assert fetched.status_code == 200
+    assert fetched.json()["settings"]["auto_deskew"] is False
 
 
 def test_create_project_requires_name():

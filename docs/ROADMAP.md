@@ -68,9 +68,11 @@ Spec: [docs/specs/phase2-archival-metadata.md](specs/phase2-archival-metadata.md
 - Front/back pairing with OCR: scan the back, read the handwriting, attach
   date and note to the front.
 
-## Phase 3 — Non-destructive restoration ⬜
+## Phase 3 — Non-destructive restoration 🔨
 
-- Auto-deskew for the 1–5° tilt that 90° auto-rotate can't fix.
+Spec: [docs/specs/phase3-nondestructive-restoration.md](specs/phase3-nondestructive-restoration.md)
+
+- ✅ Opt-in auto-deskew for the 1–5° tilt that 90° auto-rotate can't fix.
 - Color & fade restoration (white-balance yellowed prints); optional
   colorization.
 - Dust & scratch removal.
