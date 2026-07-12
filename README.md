@@ -44,6 +44,8 @@ uvx scansplitter api --port 8001
 - **Interactive editing** - Adjust, rotate, and resize bounding boxes before cropping
 - **Auto-rotation** - Detects and corrects 90°/180°/270° rotations
 - **PDF support** - Extract and process pages from PDF files
+- **Persistent projects** - Import large collections, review only uncertain scans, and continue across restarts
+- **Archival workflow** - Add dates, places, captions, people, restoration settings, lossless masters, and manifests
 - **Web UI** - Modern React interface with Fabric.js canvas editor
 - **CLI** - Batch process files from the command line
 
@@ -102,7 +104,50 @@ Opens at http://localhost:8000 with:
 - Interactive bounding box editor (drag, resize, rotate)
 - Multi-file support with tabs
 - PDF page navigation
-- ZIP export
+- JPEG or lossless PNG export
+
+The web interface has two modes:
+
+- **Quick** processes an ad-hoc set of scans and exports the current results.
+- **Projects** keeps a named collection on disk, detects bulk uploads in the
+  background, and tracks review, metadata, restoration, and delivery settings.
+
+### Projects workflow
+
+Projects are intended for larger collections that may take more than one
+session to finish:
+
+1. Open **Projects**, create a named project, and add images or PDFs. PDF pages
+   become individual scans. Detection starts in the background.
+2. ScanSplitter automatically approves clear detections and marks uncertain
+   scans **CHECK**. Use **Start review** or open a scan from the grid.
+3. In review, adjust the photo boxes when necessary and choose **Approve**.
+   Press `Enter` to approve and advance, or use the arrow keys to move through
+   the queue. **Re-detect** runs detection again for the current scan.
+4. Add collection or per-scan metadata such as dates, places, captions, people,
+   album/roll, and event. Front/back pairing can attach an OCR transcription
+   from a photographed print's reverse side.
+5. Optionally enable non-destructive deskew, color/fade correction, dust and
+   scratch removal, or 2× upscale. **Compare** previews the first photo without
+   changing the stored scan; each photo can override the project defaults.
+6. Export approved photos as JPEG or lossless PNG. Projects can also create a
+   PNG/TIFF master, organize files by metadata, include a JSON/CSV manifest, or
+   deliver to a watched folder, Immich, or Nextcloud WebDAV.
+
+Flags explain why a scan needs review. They can report that no photo was found,
+a box touches a scan edge, a box has an unusual aspect ratio or size, boxes
+overlap, or the detected photo count differs from most scans in the project.
+Flags are warnings rather than hard errors: correct the boxes if needed, then
+approve the scan. Only approved and automatically approved scans are exported.
+
+Projects persist under `~/.scansplitter/projects/`. Set
+`SCANSPLITTER_DATA_DIR` to use another data directory. Original project scans
+remain untouched by metadata, restoration, and export operations. ScanSplitter
+is designed as a local, single-user application and does not provide an
+authentication layer for a publicly exposed server.
+
+For implementation details, see the [roadmap](docs/ROADMAP.md) and the binding
+[feature specifications](docs/specs/).
 
 ### Command Line
 

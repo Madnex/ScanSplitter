@@ -350,7 +350,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
               {currentScan.flags.map((flag, i) => (
                 <li
                   key={`${flag.code}-${flag.box_id ?? "scan"}-${i}`}
-                  className="text-sm bg-amber-50 dark:bg-amber-950 border border-amber-200 dark:border-amber-800 rounded-md px-2 py-1.5"
+                  className="rounded-md border border-amber-300/80 bg-amber-50 px-2 py-1.5 text-sm font-medium leading-snug text-amber-950 dark:border-amber-700 dark:bg-amber-950/60 dark:text-amber-100"
                 >
                   {flag.message}
                 </li>
