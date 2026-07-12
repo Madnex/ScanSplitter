@@ -59,6 +59,12 @@ case "$BUMP_TYPE" in
 esac
 
 NEW_VERSION="$MAJOR.$MINOR.$PATCH"
+RELEASE_NOTES="docs/releases/v$NEW_VERSION.md"
+
+if [[ ! -f "$RELEASE_NOTES" ]]; then
+    echo "Error: Missing release notes at $RELEASE_NOTES"
+    exit 1
+fi
 
 echo "Bumping version: $CURRENT_VERSION → $NEW_VERSION"
 

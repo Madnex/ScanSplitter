@@ -134,6 +134,29 @@ session to finish:
    PNG/TIFF master, organize files by metadata, include a JSON/CSV manifest, or
    deliver to a watched folder, Immich, or Nextcloud WebDAV.
 
+#### Connect Immich
+
+ScanSplitter only uploads approved JPEG or PNG access copies. It does not read,
+modify, or delete assets already stored in Immich, so its API key needs only the
+`asset.upload` permission:
+
+1. Sign in to Immich as the user who should own the uploaded photos.
+2. Open **Account Settings → API Keys** and create a key named, for example,
+   `ScanSplitter`.
+3. Choose custom/scoped permissions and enable only **`asset.upload`**. Do not
+   grant `all`, asset deletion, or administrator permissions.
+4. In ScanSplitter, open the project, choose **Deliver → Immich**, and enter:
+   - **Immich server:** the public base URL, such as
+     `https://photos.example.com`. A URL ending in `/api` also works.
+   - **API key:** the key created above.
+5. Choose **Deliver**. The credentials are used for that delivery only and are
+   not saved in the project.
+
+The uploaded photos belong to the Immich user who created the API key. If
+delivery returns `401` or `403`, check that the key is valid and has
+`asset.upload`. A reverse proxy must allow `POST` requests and the size of the
+photos being uploaded to Immich's `/api/assets` endpoint.
+
 Flags explain why a scan needs review. They can report that no photo was found,
 a box touches a scan edge, a box has an unusual aspect ratio or size, boxes
 overlap, or the detected photo count differs from most scans in the project.

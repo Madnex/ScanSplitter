@@ -111,7 +111,8 @@ flow.
 The Delivery dialog selects watched folder, Immich, or Nextcloud; shows only
 that target's required fields; offers overwrite only for folder delivery;
 labels the Nextcloud field as the WebDAV files URL; states that credentials are
-used once; and displays shared job progress/errors.
+used once; tells Immich users to grant only `asset.upload` and accepts a server
+base URL with or without `/api`; and displays shared job progress/errors.
 
 ## Testing
 
