@@ -19,6 +19,7 @@ import { buildExportPayload } from "@/lib/utils";
 import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern, ModelKey, ModelStatus } from "@/types";
 
 type AppMode = "quick" | "projects";
+type OutputFormat = "jpeg" | "png";
 
 // Max number of prior box-states kept per scan (file+page) for delete undo.
 const MAX_UNDO_ENTRIES = 20;
@@ -86,6 +87,13 @@ function App() {
   // Output directory (persisted to localStorage)
   const [outputDirectory, setOutputDirectory] = useState<string>(() =>
     localStorage.getItem("scansplitter_output_dir") ?? ""
+  );
+
+  // Export format is shared by ZIP, local-directory, and individual-image
+  // downloads in Quick mode. Remember it alongside the output directory so
+  // a user choosing lossless output does not have to reselect it each time.
+  const [outputFormat, setOutputFormat] = useState<OutputFormat>(() =>
+    localStorage.getItem("scansplitter_output_format") === "png" ? "png" : "jpeg"
   );
 
   // Whether to keep GPS location data from the original scan in exported
@@ -195,6 +203,10 @@ function App() {
   useEffect(() => {
     localStorage.setItem("scansplitter_output_dir", outputDirectory);
   }, [outputDirectory]);
+
+  useEffect(() => {
+    localStorage.setItem("scansplitter_output_format", outputFormat);
+  }, [outputFormat]);
 
   // Get active file
   const activeFile = files[activeFileIndex] ?? null;
@@ -707,7 +719,7 @@ function App() {
       // handling needed here anymore.
       await exportZip(
         activeFile.sessionId,
-        "jpeg",
+        outputFormat,
         85,
         images,
         includeGps,
@@ -723,7 +735,7 @@ function App() {
       setIsExporting(false);
       setExportProgress(null);
     }
-  }, [activeFile, exportImages, includeGps, showToast]);
+  }, [activeFile, exportImages, outputFormat, includeGps, showToast]);
 
   // Handle export to local directory
   const doExportLocal = useCallback(async (overwrite: boolean) => {
@@ -743,7 +755,7 @@ function App() {
       const result = await exportLocal(
         activeFile.sessionId,
         outputDirectory,
-        "jpeg",
+        outputFormat,
         85,
         images,
         overwrite,
@@ -766,7 +778,7 @@ function App() {
       setIsExporting(false);
       setExportProgress(null);
     }
-  }, [activeFile, exportImages, outputDirectory, includeGps, showToast]);
+  }, [activeFile, exportImages, outputDirectory, outputFormat, includeGps, showToast]);
 
   const handleExportLocal = useCallback(async () => {
     if (!outputDirectory.trim()) {
@@ -948,6 +960,8 @@ function App() {
               outputDirectory={outputDirectory}
               onOutputDirectoryChange={setOutputDirectory}
               onBrowseOutputDirectory={handleBrowseOutputDirectory}
+              outputFormat={outputFormat}
+              onOutputFormatChange={setOutputFormat}
               includeGps={includeGps}
               onIncludeGpsChange={setIncludeGps}
             />

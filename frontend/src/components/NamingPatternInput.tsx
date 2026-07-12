@@ -16,6 +16,7 @@ interface NamingPatternInputProps {
   // image set, if any. Null/undefined means no duplicates (or nothing to
   // check yet).
   duplicateWarning?: string | null;
+  extension?: "jpg" | "png";
 }
 
 export function NamingPatternInput({
@@ -23,6 +24,7 @@ export function NamingPatternInput({
   onChange,
   sampleContext = { filename: "scan_001.jpg", page: 1, photoIndex: 0, globalIndex: 0 },
   duplicateWarning = null,
+  extension = "jpg",
 }: NamingPatternInputProps) {
   const validation = useMemo(() => validatePattern(pattern.pattern), [pattern.pattern]);
 
@@ -95,7 +97,7 @@ export function NamingPatternInput({
       {/* Live preview */}
       {validation.valid && previewName && (
         <div className="text-xs text-muted-foreground">
-          Preview: <span className="font-mono bg-muted px-1 rounded">{previewName}.jpg</span>
+          Preview: <span className="font-mono bg-muted px-1 rounded">{previewName}.{extension}</span>
         </div>
       )}
 

@@ -34,6 +34,8 @@ interface ResultsGalleryProps {
   outputDirectory: string;
   onOutputDirectoryChange: (path: string) => void;
   onBrowseOutputDirectory: () => void;
+  outputFormat: "jpeg" | "png";
+  onOutputFormatChange: (format: "jpeg" | "png") => void;
   includeGps: boolean;
   onIncludeGpsChange: (include: boolean) => void;
 }
@@ -57,6 +59,8 @@ export function ResultsGallery({
   outputDirectory,
   onOutputDirectoryChange,
   onBrowseOutputDirectory,
+  outputFormat,
+  onOutputFormatChange,
   includeGps,
   onIncludeGpsChange,
 }: ResultsGalleryProps) {
@@ -91,11 +95,32 @@ export function ResultsGallery({
 
   const downloadImage = (image: CroppedImage) => {
     const link = document.createElement("a");
-    link.href = `data:image/jpeg;base64,${image.data}`;
-    link.download = `${image.name}.jpg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const download = (href: string, extension: "jpg" | "png") => {
+      link.href = href;
+      link.download = `${image.name}.${extension}`;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+    };
+
+    if (outputFormat === "jpeg") {
+      download(`data:image/jpeg;base64,${image.data}`, "jpg");
+      return;
+    }
+
+    // Cropped previews are JPEG payloads. Re-encode through a canvas for a
+    // true PNG when the user downloads one image directly.
+    const source = new Image();
+    source.onload = () => {
+      const canvas = document.createElement("canvas");
+      canvas.width = source.naturalWidth;
+      canvas.height = source.naturalHeight;
+      const context = canvas.getContext("2d");
+      if (!context) return;
+      context.drawImage(source, 0, 0);
+      download(canvas.toDataURL("image/png"), "png");
+    };
+    source.src = `data:image/jpeg;base64,${image.data}`;
   };
 
   if (allImages.length === 0) {
@@ -135,6 +160,22 @@ export function ResultsGallery({
             >
               All ({allImages.length})
             </Button>
+          </div>
+
+          <div className="flex items-center justify-between gap-3">
+            <label htmlFor="output-format" className="text-xs text-muted-foreground">
+              Output format
+            </label>
+            <select
+              id="output-format"
+              value={outputFormat}
+              onChange={(e) => onOutputFormatChange(e.target.value as "jpeg" | "png")}
+              disabled={isExporting}
+              className="h-7 rounded-md border bg-background px-2 text-xs"
+            >
+              <option value="jpeg">JPEG</option>
+              <option value="png">PNG (lossless)</option>
+            </select>
           </div>
 
           {/* GPS export option - shown right above the export actions it
@@ -241,6 +282,7 @@ export function ResultsGallery({
                   : undefined
               }
               duplicateWarning={duplicateNameWarning}
+              extension={outputFormat === "png" ? "png" : "jpg"}
             />
           </div>
         </CardHeader>
@@ -336,7 +378,7 @@ export function ResultsGallery({
                     value={image.dateTaken ?? ""}
                     onChange={(e) => onDateChange(image.id, e.target.value || null)}
                     className="h-7 text-xs flex-1"
-                    title="Photo date (embedded in JPEG export)"
+                    title={outputFormat === "jpeg" ? "Photo date (embedded in JPEG export)" : "Photo date metadata is available in JPEG export"}
                   />
                 </div>
               </div>

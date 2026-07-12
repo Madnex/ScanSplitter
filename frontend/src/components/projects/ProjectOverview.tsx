@@ -216,6 +216,19 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           <SlidersHorizontal className="w-4 h-4 mr-1" />
           Restore
         </Button>
+        <label className="flex items-center gap-2 text-xs text-muted-foreground">
+          Output
+          <select
+            aria-label="Output format"
+            className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
+            value={project.settings.format}
+            disabled={isSavingSettings || isExporting}
+            onChange={(event) => void handleSettingsChange({ format: event.target.value as "jpeg" | "png" })}
+          >
+            <option value="jpeg">JPEG</option>
+            <option value="png">PNG (lossless)</option>
+          </select>
+        </label>
         <Button size="sm" onClick={handleExport} disabled={isExporting || exportableCount === 0}>
           <Download className="w-4 h-4 mr-1" />
           {isExporting ? "Exporting…" : `Export (${exportableCount})`}
