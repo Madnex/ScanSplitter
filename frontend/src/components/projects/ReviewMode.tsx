@@ -206,7 +206,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     void persistBoxesIfDirty().finally(onBack);
   }, [persistBoxesIfDirty, onBack]);
 
-  const setFirstPhotoOverride = useCallback(async (key: "auto_deskew" | "restore_color" | "remove_dust" | "upscale_2x", value: string) => {
+  const setFirstPhotoOverride = useCallback(async (key: "auto_deskew" | "restore_color" | "upscale_2x", value: string) => {
     if (!currentScan || boxes.length === 0) return;
     const current = currentProjectBoxes();
     const first = current[0];
@@ -357,7 +357,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
               ))}
             </ul>
           )}
-          {boxes.length > 0 && <div className="mt-6 border-t pt-4"><h3 className="text-sm font-semibold">First photo restoration</h3><p className="mb-2 text-xs text-muted-foreground">Override project defaults for this crop.</p>{([['auto_deskew','Deskew'],['restore_color','Color & fade'],['remove_dust','Dust & scratches'],['upscale_2x','2× upscale']] as Array<[keyof Pick<ProjectSettings, "auto_deskew" | "restore_color" | "remove_dust" | "upscale_2x">, string]>).map(([key, label]) => { const value = currentScan.boxes[0]?.restoration?.[key]; return <label key={key} className="mb-2 flex items-center justify-between gap-2 text-xs"><span>{label}</span><select className="h-8 rounded border bg-background px-2" value={value === undefined ? "inherit" : value ? "on" : "off"} onChange={(event) => void setFirstPhotoOverride(key, event.target.value)}><option value="inherit">Project default</option><option value="on">On</option><option value="off">Off</option></select></label>; })}</div>}
+          {boxes.length > 0 && <div className="mt-6 border-t pt-4"><h3 className="text-sm font-semibold">First photo restoration</h3><p className="mb-2 text-xs text-muted-foreground">Override project defaults for this crop.</p>{([['auto_deskew','Deskew'],['restore_color','Color & fade'],['upscale_2x','2× upscale']] as Array<[keyof Pick<ProjectSettings, "auto_deskew" | "restore_color" | "upscale_2x">, string]>).map(([key, label]) => { const value = currentScan.boxes[0]?.restoration?.[key]; return <label key={key} className="mb-2 flex items-center justify-between gap-2 text-xs"><span>{label}</span><select className="h-8 rounded border bg-background px-2" value={value === undefined ? "inherit" : value ? "on" : "off"} onChange={(event) => void setFirstPhotoOverride(key, event.target.value)}><option value="inherit">Project default</option><option value="on">On</option><option value="off">Off</option></select></label>; })}</div>}
         </div>
       </div>
     </div>

@@ -65,8 +65,8 @@ Spec: [docs/specs/phase2-archival-metadata.md](specs/phase2-archival-metadata.md
 - Place name + coordinates → GPS geotag. Optional name lookup is a later,
   explicitly network-enabled enhancement; metadata editing itself stays local.
 - Captions, people tags, album/roll grouping as XMP keywords.
-- Front/back pairing with OCR: scan the back, read the handwriting, attach
-  date and note to the front.
+- Front/back pairing: link a scan of a print's reverse side to its front and
+  record inscriptions manually in portable caption metadata.
 
 ## Phase 3 — Non-destructive restoration ✅
 
@@ -75,7 +75,6 @@ Spec: [docs/specs/phase3-nondestructive-restoration.md](specs/phase3-nondestruct
 - ✅ Opt-in auto-deskew for the 1–5° tilt that 90° auto-rotate can't fix.
 - ✅ Color & fade restoration (white-balance yellowed prints). Semantic
   colorization is intentionally excluded; see decisions below.
-- ✅ Dust & scratch removal.
 - ✅ Opt-in non-generative 2× archival upscale for low-DPI scans.
 - Always before/after; never overwrite the archival crop. Runs as
   background jobs.
@@ -106,6 +105,10 @@ Spec: [docs/specs/phase4-library-delivery.md](specs/phase4-library-delivery.md)
   Scanning is a local act — a hosted instance adds little.
 - Core semantic colorization: invented colors are not archival facts. A future
   plugin may provide clearly labeled colorized derivatives with provenance.
+- Built-in OCR: handwriting quality is poor with general-purpose local OCR;
+  users should transcribe manually or use a specialized tool.
+- Automatic dust/scratch repair: conservative detection misses common long
+  scratches, while aggressive inpainting risks destroying real photo detail.
 
 ## Open operational items
 

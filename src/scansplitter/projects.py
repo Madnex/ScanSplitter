@@ -90,7 +90,6 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "auto_rotate": True,
     "auto_deskew": False,
     "restore_color": False,
-    "remove_dust": False,
     "upscale_2x": False,
     "format": "jpeg",
     "quality": 85,
@@ -230,11 +229,16 @@ class ProjectStore:
         with open(pdir / "project.json", encoding="utf-8") as fh:
             data = json.load(fh)
         data["settings"] = {**DEFAULT_SETTINGS, **data.get("settings", {})}
+        data["settings"].pop("remove_dust", None)
         for scan in data.get("scans", []):
             scan.setdefault("metadata", metadata_defaults())
             scan.setdefault("back_of", None)
-            scan.setdefault("ocr_text", None)
-            scan.setdefault("ocr_reviewed", False)
+            scan.pop("ocr_text", None)
+            scan.pop("ocr_reviewed", None)
+            for box in scan.get("boxes", []):
+                restoration = box.get("restoration")
+                if isinstance(restoration, dict):
+                    restoration.pop("remove_dust", None)
         return data
 
     def _write(self, pid: str, data: dict) -> None:
@@ -378,47 +382,6 @@ class ProjectStore:
             data["updated_at"] = _now_iso()
             self._write(pid, data)
             return front
-
-    def submit_ocr_job(self, pid: str, sid: str, language: str = "eng") -> str:
-        scan = self.get_scan(pid, sid)
-
-        def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
-            from .archival import transcribe_image
-            from .jobs import JobCancelled
-
-            progress(15, "preparing local OCR")
-            if cancelled():
-                raise JobCancelled
-            text = transcribe_image(self._project_dir(pid) / scan["stored_file"], language)
-            progress(85, "saving transcription")
-            self._persist_scan_fields(pid, sid, {"ocr_text": text, "ocr_reviewed": False})
-            return {"scan_id": sid, "text": text}
-
-        return submit_job("ocr", pid, worker).job_id
-
-    def accept_ocr(self, pid: str, back_sid: str, text: str, append_caption: bool) -> dict:
-        """Review a transcription and optionally attach it to the paired front caption."""
-        clean = text.strip()[:10_000]
-        with self._lock_for(pid):
-            data = self._read(pid)
-            back = self._find_scan(data, back_sid)
-            back["ocr_text"] = clean or None
-            back["ocr_reviewed"] = True
-            front_sid = back.get("back_of")
-            if append_caption and front_sid and clean:
-                front = self._find_scan(data, front_sid)
-                current = (front.get("metadata") or metadata_defaults()).get("caption")
-                note = f"Back inscription: {clean}"
-                caption = (f"{current}\n\n{note}" if current else note)[:2000]
-                try:
-                    front["metadata"] = normalize_metadata_patch(
-                        {"caption": caption}, front.get("metadata")
-                    )
-                except ValueError as exc:
-                    raise HTTPException(status_code=400, detail=str(exc)) from exc
-            data["updated_at"] = _now_iso()
-            self._write(pid, data)
-            return back
 
     def delete_project(self, pid: str) -> None:
         pdir = self._project_dir(pid)
@@ -891,8 +854,6 @@ def _new_scan_entry(
         "reviewed_at": None,
         "metadata": metadata_defaults(),
         "back_of": None,
-        "ocr_text": None,
-        "ocr_reviewed": False,
     }
 
 
@@ -911,7 +872,7 @@ def _normalize_box(box: dict) -> dict:
         normalized["restoration"] = {
             key: bool(value)
             for key, value in overrides.items()
-            if key in {"auto_deskew", "restore_color", "remove_dust", "upscale_2x"}
+            if key in {"auto_deskew", "restore_color", "upscale_2x"}
         }
     return normalized
 

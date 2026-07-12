@@ -3,6 +3,7 @@
 import base64
 import io
 import json
+import mimetypes
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -121,7 +122,8 @@ def _multipart(fields: dict[str, str], filename: str, data: bytes) -> tuple[byte
     parts: list[bytes] = []
     for key, value in fields.items():
         parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"{key}\"\r\n\r\n{value}\r\n".encode())
-    parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"assetData\"; filename=\"{Path(filename).name}\"\r\nContent-Type: image/jpeg\r\n\r\n".encode() + data + b"\r\n")
+    media_type = mimetypes.guess_type(filename)[0] or "application/octet-stream"
+    parts.append(f"--{boundary}\r\nContent-Disposition: form-data; name=\"assetData\"; filename=\"{Path(filename).name}\"\r\nContent-Type: {media_type}\r\n\r\n".encode() + data + b"\r\n")
     parts.append(f"--{boundary}--\r\n".encode())
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
@@ -136,7 +138,14 @@ def upload_immich(payload: bytes, server_url: str, api_key: str) -> int:
 
     for name, data in archive_files(payload, is_access_image):
         body, content_type = _multipart(
-            {"deviceAssetId": f"scansplitter-{uuid.uuid5(uuid.NAMESPACE_URL, name)}", "deviceId": "scansplitter", "fileCreatedAt": now, "fileModifiedAt": now, "filename": Path(name).name, "metadata": json.dumps([])}, name, data,
+            {
+                "fileCreatedAt": now,
+                "fileModifiedAt": now,
+                "filename": Path(name).name,
+                "metadata": json.dumps([]),
+            },
+            name,
+            data,
         )
         request = urllib.request.Request(endpoint, data=body, method="POST", headers={"x-api-key": api_key, "Content-Type": content_type})
         try:

@@ -1,12 +1,9 @@
 import io
-import subprocess
 
 import piexif
 import pytest
-from fastapi import HTTPException
 from PIL import Image
 
-from scansplitter.archival import transcribe_image
 from scansplitter.metadata import insert_xmp, metadata_defaults, normalize_metadata_patch
 
 
@@ -64,16 +61,3 @@ def test_jpeg_xmp_follows_exif_and_oversize_is_omitted():
     result = insert_xmp(original, b"<xmp>metadata</xmp>")
     assert result.index(b"Exif\x00\x00") < result.index(b"http://ns.adobe.com/xap/1.0/")
     assert insert_xmp(original, b"x" * 70_000) == original
-
-
-def test_ocr_timeout_is_a_gateway_timeout(monkeypatch, tmp_path):
-    monkeypatch.setattr("shutil.which", lambda name: "/usr/bin/tesseract")
-
-    def timeout(*args, **kwargs):
-        raise subprocess.TimeoutExpired(args[0], 120)
-
-    monkeypatch.setattr("subprocess.run", timeout)
-    with pytest.raises(HTTPException) as exc:
-        transcribe_image(tmp_path / "scan.png")
-    assert exc.value.status_code == 504
-    assert exc.value.detail == "OCR timed out after 120s"

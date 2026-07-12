@@ -169,12 +169,26 @@ def test_old_manifest_gets_restoration_defaults(data_dir):
     manifest = data_dir / "projects" / pid / "project.json"
     payload = json.loads(manifest.read_text())
     payload["settings"].pop("auto_deskew")
+    payload["settings"]["remove_dust"] = True
+    payload["scans"] = [{
+        "id": "a" * 32,
+        "boxes": [{
+            "id": "legacy-box", "x": 1, "y": 1, "width": 1, "height": 1,
+            "angle": 0, "restoration": {"remove_dust": True},
+        }],
+        "metadata": {}, "back_of": None, "ocr_text": "legacy", "ocr_reviewed": True,
+    }]
     manifest.write_text(json.dumps(payload))
 
     fetched = client.get(f"/api/projects/{pid}")
     assert fetched.status_code == 200
     assert fetched.json()["settings"]["auto_deskew"] is False
     assert fetched.json()["settings"]["restore_color"] is False
+    assert "remove_dust" not in fetched.json()["settings"]
+    legacy_scan = fetched.json()["scans"][0]
+    assert "ocr_text" not in legacy_scan
+    assert "ocr_reviewed" not in legacy_scan
+    assert "remove_dust" not in legacy_scan["boxes"][0]["restoration"]
 
 
 def test_create_project_requires_name():
@@ -350,7 +364,7 @@ def test_single_and_batch_metadata_updates_are_persistent_and_atomic():
     assert project["scans"][1]["id"] == second["id"]
 
 
-def test_front_back_pairing_ocr_and_acceptance(monkeypatch):
+def test_front_back_pairing_and_delete_cleanup():
     pid = _create_project()["id"]
     upload = client.post(
         f"/api/projects/{pid}/scans?detect=false",
@@ -366,34 +380,14 @@ def test_front_back_pairing_ocr_and_acceptance(monkeypatch):
     assert paired.status_code == 200
     assert client.get(f"/api/projects/{pid}").json()["scans"][1]["back_of"] == front["id"]
 
-    monkeypatch.setattr("scansplitter.archival.transcribe_image", lambda path, language: "June 1975")
-    started = client.post(f"/api/projects/{pid}/scans/{back['id']}/ocr", json={"language": "eng"})
-    job = _wait_for_job(started.json()["job_id"])
-    assert job["result"]["text"] == "June 1975"
-    accepted = client.post(
-        f"/api/projects/{pid}/scans/{back['id']}/ocr/accept",
-        json={"text": "June 1975", "append_to_front_caption": True},
+    self_pair = client.post(
+        f"/api/projects/{pid}/scans/{front['id']}/pair", json={"back_scan_id": front["id"]}
     )
-    assert accepted.json()["ocr_reviewed"] is True
-    project = client.get(f"/api/projects/{pid}").json()
-    assert project["scans"][0]["metadata"]["caption"] == "Back inscription: June 1975"
-
-    accepted = client.post(
-        f"/api/projects/{pid}/scans/{back['id']}/ocr/accept",
-        json={"text": "x" * 3000, "append_to_front_caption": True},
-    )
-    assert accepted.status_code == 200, accepted.text
-    project = client.get(f"/api/projects/{pid}").json()
-    assert len(project["scans"][0]["metadata"]["caption"]) == 2000
+    assert self_pair.status_code == 400
 
     assert client.delete(f"/api/projects/{pid}/scans/{front['id']}").status_code == 200
     project = client.get(f"/api/projects/{pid}").json()
     assert project["scans"][0]["back_of"] is None
-    accepted = client.post(
-        f"/api/projects/{pid}/scans/{back['id']}/ocr/accept",
-        json={"text": "orphaned back", "append_to_front_caption": True},
-    )
-    assert accepted.status_code == 200, accepted.text
 
 
 def test_geocode_is_explicit_and_names_provider(monkeypatch):

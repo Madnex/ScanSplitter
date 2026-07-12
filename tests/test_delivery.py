@@ -21,6 +21,13 @@ def _archive() -> bytes:
     return output.getvalue()
 
 
+def _png_archive() -> bytes:
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("photo.png", b"png")
+    return output.getvalue()
+
+
 def test_archive_files_and_delivery_url_validation():
     assert next(archive_files(_archive())) == ("photo.jpg", b"jpeg")
     with pytest.raises(HTTPException):
@@ -48,8 +55,17 @@ def test_immich_and_nextcloud_requests_are_explicit_and_authenticated(monkeypatc
     immich = requests[0][0]
     assert immich.full_url == "https://photos.example/api/assets"
     assert immich.headers["X-api-key"] == "immich-secret"
-    assert b'name="deviceAssetId"' in immich.data
     assert b'name="assetData"' in immich.data
+    assert b'name="fileCreatedAt"' in immich.data
+    assert b'name="fileModifiedAt"' in immich.data
+    assert b'name="deviceAssetId"' not in immich.data
+    assert b'name="deviceId"' not in immich.data
+    assert b"Content-Type: image/jpeg" in immich.data
+
+    requests.clear()
+    assert upload_immich(_png_archive(), "https://photos.example/api", "immich-secret") == 1
+    assert requests[0][0].full_url == "https://photos.example/api/assets"
+    assert b"Content-Type: image/png" in requests[0][0].data
 
     requests.clear()
     assert upload_nextcloud(

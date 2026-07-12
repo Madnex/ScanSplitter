@@ -101,37 +101,40 @@ export function ProjectList({ onOpen, showToast }: ProjectListProps) {
           {projects.map((project) => (
             <Card
               key={project.id}
-              className="cursor-pointer hover:shadow-md transition-shadow"
-              onClick={() => onOpen(project)}
+              className="relative overflow-hidden transition-shadow hover:shadow-md"
             >
-              <CardHeader className="pb-2">
-                <div className="flex items-start justify-between gap-2">
-                  <CardTitle className="text-base truncate">{project.name}</CardTitle>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setPendingDelete(project);
-                    }}
-                    className="p-1 rounded-md hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors flex-shrink-0"
-                    title="Delete project"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                </div>
-              </CardHeader>
-              <CardContent className="pt-0 space-y-1">
-                <p className="text-sm text-muted-foreground">
-                  {reviewedCount(project)}/{project.counts.total} reviewed
-                </p>
-                {project.counts.needs_review > 0 && (
-                  <p className="text-xs text-amber-600 dark:text-amber-400">
-                    {project.counts.needs_review} need review
+              <button
+                type="button"
+                className="block w-full rounded-lg text-left outline-none transition-colors hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                onClick={() => onOpen(project)}
+                aria-label={`Open project ${project.name}`}
+              >
+                <CardHeader className="pb-2 pr-12">
+                  <CardTitle className="truncate text-base">{project.name}</CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-1 pt-0">
+                  <p className="text-sm text-muted-foreground">
+                    {reviewedCount(project)}/{project.counts.total} reviewed
                   </p>
-                )}
-                <p className="text-xs text-muted-foreground/75">
-                  Updated {formatUpdatedAt(project.updated_at)}
-                </p>
-              </CardContent>
+                  {project.counts.needs_review > 0 && (
+                    <p className="text-xs text-amber-600 dark:text-amber-400">
+                      {project.counts.needs_review} need review
+                    </p>
+                  )}
+                  <p className="text-xs text-muted-foreground/75">
+                    Updated {formatUpdatedAt(project.updated_at)}
+                  </p>
+                </CardContent>
+              </button>
+              <button
+                type="button"
+                onClick={() => setPendingDelete(project)}
+                className="absolute right-4 top-4 rounded-md p-1 text-muted-foreground transition-colors hover:bg-destructive/10 hover:text-destructive focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={`Delete project ${project.name}`}
+                title="Delete project"
+              >
+                <Trash2 className="h-4 w-4" />
+              </button>
             </Card>
           ))}
         </div>

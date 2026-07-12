@@ -31,7 +31,9 @@ def estimate_skew_angle(image: Image.Image, max_degrees: float = MAX_DESKEW_DEGR
         return 0.0
 
     candidates: list[tuple[float, float]] = []
-    for x1, y1, x2, y2 in lines[:, 0]:
+    # OpenCV 4 returns (N, 1, 4), while OpenCV 5 returns (N, 4).
+    # Flatten both layouts so clean installs do not break deskew.
+    for x1, y1, x2, y2 in lines.reshape(-1, 4):
         raw = float(np.degrees(np.arctan2(y2 - y1, x2 - x1)))
         axis_angle = ((raw + 45.0) % 90.0) - 45.0
         if abs(axis_angle) <= max_degrees:
@@ -100,32 +102,6 @@ def restore_color_and_fade(image: Image.Image) -> tuple[Image.Image, dict[str, f
     }
 
 
-def remove_dust_and_scratches(image: Image.Image) -> tuple[Image.Image, float]:
-    """Repair sparse, high-contrast specks and thin scratches conservatively."""
-    rgb = np.asarray(image.convert("RGB"))
-    gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (5, 5))
-    bright = cv2.morphologyEx(gray, cv2.MORPH_TOPHAT, kernel)
-    dark = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, kernel)
-    defects = np.maximum(bright, dark)
-    threshold = max(22, int(np.percentile(defects, 99.7)))
-    mask = np.where(defects >= threshold, 255, 0).astype(np.uint8)
-    count, labels, stats, _ = cv2.connectedComponentsWithStats(mask)
-    filtered = np.zeros_like(mask)
-    max_area = max(12, int(mask.size * 0.00015))
-    for label in range(1, count):
-        x, y, width, height, area = stats[label]
-        thin = min(width, height) <= 3 and max(width, height) <= 80
-        speck = area <= max_area and width <= 18 and height <= 18
-        if speck or thin:
-            filtered[labels == label] = 255
-    ratio = float(np.count_nonzero(filtered) / filtered.size)
-    if ratio == 0 or ratio > 0.02:
-        return image, 0.0
-    repaired = cv2.inpaint(rgb, filtered, 2, cv2.INPAINT_TELEA)
-    return Image.fromarray(repaired), round(ratio * 100, 3)
-
-
 def archival_upscale(image: Image.Image, factor: int = 2) -> Image.Image:
     """Non-generative Lanczos upscale with a restrained unsharp pass."""
     rgb = np.asarray(image.convert("RGB"))
@@ -146,9 +122,6 @@ def apply_restorations(image: Image.Image, settings: dict) -> tuple[Image.Image,
         restored, metrics = restore_color_and_fade(restored)
         strongest = max(abs(metrics[key] - 1) for key in ("red_gain", "green_gain", "blue_gain"))
         details.append(f"color/fade corrected ({strongest * 100:.0f}% max balance)")
-    if settings.get("remove_dust"):
-        restored, repaired = remove_dust_and_scratches(restored)
-        details.append(f"dust/scratches repaired ({repaired:.3f}% pixels)")
     if settings.get("upscale_2x"):
         restored = archival_upscale(restored)
         details.append("2× archival upscale")
@@ -172,6 +145,8 @@ def comparison_image(before: Image.Image, after: Image.Image, detail: str) -> Im
     canvas.paste(right, (left.width, header))
     draw = ImageDraw.Draw(canvas)
     draw.text((14, 14), "Before", fill="white")
-    draw.text((left.width + 14, 14), f"After · {detail}", fill="white")
+    # The full detail is rendered as selectable text below the preview in the
+    # UI. Keep the image label short so it cannot collide with modal controls.
+    draw.text((left.width + 14, 14), "After", fill="white")
     draw.line((left.width, 0, left.width, canvas.height), fill="white", width=2)
     return canvas

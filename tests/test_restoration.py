@@ -8,7 +8,6 @@ from scansplitter.restoration import (
     auto_deskew,
     comparison_image,
     estimate_skew_angle,
-    remove_dust_and_scratches,
     restore_color_and_fade,
 )
 
@@ -37,6 +36,14 @@ def test_auto_deskew_corrects_derivative_without_mutating_source():
 def test_estimator_ignores_large_rotation_and_blank_images():
     assert estimate_skew_angle(_lined_image(12)) == 0.0
     assert estimate_skew_angle(Image.new("RGB", (300, 200), "white")) == 0.0
+
+
+def test_estimator_accepts_opencv5_flat_line_shape(monkeypatch):
+    monkeypatch.setattr(
+        "cv2.HoughLinesP",
+        lambda *args, **kwargs: np.array([[0, 0, 100, 5]], dtype=np.int32),
+    )
+    assert estimate_skew_angle(_lined_image()) == pytest.approx(2.86, abs=0.1)
 
 
 def test_comparison_image_labels_and_bounds_derivative():
@@ -73,16 +80,6 @@ def test_restoration_pipeline_honors_opt_in_settings():
     restored, detail = apply_restorations(source, {"auto_deskew": True, "restore_color": True})
     assert restored is not source
     assert "deskew" in detail and "color/fade" in detail
-
-
-def test_dust_removal_repairs_isolated_defect_without_global_blur():
-    image = np.full((120, 160, 3), 140, dtype=np.uint8)
-    image[60, 80] = 255
-    restored, repaired = remove_dust_and_scratches(Image.fromarray(image))
-    pixels = np.asarray(restored)
-    assert repaired > 0
-    assert abs(int(pixels[60, 80, 0]) - 140) < 10
-    assert np.array_equal(pixels[20, 20], image[20, 20])
 
 
 def test_archival_upscale_is_two_times_and_non_mutating():

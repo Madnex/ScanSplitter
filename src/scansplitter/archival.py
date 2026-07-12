@@ -1,39 +1,10 @@
-"""Optional archival helpers: local OCR and explicit network geocoding."""
+"""Explicit network geocoding for archival metadata."""
 
 import json
-import re
-import shutil
-import subprocess
 import urllib.parse
 import urllib.request
-from pathlib import Path
 
 from fastapi import HTTPException
-
-
-def transcribe_image(path: Path, language: str = "eng") -> str:
-    """Run local Tesseract OCR without uploading image data anywhere."""
-    if not re.fullmatch(r"[A-Za-z0-9_+.-]{2,40}", language):
-        raise HTTPException(status_code=400, detail="Invalid OCR language")
-    executable = shutil.which("tesseract")
-    if not executable:
-        raise HTTPException(
-            status_code=503,
-            detail="Local OCR requires Tesseract. Install tesseract and retry.",
-        )
-    try:
-        result = subprocess.run(
-            [executable, str(path), "stdout", "-l", language, "--psm", "6"],
-            capture_output=True,
-            text=True,
-            timeout=120,
-            check=False,
-        )
-    except subprocess.TimeoutExpired as exc:
-        raise HTTPException(status_code=504, detail="OCR timed out after 120s") from exc
-    if result.returncode != 0:
-        raise HTTPException(status_code=422, detail=result.stderr.strip() or "OCR failed")
-    return "\n".join(line.strip() for line in result.stdout.splitlines() if line.strip())[:10_000]
 
 
 def lookup_place(query: str) -> dict:

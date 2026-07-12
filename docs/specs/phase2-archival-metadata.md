@@ -8,8 +8,8 @@ implementation must deviate, update this file in the same commit.*
 
 A user describes a scan once and every exported crop from it carries useful,
 portable archival metadata. Metadata may be applied atomically to one, several,
-or all scans. Front/back pairing, local OCR, and explicit place lookup support
-archival transcription without modifying project originals.
+or all scans. Front/back pairing and explicit place lookup support archival
+description without modifying project originals.
 
 Quick mode remains unchanged.
 
@@ -21,8 +21,8 @@ Quick mode remains unchanged.
   `null` clears scalar fields. Coordinates must be set or cleared together.
 - Pairing is one-to-one. A front has at most one back and a back points to at
   most one front; deleting a front clears its back scan's `back_of` value.
-- OCR is local Tesseract work. Place lookup is the only Phase 2 network action,
-  is explicitly initiated, and is never triggered by opening the editor.
+- Place lookup is the only Phase 2 network action, is explicitly initiated,
+  and is never triggered by opening the editor.
 - GPS coordinates appear in derivative EXIF **and manifest metadata only when
   that export or delivery request sets `include_gps: true`**. The stored project
   `settings.include_gps` value is a UI default and does not authorize backend
@@ -47,9 +47,7 @@ read and persist them on their next mutation.
     "event": null,
     "album": null
   },
-  "back_of": null,
-  "ocr_text": null,
-  "ocr_reviewed": false
+  "back_of": null
 }
 ```
 
@@ -63,8 +61,6 @@ read and persist them on their next mutation.
 | `caption` | Trimmed text up to 2,000 characters; empty becomes null. |
 | `people` | A list, never null: at most 100 text entries, each at most 200 characters. Entries are trimmed, empties removed, and duplicates removed case-insensitively while preserving first spelling/order. `[]` clears the list. |
 | `back_of` | On a back scan, the paired front scan id; otherwise null. |
-| `ocr_text` | Reviewed or generated transcription, null when empty, capped at 10,000 characters. |
-| `ocr_reviewed` | Whether the transcription has been explicitly accepted. |
 
 For approximate dates the UI stores a representative ISO date while retaining
 the wording and precision: year uses January 1, month the first day, and season
@@ -80,8 +76,6 @@ Pydantic request-shape/type failures return `422`.
 | `PATCH /api/projects/{pid}/scans/{sid}/metadata` | Any subset of `{date,date_label,date_precision,place_name,latitude,longitude,caption,people,event,album}` | Updated scan. Omitted fields remain; scalar nulls clear; `people: []` clears. Invalid metadata returns `400`. |
 | `PATCH /api/projects/{pid}/metadata` | `{scan_ids: [id...] \| null, metadata: <partial object>}` | `{"scans":[updated scan...]}`. `scan_ids: null` targets all scans; `[]` is `400`. Every id and every resulting metadata object is validated before the single write, so the operation is all-or-nothing. |
 | `POST /api/projects/{pid}/scans/{sid}/pair` | `{back_scan_id: string \| null}` where `{sid}` is the front | The front scan. A scan cannot pair to itself (`400`). A non-null back is moved from any prior front and replaces the front's prior back; null unpairs the front. Pair state is visible on the back scan as `back_of`. |
-| `POST /api/projects/{pid}/scans/{sid}/ocr` | `{language?: string}`; default `eng` | `202 {"job_id"}`. `{sid}` is the image to transcribe. Language must match the implementation's 2–40 character safe token rule or the job fails with `400`; missing Tesseract fails the job with `503`; the 120-second timeout fails it with `504`; a nonzero Tesseract result fails it with `422`. Job failures expose these as `error_status`/`error_detail`. Success persists `ocr_text`, resets `ocr_reviewed` false, and returns `{scan_id,text}` as the job result. |
-| `POST /api/projects/{pid}/scans/{sid}/ocr/accept` | `{text: string, append_to_front_caption?: boolean}`; append defaults true | Updated back scan with trimmed/capped text and `ocr_reviewed: true`. When paired and append is enabled, appends `Back inscription: <text>` to the front caption, separated by a blank line from an existing caption, then truncates the combined caption to 2,000 characters. Metadata normalization `ValueError` maps to `400`. |
 | `POST /api/geocode` | `{query: string}` | `{"provider":"OpenStreetMap Nominatim","results":[{"name", "latitude", "longitude"}]}` (up to five). Empty query is `400`; provider/network failure is `502`. This is an explicit Nominatim request with a ScanSplitter user agent, never an automatic lookup. |
 
 ## Export metadata contract
@@ -107,21 +101,21 @@ all scans. It submits only dirty fields, so untouched values remain intact.
 Fields cover date/precision/wording, place and coordinates, caption, people,
 event, and album. Place search is a button action and identifies Nominatim.
 
-The front/back editor selects two scans, pairs them, runs local OCR on the back,
-allows transcription review, and can append the accepted text to the front.
-Thumbnail metadata markers show coverage. The UI explains that coordinates are
-exported only when Include GPS is enabled.
+The front/back editor selects and pairs two scans. It directs users to record
+inscriptions manually in the front scan's caption. Thumbnail metadata markers
+show coverage. The UI exposes an Include GPS export/delivery default and
+explains that coordinates are omitted unless it is enabled.
 
 ## Testing
 
 - `tests/test_metadata.py`: normalization, partial updates/null clearing,
-  dates, coordinate pairing/ranges, people rules, XMP placement, OCR timeout.
+  dates, coordinate pairing/ranges, people rules, and XMP placement.
 - `tests/test_projects.py`: persistent single/batch atomic updates, pairing,
-  OCR acceptance and caption truncation, explicit geocoding, EXIF/XMP and GPS
-  request gating across export formats/manifests.
+  explicit geocoding, EXIF/XMP and GPS request gating across export
+  formats/manifests.
 - Frontend lint and production build remain clean.
 
 ## Non-goals
 
-Automatic geocoding, remote OCR, face recognition, controlled-vocabulary
+Automatic geocoding, built-in OCR, face recognition, controlled-vocabulary
 person records, per-crop metadata overrides, and metadata sidecar files.
