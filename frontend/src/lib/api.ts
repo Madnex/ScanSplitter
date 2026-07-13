@@ -716,6 +716,40 @@ export async function deliverProject(
   return runJobAt(`${API_BASE}/projects/${projectId}/deliver`, config, "project-delivery", { onProgress });
 }
 
+export type DeliveryCredentialTarget = "immich" | "nextcloud";
+
+export interface SavedDeliveryCredentials {
+  target: DeliveryCredentialTarget;
+  saved: boolean;
+  storage_available: boolean;
+  error?: string;
+  server_url?: string;
+  base_url?: string;
+  username?: string;
+  folder?: string;
+}
+
+export async function getSavedDeliveryCredentials(
+  target: DeliveryCredentialTarget
+): Promise<SavedDeliveryCredentials> {
+  const response = await fetch(`${API_BASE}/delivery-credentials/${target}`);
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to load saved ${target} credentials`);
+  }
+  return response.json();
+}
+
+export async function forgetSavedDeliveryCredentials(
+  target: DeliveryCredentialTarget
+): Promise<void> {
+  const response = await fetch(`${API_BASE}/delivery-credentials/${target}`, {
+    method: "DELETE",
+  });
+  if (!response.ok) {
+    await throwForResponse(response, `Failed to forget saved ${target} credentials`);
+  }
+}
+
 export async function previewProjectRestoration(
   projectId: string,
   scanId: string,

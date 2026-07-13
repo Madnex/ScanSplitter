@@ -98,8 +98,20 @@ return `400` before queueing when invalid. An unknown target is `400`.
 | `nextcloud` | `target: "nextcloud"`, non-empty `base_url`, `username`, `password`; optional `folder` default `ScanSplitter` | `base_url` must be the HTTP(S) WebDAV files root, conventionally `https://host/remote.php/dav/files/USERNAME`. Each artifact is Basic-authenticated `PUT` below the requested folder. Both `X-NC-WebDAV-Auto-Mkcol: 1` and `X-NC-WebDAV-AutoMkcol: 1` are sent. On PUT `409`, the client issues `MKCOL` per path segment (accepting existing-collection `405`) and retries. Other/network failures become `502`. |
 
 All string request values are trimmed before required-field validation. Passwords
-and API keys exist only in the delivery request/job closure and are not written
-to `project.json`.
+and API keys are never written to `project.json`. A request may set
+`remember_credentials: true` to save an Immich or Nextcloud connection in the
+current user's operating-system credential store, or
+`use_saved_credentials: true` to merge a saved connection with explicit
+non-empty request fields. Explicit fields win. Both options return `403` outside
+local mode, and a missing saved connection is `400`.
+
+`GET /api/delivery-credentials/{immich|nextcloud}` returns whether a connection
+is saved and its non-secret URL/username/folder fields. API keys and passwords
+are never returned. `DELETE` on the same route forgets the connection. Keyring
+backend failures are reported as `storage_available: false` by GET and as `503`
+when a save/delete/use operation requires the unavailable vault. ScanSplitter
+stores one connection per delivery target under the `ScanSplitter delivery`
+system-vault service.
 
 ## Frontend
 
@@ -110,9 +122,12 @@ flow.
 
 The Delivery dialog selects watched folder, Immich, or Nextcloud; shows only
 that target's required fields; offers overwrite only for folder delivery;
-labels the Nextcloud field as the WebDAV files URL; states that credentials are
-used once; tells Immich users to grant only `asset.upload` and accepts a server
-base URL with or without `/api`; and displays shared job progress/errors.
+labels the Nextcloud field as the WebDAV files URL; offers secure remember,
+reuse, update, and forget controls without displaying a saved secret; tells
+Immich users to grant only `asset.upload` and accepts a server base URL with or
+without `/api`; falls back to one-time entry when the system vault is
+unavailable; remembers the last selected delivery target as a non-secret local
+browser preference; and displays shared job progress/errors.
 
 ## Testing
 
@@ -122,9 +137,14 @@ base URL with or without `/api`; and displays shared job progress/errors.
 - `tests/test_delivery.py`: archive iteration/path validation, authenticated
   Immich and Nextcloud requests, both auto-MKCOL headers, 409 MKCOL fallback,
   and watched-folder all-before-write conflict detection.
-- Frontend lint and production build remain clean.
+- `tests/test_credentials.py`: system-vault round trips, secret-free API
+  responses, server-side saved-credential merging, and local-mode enforcement.
+- Frontend unit tests cover serialized auto-detection, automatic naming, the
+  bounded wrapping tab strip, and preferred delivery-target persistence. Lint
+  and production build remain clean.
 
 ## Non-goals
 
-Credential storage, automatic/scheduled network delivery, remote library
-deletion or synchronization, source replacement, and TIFF compression.
+Multiple credential profiles per target, automatic/scheduled network delivery,
+remote library deletion or synchronization, source replacement, and TIFF
+compression.

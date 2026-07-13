@@ -14,7 +14,8 @@ import { KeyboardShortcutsDialog } from "@/components/KeyboardShortcutsDialog";
 import { Button } from "@/components/ui/button";
 import { ProjectsRoot } from "@/components/projects/ProjectsRoot";
 import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, isAbortError, FileConflictError, getModelStatuses, selectDirectory, startModelDownload } from "@/lib/api";
-import { generateNamesForImages, findDuplicateName } from "@/lib/naming";
+import { findDuplicateName, withGeneratedNames } from "@/lib/naming";
+import { nextPendingDetectionIndex } from "@/lib/quickMode";
 import { buildExportPayload } from "@/lib/utils";
 import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern, ModelKey, ModelStatus } from "@/types";
 
@@ -323,7 +324,23 @@ function App() {
         return next;
       });
     } catch (error) {
-      if (isAbortError(error)) return; // superseded - silent no-op, not a failure
+      if (isAbortError(error)) {
+        // Navigation may cancel the request without immediately replacing it.
+        // Put that scan back into the queue; a superseding request owns the
+        // shared ref and must retain its newer "detecting" state.
+        if (detectAbortControllerRef.current === controller) {
+          setFiles((prev) =>
+            prev.map((file) =>
+              file.sessionId === target.sessionId &&
+              file.currentPage === target.page &&
+              file.detectionStatus === "detecting"
+                ? { ...file, detectionStatus: "pending" as const }
+                : file
+            )
+          );
+        }
+        return;
+      }
       console.error(`Detection failed for ${target.filename}:`, error);
       setFiles((prev) =>
         prev.map((f) =>
@@ -378,9 +395,8 @@ function App() {
 
   // Handle file tab selection
   const handleSelectFile = useCallback((index: number) => {
-    cancelInFlightDetection();
     setActiveFileIndex(index);
-  }, [cancelInFlightDetection]);
+  }, []);
 
   // Handle file tab close
   const handleCloseFile = useCallback((index: number) => {
@@ -428,14 +444,15 @@ function App() {
   // page requires an explicit manual click to retry, so we never get stuck
   // in a retry loop. Only the first pending file is targeted per run; once
   // its status flips away from 'pending' this effect re-fires and picks up
-  // the next one, which naturally serializes detection across files
-  // uploaded together as well as the page the user just navigated to.
+  // the next one. A currently detecting file blocks selection of another
+  // pending file, which serializes CPU-heavy detection and prevents the
+  // shared abort controller from cancelling every scan except the last.
   //
   // Dependencies are primitive values (not the `files` array itself) so
   // unrelated updates - e.g. dragging a box on an already-detected page -
   // don't re-trigger this effect.
   const pendingDetectIndex = useMemo(
-    () => (settings.autoDetect ? files.findIndex((f) => f.detectionStatus === 'pending') : -1),
+    () => nextPendingDetectionIndex(files, settings.autoDetect),
     [files, settings.autoDetect]
   );
   const pendingDetectFile = pendingDetectIndex >= 0 ? files[pendingDetectIndex] : null;
@@ -556,22 +573,19 @@ function App() {
     });
   }, [showToast]);
 
-  // Apply naming pattern to all images
-  const applyNamingPattern = useCallback(() => {
+  // Naming controls are live: every valid edit immediately updates the
+  // actual export names, matching the preview shown beside the controls.
+  const handleNamingPatternChange = useCallback((nextPattern: NamingPattern) => {
+    setNamingPattern(nextPattern);
     setCroppedImages((prev) => {
-      const names = generateNamesForImages(
-        namingPattern.pattern,
-        namingPattern.startNumber,
-        namingPattern.albumName,
-        prev.map((img) => ({
-          fileIndex: img.source.fileIndex,
-          page: img.source.page,
-          filename: img.source.filename,
-        }))
+      return withGeneratedNames(
+        prev,
+        nextPattern.pattern,
+        nextPattern.startNumber,
+        nextPattern.albumName
       );
-      return prev.map((img, idx) => ({ ...img, name: names[idx] }));
     });
-  }, [namingPattern]);
+  }, []);
 
   // Handle image rotation (90° increments)
   const handleImageRotate = useCallback((id: string, direction: "left" | "right") => {
@@ -681,7 +695,12 @@ function App() {
           },
         }));
 
-        return [...filtered, ...imagesWithSource];
+        return withGeneratedNames(
+          [...filtered, ...imagesWithSource],
+          namingPattern.pattern,
+          namingPattern.startNumber,
+          namingPattern.albumName
+        );
       });
     } catch (error) {
       if (isAbortError(error)) return;
@@ -694,7 +713,7 @@ function App() {
         setCropProgress(null);
       }
     }
-  }, [activeFile, activeFileIndex, settings.autoRotate, ensureModelReady, showToast]);
+  }, [activeFile, activeFileIndex, settings.autoRotate, ensureModelReady, namingPattern, showToast]);
 
   // Handle export
   const handleExport = useCallback(async () => {
@@ -810,9 +829,10 @@ function App() {
 
   // Handle scan navigation (file + page combined)
   const handleScanNavigate = useCallback((fileIndex: number, page: number) => {
-    cancelInFlightDetection();
+    const changesPage = !!files[fileIndex] && files[fileIndex].currentPage !== page;
+    if (changesPage) cancelInFlightDetection();
     setActiveFileIndex(fileIndex);
-    if (files[fileIndex] && files[fileIndex].currentPage !== page) {
+    if (changesPage) {
       setFiles((prev) =>
         prev.map((f, i) =>
           i === fileIndex
@@ -881,7 +901,7 @@ function App() {
 
         {/* Main layout */}
         {mode === "quick" && (
-        <div className="flex-1 grid grid-cols-1 lg:grid-cols-[250px_1fr_320px] gap-4 min-h-0">
+        <div className="flex-1 grid min-w-0 grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)_320px] gap-4 min-h-0">
           {/* Left panel - Settings */}
           <div className="space-y-4 overflow-y-auto">
             <FileUpload onUpload={handleUpload} disabled={isUploading} />
@@ -906,8 +926,8 @@ function App() {
           </div>
 
           {/* Center panel - Canvas */}
-          <div className="flex flex-col min-h-0">
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex min-w-0 flex-col min-h-0">
+            <div className="flex min-w-0 flex-col items-start gap-2">
               <FileTabs
                 files={files}
                 activeIndex={activeFileIndex}
@@ -940,15 +960,14 @@ function App() {
           </div>
 
           {/* Right panel - Results */}
-          <div className="overflow-y-auto">
+          <div className="min-w-0 overflow-y-auto">
             <ResultsGallery
               allImages={croppedImages}
               currentScanImages={currentScanImages}
               viewMode={resultsViewMode}
               onViewModeChange={setResultsViewMode}
               namingPattern={namingPattern}
-              onNamingPatternChange={setNamingPattern}
-              onApplyNamingPattern={applyNamingPattern}
+              onNamingPatternChange={handleNamingPatternChange}
               onExport={handleExport}
               onExportLocal={handleExportLocal}
               onNameChange={handleImageNameChange}

@@ -28,12 +28,12 @@ export function FileTabs({ files, activeIndex, onSelect, onClose }: FileTabsProp
   }
 
   return (
-    <div className="flex gap-1 overflow-x-auto pb-2 border-b">
+    <div className="flex w-full min-w-0 max-h-28 flex-wrap gap-1 overflow-y-auto pb-2 border-b">
       {files.map((file, index) => (
         <div
           key={`${file.sessionId}-${file.filename}`}
           className={cn(
-            "flex items-center gap-2 px-3 py-1.5 rounded-t-md text-sm cursor-pointer transition-colors",
+            "flex min-w-0 max-w-full items-center gap-2 px-3 py-1.5 rounded-t-md text-sm cursor-pointer transition-colors",
             index === activeIndex
               ? "bg-background border border-b-0"
               : "bg-muted/50 hover:bg-muted"
@@ -41,7 +41,7 @@ export function FileTabs({ files, activeIndex, onSelect, onClose }: FileTabsProp
           onClick={() => onSelect(index)}
         >
           <DetectionStatusIcon status={file.detectionStatus} />
-          <span className="truncate max-w-32">{file.filename}</span>
+          <span className="min-w-0 max-w-32 truncate">{file.filename}</span>
           {file.pageCount > 1 && (
             <span className="text-xs text-muted-foreground">
               ({file.pageCount} pages)

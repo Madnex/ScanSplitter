@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Download, FolderDown, FolderOpen, RotateCcw, RotateCw, Expand, Wand2, Calendar } from "lucide-react";
+import { Download, FolderDown, FolderOpen, RotateCcw, RotateCw, Expand, Calendar } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -22,7 +22,6 @@ interface ResultsGalleryProps {
   onViewModeChange: (mode: "current" | "all") => void;
   namingPattern: NamingPattern;
   onNamingPatternChange: (pattern: NamingPattern) => void;
-  onApplyNamingPattern: () => void;
   onExport: () => void;
   onExportLocal: () => void;
   onNameChange: (id: string, name: string) => void;
@@ -47,7 +46,6 @@ export function ResultsGallery({
   onViewModeChange,
   namingPattern,
   onNamingPatternChange,
-  onApplyNamingPattern,
   onExport,
   onExportLocal,
   onNameChange,
@@ -250,23 +248,9 @@ export function ResultsGallery({
 
           {/* Naming pattern */}
           <div className="mt-3 space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <span className="text-xs text-muted-foreground">Naming Pattern</span>
-              <Button
-                size="sm"
-                variant="outline"
-                className="h-6 text-xs px-2"
-                onClick={onApplyNamingPattern}
-                disabled={allImages.length === 0 || !patternValidation.valid}
-                title={
-                  !patternValidation.valid
-                    ? patternValidation.error
-                    : "Apply pattern to all images"
-                }
-              >
-                <Wand2 className="w-3 h-3 mr-1" />
-                Apply
-              </Button>
+              <span className="text-[11px] text-muted-foreground">Names update automatically</span>
             </div>
             <NamingPatternInput
               pattern={namingPattern}

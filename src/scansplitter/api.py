@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 import scansplitter
 
+from . import credentials
 from .delivery import DELIVERY_REQUIRED_FIELDS
 from .detector import (
     DetectedRegion,
@@ -313,6 +314,8 @@ class ProjectDeliveryRequest(BaseModel):
     organize_folders: bool = True
     manifest_format: str | None = "both"
     overwrite: bool = False
+    use_saved_credentials: bool = False
+    remember_credentials: bool = False
 
 
 class ProjectMetadataPatch(BaseModel):
@@ -1435,18 +1438,41 @@ def export_project(pid: str, request: ProjectExportRequest):
 
 @app.post("/api/projects/{pid}/deliver", status_code=202)
 def deliver_project(pid: str, request: ProjectDeliveryRequest):
-    """Deliver canonical project artifacts; secrets remain request-scoped."""
+    """Deliver canonical project artifacts, optionally using the system vault."""
     config = request.model_dump(exclude_none=True)
     config = {
         key: value.strip() if isinstance(value, str) else value
         for key, value in config.items()
     }
     target = config.pop("target")
+    use_saved_credentials = bool(config.pop("use_saved_credentials", False))
+    remember_credentials = bool(config.pop("remember_credentials", False))
     if target == "folder" and not _local_features_enabled():
         raise HTTPException(status_code=403, detail="Local folder delivery is disabled")
     required = DELIVERY_REQUIRED_FIELDS.get(target)
     if required is None:
         raise HTTPException(status_code=400, detail="Unknown delivery target")
+    if use_saved_credentials or remember_credentials:
+        if target not in credentials.DELIVERY_CREDENTIAL_FIELDS:
+            raise HTTPException(
+                status_code=400,
+                detail="Credential storage is only available for Immich and Nextcloud",
+            )
+        if not _local_features_enabled():
+            raise HTTPException(status_code=403, detail="Saved credentials require local mode")
+    if use_saved_credentials:
+        try:
+            saved = credentials.load_delivery_credentials(target)
+        except credentials.CredentialStoreError as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
+        if saved is None:
+            raise HTTPException(status_code=400, detail="No saved credentials for this target")
+        explicit = {
+            key: value
+            for key, value in config.items()
+            if not isinstance(value, str) or value
+        }
+        config = {**saved, **explicit}
     if missing := sorted(field for field in required if not config.get(field)):
         raise HTTPException(status_code=400, detail=f"Missing delivery fields: {', '.join(missing)}")
     if config.get("master_format") is not None and config["master_format"] not in MASTER_FORMATS:
@@ -1455,7 +1481,47 @@ def deliver_project(pid: str, request: ProjectDeliveryRequest):
         raise HTTPException(status_code=400, detail="manifest_format must be one of: json, csv, both")
     if target == "folder" and not Path(config["destination"]).expanduser().is_dir():
         raise HTTPException(status_code=400, detail="Destination must be an existing directory")
+    if remember_credentials:
+        try:
+            credentials.save_delivery_credentials(target, config)
+        except (credentials.CredentialStoreError, ValueError) as exc:
+            raise HTTPException(status_code=503, detail=str(exc)) from exc
     return {"job_id": get_project_store().submit_delivery_job(pid, target, config)}
+
+
+@app.get("/api/delivery-credentials/{target}")
+def get_delivery_credentials(target: str):
+    """Return non-secret metadata for a saved delivery connection."""
+    if not _local_features_enabled():
+        raise HTTPException(status_code=403, detail="Saved credentials require local mode")
+    if target not in credentials.DELIVERY_CREDENTIAL_FIELDS:
+        raise HTTPException(status_code=404, detail="Unknown credential target")
+    try:
+        saved = credentials.load_delivery_credentials(target)
+    except credentials.CredentialStoreError as exc:
+        return {
+            "target": target,
+            "saved": False,
+            "storage_available": False,
+            "error": str(exc),
+        }
+    if saved is None:
+        return {"target": target, "saved": False, "storage_available": True}
+    return credentials.public_delivery_credentials(target, saved)
+
+
+@app.delete("/api/delivery-credentials/{target}")
+def delete_delivery_credentials(target: str):
+    """Forget a saved delivery connection without exposing its secret."""
+    if not _local_features_enabled():
+        raise HTTPException(status_code=403, detail="Saved credentials require local mode")
+    if target not in credentials.DELIVERY_CREDENTIAL_FIELDS:
+        raise HTTPException(status_code=404, detail="Unknown credential target")
+    try:
+        deleted = credentials.delete_delivery_credentials(target)
+    except credentials.CredentialStoreError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+    return {"target": target, "deleted": deleted}
 
 
 @app.post("/api/projects/{pid}/scans/{sid}/restoration-preview", status_code=202)

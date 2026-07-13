@@ -115,3 +115,17 @@ export function findDuplicateName(names: string[]): string | null {
   }
   return null;
 }
+
+/** Apply a valid naming pattern to image-like objects without mutating them. */
+export function withGeneratedNames<
+  T extends { name: string; source: NamingImageInfo },
+>(images: T[], pattern: string, startNumber: number, albumName: string): T[] {
+  if (!validatePattern(pattern).valid) return images;
+  const names = generateNamesForImages(
+    pattern,
+    startNumber,
+    albumName,
+    images.map((image) => image.source)
+  );
+  return images.map((image, index) => ({ ...image, name: names[index] }));
+}
