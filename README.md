@@ -149,8 +149,13 @@ modify, or delete assets already stored in Immich, so its API key needs only the
    - **Immich server:** the public base URL, such as
      `https://photos.example.com`. A URL ending in `/api` also works.
    - **API key:** the key created above.
-5. Choose **Deliver**. The credentials are used for that delivery only and are
-   not saved in the project.
+5. To avoid entering the connection again, enable **Remember this connection
+   securely**. The API key is stored in the operating system credential vault,
+   never in the project or browser storage. If no supported vault is available,
+   ScanSplitter keeps using one-time credential entry.
+6. Choose **Deliver**. Saved credentials can later be reused, updated, or
+   forgotten from the Delivery dialog. Saved-secret features are available
+   only while ScanSplitter runs in local mode.
 
 The uploaded photos belong to the Immich user who created the API key. If
 delivery returns `401` or `403`, check that the key is valid and has
