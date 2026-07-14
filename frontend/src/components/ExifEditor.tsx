@@ -11,6 +11,54 @@ interface ExifEditorProps {
   onApplyToAll?: (date: string | null) => void;
 }
 
+interface ExifDateControlsProps {
+  dateTaken: string;
+  imageCount: number;
+  isClearing: boolean;
+  onDateChange: (date: string) => void;
+  onClear: () => void;
+  onApply: () => void;
+}
+
+export function ExifDateControls({
+  dateTaken,
+  imageCount,
+  isClearing,
+  onDateChange,
+  onClear,
+  onApply,
+}: ExifDateControlsProps) {
+  return (
+    <div className="grid grid-cols-[minmax(0,1fr)_auto] gap-2">
+      <Input
+        type="date"
+        value={dateTaken}
+        onChange={(event) => onDateChange(event.target.value)}
+        className="h-8 min-w-0 text-sm"
+      />
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={onClear}
+        disabled={!dateTaken || isClearing}
+        className="h-8 px-2"
+        title="Clear the stored date on the original scan"
+      >
+        <X className="w-3.5 h-3.5" />
+      </Button>
+      <Button
+        size="sm"
+        onClick={onApply}
+        disabled={!dateTaken || imageCount === 0}
+        className="col-span-2 h-8 w-full"
+        title={imageCount === 0 ? "Crop photos first" : "Apply to all photos"}
+      >
+        Apply
+      </Button>
+    </div>
+  );
+}
+
 export function ExifEditor({ sessionId, imageCount, onApplyToAll }: ExifEditorProps) {
   const [dateTaken, setDateTaken] = useState<string>("");
   const [make, setMake] = useState<string | null>(null);
@@ -111,33 +159,14 @@ export function ExifEditor({ sessionId, imageCount, onApplyToAll }: ExifEditorPr
               </p>
             )}
 
-            <div className="flex gap-2">
-              <Input
-                type="date"
-                value={dateTaken}
-                onChange={(e) => setDateTaken(e.target.value)}
-                className="h-8 text-sm flex-1"
-              />
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={handleClear}
-                disabled={!dateTaken || isClearing}
-                className="h-8 px-2"
-                title="Clear the stored date on the original scan"
-              >
-                <X className="w-3.5 h-3.5" />
-              </Button>
-              <Button
-                size="sm"
-                onClick={handleApply}
-                disabled={!dateTaken || imageCount === 0}
-                className="h-8"
-                title={imageCount === 0 ? "Crop photos first" : "Apply to all photos"}
-              >
-                Apply
-              </Button>
-            </div>
+            <ExifDateControls
+              dateTaken={dateTaken}
+              imageCount={imageCount}
+              isClearing={isClearing}
+              onDateChange={setDateTaken}
+              onClear={handleClear}
+              onApply={handleApply}
+            />
 
             {clearError && (
               <p className="text-xs text-destructive">{clearError}</p>
