@@ -53,7 +53,7 @@ uvx scansplitter api --port 8001
 
 ### Photo detection (splitter)
 
-- **ScanSplitterv2 (default)**: An improved contour-based detector. It applies contrast enhancement (CLAHE), adaptive thresholding, adaptive morphology (kernel scales with resolution), and contour quality filtering (solidity/aspect/extent). It can also use convex-hull borders for irregular edges.
+- **ScanSplitterv2 (default)**: An improved contour-based detector. It applies contrast enhancement (CLAHE), adaptive thresholding, adaptive morphology (kernel scales with resolution), contour quality filtering (solidity/aspect/extent), and a guarded edge-refinement pass that keeps high-resolution crops aligned with the physical photo border. It can also use convex-hull borders for irregular edges.
 - **ScanSplitterv1**: The first contour-based detector used with adaptive threshold + fixed morphology + `minAreaRect` filtering. It’s simpler and can be useful as a fallback if v2 behaves unexpectedly on a specific scan.
 - **AI (U2-Net)**: A deep-learning salient-object model (ONNX) that produces a mask; ScanSplitter then extracts regions from that mask. It’s best for difficult scans (busy backgrounds, low contrast), but requires downloading a model on first use. Might be less accurate for multiple photos at once.
 
@@ -103,6 +103,7 @@ Opens at http://localhost:8000 with:
 - Drag & drop file upload (images and PDFs)
 - Interactive bounding box editor (drag, resize, rotate)
 - Multi-file support with tabs
+- Current-scan or one-click all-scan cropping
 - PDF page navigation
 - JPEG or lossless PNG export
 
