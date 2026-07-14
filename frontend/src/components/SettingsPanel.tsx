@@ -15,11 +15,17 @@ interface SettingsPanelProps {
   onSettingsChange: (settings: DetectionSettings) => void;
   onDetect: () => void;
   onCrop: () => void;
+  onCropAll: () => void;
   isDetecting: boolean;
   isCropping: boolean;
   detectProgress?: JobProgress | null;
   cropProgress?: JobProgress | null;
   hasBoxes: boolean;
+  currentPhotoCount: number;
+  cropAllPhotoCount: number;
+  cropAllScanCount: number;
+  totalScanCount: number;
+  isBatchDetectionPending: boolean;
   modelStatuses?: Record<ModelKey, ModelStatus> | null;
 }
 
@@ -28,11 +34,17 @@ export function SettingsPanel({
   onSettingsChange,
   onDetect,
   onCrop,
+  onCropAll,
   isDetecting,
   isCropping,
   detectProgress = null,
   cropProgress = null,
   hasBoxes,
+  currentPhotoCount,
+  cropAllPhotoCount,
+  cropAllScanCount,
+  totalScanCount,
+  isBatchDetectionPending,
   modelStatuses = null,
 }: SettingsPanelProps) {
   const u2netKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
@@ -211,8 +223,25 @@ export function SettingsPanel({
             variant="secondary"
             className="w-full"
           >
-            {isCropping ? "Cropping..." : "Crop Selected"}
+            {isCropping ? "Cropping..." : `Crop Current (${currentPhotoCount})`}
           </Button>
+          {totalScanCount > 1 && (
+            <>
+              <Button
+                onClick={onCropAll}
+                disabled={isCropping || cropAllPhotoCount === 0 || isBatchDetectionPending}
+                variant="secondary"
+                className="w-full"
+              >
+                {isCropping ? "Cropping..." : `Crop All (${cropAllPhotoCount})`}
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                {isBatchDetectionPending
+                  ? "Waiting for auto-detection to finish"
+                  : `${cropAllScanCount} of ${totalScanCount} scans have photos ready`}
+              </p>
+            </>
+          )}
           {isCropping && cropProgress && (
             <ProgressBar
               value={cropProgress.progress}

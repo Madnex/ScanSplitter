@@ -15,7 +15,7 @@ import { Button } from "@/components/ui/button";
 import { ProjectsRoot } from "@/components/projects/ProjectsRoot";
 import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, isAbortError, FileConflictError, getModelStatuses, selectDirectory, startModelDownload } from "@/lib/api";
 import { findDuplicateName, withGeneratedNames } from "@/lib/naming";
-import { nextPendingDetectionIndex } from "@/lib/quickMode";
+import { cropTargets, nextPendingDetectionIndex } from "@/lib/quickMode";
 import { buildExportPayload } from "@/lib/utils";
 import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern, ModelKey, ModelStatus } from "@/types";
 
@@ -30,6 +30,12 @@ interface DetectionTarget {
   filename: string;
   page: number;
   fileIndex: number;
+}
+
+interface CropBatchResult {
+  fileIndex: number;
+  file: UploadedFile;
+  images: Omit<CroppedImage, "name" | "source" | "dateTaken">[];
 }
 
 function App() {
@@ -211,6 +217,15 @@ function App() {
 
   // Get active file
   const activeFile = files[activeFileIndex] ?? null;
+
+  const batchCropTargets = useMemo(() => cropTargets(files), [files]);
+  const batchCropPhotoCount = useMemo(
+    () => batchCropTargets.reduce((total, target) => total + target.file.boxes.length, 0),
+    [batchCropTargets]
+  );
+  const isBatchDetectionPending = settings.autoDetect && files.some(
+    (file) => file.detectionStatus === "pending" || file.detectionStatus === "detecting"
+  );
 
   // Global keyboard shortcut (? for help)
   useEffect(() => {
@@ -715,6 +730,91 @@ function App() {
     }
   }, [activeFile, activeFileIndex, settings.autoRotate, ensureModelReady, namingPattern, showToast]);
 
+  // Crop every scan with detected boxes, one at a time. Crop jobs are
+  // deliberately serialized because OpenCV/orientation inference is
+  // CPU-heavy and each job already reports its own progress.
+  const handleCropAll = useCallback(async () => {
+    if (batchCropTargets.length === 0) return;
+    cropAbortControllerRef.current?.abort();
+    const controller = new AbortController();
+    cropAbortControllerRef.current = controller;
+    setIsCropping(true);
+    setCropProgress({ progress: 0, stage: null });
+
+    try {
+      if (settings.autoRotate) {
+        await ensureModelReady("orientation");
+      }
+
+      const batches: CropBatchResult[] = [];
+      for (const [targetIndex, target] of batchCropTargets.entries()) {
+        if (controller.signal.aborted) return;
+        const images = await cropImages(
+          target.file.sessionId,
+          target.file.currentPage,
+          target.file.boxes,
+          settings.autoRotate,
+          controller.signal,
+          (progress, stage) => {
+            const overall = Math.round(
+              ((targetIndex + progress / 100) / batchCropTargets.length) * 100
+            );
+            setCropProgress({
+              progress: overall,
+              stage: `Scan ${targetIndex + 1}/${batchCropTargets.length}: ${stage ?? "starting"}`,
+            });
+          }
+        );
+        batches.push({ ...target, images });
+      }
+
+      setCroppedImages((previous) => {
+        const replacedScans = new Set(
+          batches.map((batch) => `${batch.file.sessionId}:${batch.file.currentPage}`)
+        );
+        const retained = previous.filter((image) => {
+          const sourceFile = files[image.source.fileIndex];
+          return !sourceFile || !replacedScans.has(`${sourceFile.sessionId}:${image.source.page}`);
+        });
+        const added = batches.flatMap((batch) =>
+          batch.images.map((image, index) => ({
+            ...image,
+            name: `photo_${retained.length + index + 1}`,
+            dateTaken: null as string | null,
+            source: {
+              fileIndex: batch.fileIndex,
+              filename: batch.file.filename,
+              page: batch.file.currentPage,
+              boxId: batch.file.boxes[index]?.id ?? image.id,
+            },
+          }))
+        );
+        return withGeneratedNames(
+          [...retained, ...added],
+          namingPattern.pattern,
+          namingPattern.startNumber,
+          namingPattern.albumName
+        );
+      });
+      setResultsViewMode("all");
+      const photoCount = batches.reduce((total, batch) => total + batch.images.length, 0);
+      showToast(
+        `Cropped ${photoCount} photo${photoCount !== 1 ? "s" : ""} from ${batches.length} scan${batches.length !== 1 ? "s" : ""}`,
+        "success"
+      );
+    } catch (error) {
+      if (isAbortError(error)) return;
+      console.error("Batch crop failed:", error);
+      showToast("Failed to crop all scans", "error");
+    } finally {
+      if (cropAbortControllerRef.current === controller) {
+        cropAbortControllerRef.current = null;
+        setIsCropping(false);
+        setCropProgress(null);
+      }
+    }
+  }, [batchCropTargets, files, settings.autoRotate, ensureModelReady, namingPattern, showToast]);
+
   // Handle export
   const handleExport = useCallback(async () => {
     if (!activeFile || exportImages.length === 0) return;
@@ -910,11 +1010,17 @@ function App() {
               onSettingsChange={setSettings}
               onDetect={handleDetect}
               onCrop={handleCrop}
+              onCropAll={handleCropAll}
               isDetecting={isDetecting}
               isCropping={isCropping}
               detectProgress={detectProgress}
               cropProgress={cropProgress}
               hasBoxes={(activeFile?.boxes.length ?? 0) > 0}
+              currentPhotoCount={activeFile?.boxes.length ?? 0}
+              cropAllPhotoCount={batchCropPhotoCount}
+              cropAllScanCount={batchCropTargets.length}
+              totalScanCount={files.length}
+              isBatchDetectionPending={isBatchDetectionPending}
               modelStatuses={modelStatuses}
             />
             <ExifEditor
