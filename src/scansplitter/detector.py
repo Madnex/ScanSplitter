@@ -56,6 +56,117 @@ def _passes_quality_filter(
     )
 
 
+RotatedRect = tuple[tuple[float, float], tuple[float, float], float]
+
+
+def _refine_rect_to_edges(
+    gray: np.ndarray,
+    rect: RotatedRect,
+    search_margin_ratio: float = 0.05,
+) -> RotatedRect:
+    """Snap a candidate rotated rectangle to nearby continuous image edges.
+
+    Adaptive thresholding is intentionally generous so that texture inside a
+    photo forms one connected contour. On high-resolution scans that contour
+    can also absorb a soft scanner shadow outside the print. This pass
+    deskews a small band around the candidate and locates the strongest
+    *average* gradient near each side. Averaging along a whole side favors the
+    physical photo border over short edges within the picture.
+
+    A side is left unchanged when its peak does not stand out from the local
+    gradient profile, so low-contrast scans retain the contour result.
+    """
+    (center_x, center_y), (width, height), angle = rect
+    if width < 10 or height < 10:
+        return rect
+
+    margin = int(np.clip(round(min(width, height) * search_margin_ratio), 8, 140))
+    patch_width = max(3, round(width) + 2 * margin)
+    patch_height = max(3, round(height) + 2 * margin)
+
+    theta = np.deg2rad(angle)
+    width_axis = np.array([np.cos(theta), np.sin(theta)])
+    height_axis = np.array([-np.sin(theta), np.cos(theta)])
+
+    # Map destination patch coordinates back into the source image. Keeping
+    # the candidate centered in the patch makes the expected sides land at
+    # ``margin`` and ``margin + size`` respectively.
+    transform = np.array(
+        [
+            [
+                width_axis[0],
+                height_axis[0],
+                center_x
+                - width_axis[0] * patch_width / 2
+                - height_axis[0] * patch_height / 2,
+            ],
+            [
+                width_axis[1],
+                height_axis[1],
+                center_y
+                - width_axis[1] * patch_width / 2
+                - height_axis[1] * patch_height / 2,
+            ],
+        ],
+        dtype=np.float32,
+    )
+    patch = cv2.warpAffine(
+        gray,
+        transform,
+        (patch_width, patch_height),
+        flags=cv2.INTER_LINEAR | cv2.WARP_INVERSE_MAP,
+        borderMode=cv2.BORDER_REPLICATE,
+    )
+    patch = cv2.GaussianBlur(patch, (3, 3), 0)
+
+    # Compute one direction at a time to keep peak memory bounded on large
+    # scans. CV_16S is sufficient for an 8-bit Sobel derivative.
+    gradient_x = cv2.Sobel(patch, cv2.CV_16S, 1, 0, ksize=3)
+    np.abs(gradient_x, out=gradient_x)
+    x_profile = np.mean(gradient_x[margin : patch_height - margin], axis=0)
+    del gradient_x
+    gradient_y = cv2.Sobel(patch, cv2.CV_16S, 0, 1, ksize=3)
+    np.abs(gradient_y, out=gradient_y)
+    y_profile = np.mean(gradient_y[:, margin : patch_width - margin], axis=1)
+    del gradient_y
+
+    def strongest_edge(profile: np.ndarray, expected: float) -> int:
+        expected_index = int(round(expected))
+        start = max(0, expected_index - margin)
+        stop = min(len(profile), expected_index + margin + 1)
+        candidates = profile[start:stop]
+        if candidates.size == 0:
+            return expected_index
+
+        relative_index = int(np.argmax(candidates))
+        peak = float(candidates[relative_index])
+        baseline = float(np.median(candidates))
+        deviation = float(np.median(np.abs(candidates - baseline)))
+        # Require both an absolute signal and clear separation from local
+        # texture. Uniform/ambiguous bands therefore preserve the candidate.
+        if peak < 8.0 or peak < baseline + max(6.0, 4.0 * deviation):
+            return expected_index
+        return start + relative_index
+
+    left = strongest_edge(x_profile, margin)
+    right = strongest_edge(x_profile, margin + width)
+    top = strongest_edge(y_profile, margin)
+    bottom = strongest_edge(y_profile, margin + height)
+
+    refined_width = float(right - left)
+    refined_height = float(bottom - top)
+    if refined_width <= 0 or refined_height <= 0:
+        return rect
+
+    local_shift_x = (left + right - patch_width) / 2
+    local_shift_y = (top + bottom - patch_height) / 2
+    refined_center = (
+        float(center_x + width_axis[0] * local_shift_x + height_axis[0] * local_shift_y),
+        float(center_y + width_axis[1] * local_shift_x + height_axis[1] * local_shift_y),
+    )
+    return refined_center, (refined_width, refined_height), angle
+
+
 @dataclass
 class DetectedRegion:
     """A detected photo/document region in a scan."""
@@ -181,6 +292,7 @@ def detect_photos_v2(
     min_extent: float = 0.4,
     border_mode: Literal["minAreaRect", "convexHull"] = "minAreaRect",
     border_padding: float = 0.02,
+    refine_edges: bool = True,
 ) -> list[DetectedRegion]:
     """
     Detect multiple photos/documents in a scanned image.
@@ -203,6 +315,7 @@ def detect_photos_v2(
         min_extent: Minimum extent (area/bbox_area) to filter irregular shapes
         border_mode: "minAreaRect" (tight) or "convexHull" (preserves irregular borders)
         border_padding: Padding ratio when using convexHull mode (fraction of image)
+        refine_edges: Snap contour rectangles to nearby continuous photo edges
 
     Returns:
         List of DetectedRegion objects sorted by position (top-to-bottom, left-to-right)
@@ -274,8 +387,16 @@ def detect_photos_v2(
         if not _passes_quality_filter(quality, min_solidity, max_aspect_ratio, min_extent):
             continue
 
+        if refine_edges:
+            rect = _refine_rect_to_edges(gray, rect)
+            center, size, angle = rect
+            rect_width, rect_height = size
+            area = rect_width * rect_height
+            area_ratio = area / total_area
+
         # Get axis-aligned bounding box for quick reference
-        x, y, w, h = cv2.boundingRect(contour)
+        rect_points = cv2.boxPoints(rect)
+        x, y, w, h = cv2.boundingRect(rect_points)
 
         # Apply padding then inset to axis-aligned box while staying within image bounds
         # Net effect = padding - inset (e.g., padding=0, inset=3 shrinks by 3px each side)
