@@ -246,7 +246,7 @@ export async function detectBoxes(
   page: number,
   minArea: number,
   maxArea: number,
-  detectionMode: DetectionMode = "scansplitterv3",
+  detectionMode: DetectionMode = "scansplitterv4",
   u2netLite: boolean = true,
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string | null) => void

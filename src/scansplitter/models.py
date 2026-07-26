@@ -43,6 +43,19 @@ U2NET_MODEL_URLS = [
 ]
 U2NET_MODEL_FILENAME = "u2net.onnx"
 
+# MobileSAM promptable segmentation models used by ScanSplitterv4. These ONNX
+# exports combine MobileSAM's TinyViT encoder with SAM's mask decoder. The
+# revision and SHA-256 hashes are pinned; together they are ~43MB.
+_MOBILESAM_REVISION = "0d3b403339b4674a82493d5e97964dd78089ddc8"
+MOBILESAM_ENCODER_URLS = [
+    f"https://huggingface.co/Acly/MobileSAM/resolve/{_MOBILESAM_REVISION}/mobile_sam_image_encoder.onnx"
+]
+MOBILESAM_ENCODER_FILENAME = "mobile_sam_image_encoder.onnx"
+MOBILESAM_DECODER_URLS = [
+    f"https://huggingface.co/Acly/MobileSAM/resolve/{_MOBILESAM_REVISION}/sam_mask_decoder_single.onnx"
+]
+MOBILESAM_DECODER_FILENAME = "sam_mask_decoder_single.onnx"
+
 # Cache directory for models
 MODELS_DIR = Path(__file__).parent / "model_cache"
 
@@ -68,6 +81,20 @@ _MODEL_SPECS: dict[str, dict[str, Any]] = {
         "size_desc": "~176MB",
         "label": "U2-Net full model",
         "sha256": "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
+    },
+    "mobilesam_encoder": {
+        "filename": MOBILESAM_ENCODER_FILENAME,
+        "urls": MOBILESAM_ENCODER_URLS,
+        "size_desc": "~27MB",
+        "label": "MobileSAM image encoder",
+        "sha256": "580f5fb648ea1062c0aabc26217aed56921985f03f0cbbd852bba81d760cc749",
+    },
+    "mobilesam_decoder": {
+        "filename": MOBILESAM_DECODER_FILENAME,
+        "urls": MOBILESAM_DECODER_URLS,
+        "size_desc": "~16MB",
+        "label": "MobileSAM mask decoder",
+        "sha256": "93915fc7c993ab9d59ab8c9ccd3bce37f7509c81ab4150a74abd4d2abbd8570d",
     },
 }
 
@@ -291,3 +318,11 @@ def get_u2net_model_path(lite: bool = True) -> Path:
         Path to the ONNX model file
     """
     return _download_model_blocking("u2net_lite" if lite else "u2net_full")
+
+
+def get_mobilesam_model_paths() -> tuple[Path, Path]:
+    """Get the checksum-pinned MobileSAM encoder and decoder model paths."""
+    return (
+        _download_model_blocking("mobilesam_encoder"),
+        _download_model_blocking("mobilesam_decoder"),
+    )

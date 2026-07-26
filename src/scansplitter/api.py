@@ -30,6 +30,7 @@ from .detector import (
     detect_photos_v1,
     detect_photos_v2,
     detect_photos_v3,
+    detect_photos_v4,
 )
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
 from .jobs import JobCancelled, registry, submit_job
@@ -147,7 +148,7 @@ class DetectRequest(BaseModel):
     border_mode: str = "minAreaRect"  # "minAreaRect" or "convexHull"
     border_padding: float = 0.02
     # Detection algorithms
-    detection_mode: str = "scansplitterv3"
+    detection_mode: str = "scansplitterv4"
     u2net_lite: bool = True  # Use lightweight model (faster) vs full (more accurate)
 
 
@@ -674,7 +675,9 @@ def run_detect(
     _check_cancelled(is_cancelled)
 
     detection_mode = request.detection_mode
-    if detection_mode in ("ScanSplitterv3", "v3"):
+    if detection_mode in ("ScanSplitterv4", "v4"):
+        detection_mode = "scansplitterv4"
+    elif detection_mode in ("ScanSplitterv3", "v3"):
         detection_mode = "scansplitterv3"
     elif detection_mode in ("classic", "ScanSplitterv2", "v2"):
         detection_mode = "scansplitterv2"
@@ -691,6 +694,14 @@ def run_detect(
             max_area_ratio=request.max_area / 100,
             lite=request.u2net_lite,
         )
+    elif detection_mode == "scansplitterv4":
+        progress_cb(35, "finding photo candidates")
+        regions = detect_photos_v4(
+            image,
+            min_area_ratio=request.min_area / 100,
+            max_area_ratio=request.max_area / 100,
+        )
+        progress_cb(75, "refining photo borders")
     elif detection_mode == "scansplitterv3":
         progress_cb(45, "modeling background")
         regions = detect_photos_v3(

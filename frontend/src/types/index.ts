@@ -48,6 +48,7 @@ export type DetectionMode =
   | "scansplitterv1"
   | "scansplitterv2"
   | "scansplitterv3"
+  | "scansplitterv4"
   | "u2net";
 
 // Detection settings
@@ -99,7 +100,12 @@ export interface CropResponse {
 }
 
 // Downloadable model keys (backend `/api/models/*`)
-export type ModelKey = "orientation" | "u2net_lite" | "u2net_full";
+export type ModelKey =
+  | "orientation"
+  | "u2net_lite"
+  | "u2net_full"
+  | "mobilesam_encoder"
+  | "mobilesam_decoder";
 
 export type ModelDownloadStatus = "missing" | "downloading" | "ready" | "error";
 

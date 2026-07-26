@@ -49,6 +49,10 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const u2netKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
   const u2netStatus = modelStatuses?.[u2netKey] ?? null;
+  const mobileSamStatuses = [
+    modelStatuses?.["mobilesam_encoder"] ?? null,
+    modelStatuses?.["mobilesam_decoder"] ?? null,
+  ].filter((status): status is ModelStatus => status !== null);
   const orientationStatus = modelStatuses?.["orientation"] ?? null;
 
   return (
@@ -148,18 +152,22 @@ export function SettingsPanel({
                   | "scansplitterv1"
                   | "scansplitterv2"
                   | "scansplitterv3"
+                  | "scansplitterv4"
                   | "u2net",
               })
             }
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
+            <option value="scansplitterv4">ScanSplitterv4</option>
             <option value="scansplitterv3">ScanSplitterv3</option>
             <option value="scansplitterv2">ScanSplitterv2</option>
             <option value="scansplitterv1">ScanSplitterv1</option>
             <option value="u2net">AI (U2-Net)</option>
           </select>
           <p className="text-xs text-muted-foreground">
-            {settings.detectionMode === "scansplitterv3"
+            {settings.detectionMode === "scansplitterv4"
+              ? "V3 proposals plus MobileSAM border refinement — highest accuracy (~43MB)"
+              : settings.detectionMode === "scansplitterv3"
               ? "Background-aware detector — robust for albums and low-contrast scans"
               : settings.detectionMode === "u2net"
               ? "Deep learning model - best for difficult scans"
@@ -168,6 +176,30 @@ export function SettingsPanel({
                 : "Contour detector — fast on high-contrast scans"}
           </p>
         </div>
+
+        {settings.detectionMode === "scansplitterv4" &&
+          mobileSamStatuses.some((status) => status.status !== "ready") && (
+            <div className="space-y-1 text-xs text-muted-foreground">
+              {mobileSamStatuses
+                .filter((status) => status.status !== "ready")
+                .map((status) => (
+                  <div key={status.key} className="flex items-center gap-2">
+                    {status.status === "downloading" ? (
+                      <>
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        <span>
+                          Downloading {status.label} ({status.size_desc}) {status.progress}%
+                        </span>
+                      </>
+                    ) : status.status === "error" ? (
+                      <span>{status.error || "MobileSAM model download failed"}</span>
+                    ) : (
+                      <span>{status.label} downloads on first use ({status.size_desc})</span>
+                    )}
+                  </div>
+                ))}
+            </div>
+          )}
 
         {settings.detectionMode === "u2net" && (
           <div className="flex items-center gap-2">

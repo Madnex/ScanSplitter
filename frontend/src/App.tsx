@@ -24,6 +24,7 @@ type OutputFormat = "jpeg" | "png";
 
 // Max number of prior box-states kept per scan (file+page) for delete undo.
 const MAX_UNDO_ENTRIES = 20;
+const MOBILE_SAM_MODEL_KEYS: ModelKey[] = ["mobilesam_encoder", "mobilesam_decoder"];
 
 interface DetectionTarget {
   sessionId: string;
@@ -67,7 +68,7 @@ function App() {
     maxArea: 80,
     autoRotate: true,
     autoDetect: true,
-    detectionMode: "scansplitterv3",
+    detectionMode: "scansplitterv4",
     u2netLite: true,
   });
 
@@ -194,14 +195,23 @@ function App() {
   }, []);
 
   useEffect(() => {
-    if (settings.detectionMode !== "u2net") return;
+    const modelKeys: ModelKey[] =
+      settings.detectionMode === "scansplitterv4"
+        ? MOBILE_SAM_MODEL_KEYS
+        : settings.detectionMode === "u2net"
+          ? [settings.u2netLite ? "u2net_lite" : "u2net_full"]
+          : [];
+    if (modelKeys.length === 0) return;
 
-    const modelKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
     (async () => {
       const statuses = await refreshModelStatuses();
-      const current = statuses?.[modelKey];
-      if (!current || current.status === "ready" || current.status === "downloading") return;
-      await startModelDownload(modelKey);
+      await Promise.all(
+        modelKeys.map(async (modelKey) => {
+          const current = statuses?.[modelKey];
+          if (!current || current.status === "ready" || current.status === "downloading") return;
+          await startModelDownload(modelKey);
+        })
+      );
       await refreshModelStatuses();
     })();
   }, [settings.detectionMode, settings.u2netLite, refreshModelStatuses]);
@@ -307,6 +317,8 @@ function App() {
       if (settings.detectionMode === "u2net") {
         const modelKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
         await ensureModelReady(modelKey);
+      } else if (settings.detectionMode === "scansplitterv4") {
+        await Promise.all(MOBILE_SAM_MODEL_KEYS.map(ensureModelReady));
       }
       // The model-download wait above has no abort support; re-check before
       // firing the actual detect request in case we were superseded meanwhile.

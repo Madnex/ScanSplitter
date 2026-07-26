@@ -38,6 +38,7 @@ from .detector import (
     detect_photos_v1,
     detect_photos_v2,
     detect_photos_v3,
+    detect_photos_v4,
 )
 from .jobs import submit_job
 from .metadata import (
@@ -85,7 +86,7 @@ MASTER_FORMATS = {"png", "tiff"}
 MANIFEST_FORMATS = {"json", "csv", "both"}
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "detection_mode": "scansplitterv3",
+    "detection_mode": "scansplitterv4",
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
     "auto_rotate": True,
@@ -891,7 +892,7 @@ def _normalize_box(box: dict) -> dict:
 
 
 def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
-    mode = settings.get("detection_mode", "scansplitterv3")
+    mode = settings.get("detection_mode", "scansplitterv4")
     min_ratio = float(settings.get("min_area_ratio", 2.0)) / 100
     max_ratio = float(settings.get("max_area_ratio", 80.0)) / 100
     if mode == "u2net":
@@ -900,6 +901,8 @@ def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
         return detect_photos_v1(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     if mode == "scansplitterv3":
         return detect_photos_v3(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
+    if mode == "scansplitterv4":
+        return detect_photos_v4(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     return detect_photos_v2(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
 
 

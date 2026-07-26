@@ -849,6 +849,233 @@ def detect_photos_v3(
     return regions
 
 
+_mobilesam_encoder_session: "onnxruntime.InferenceSession | None" = None
+_mobilesam_decoder_session: "onnxruntime.InferenceSession | None" = None
+_mobilesam_session_lock = threading.Lock()
+_mobilesam_inference_lock = threading.Lock()
+
+
+def _get_mobilesam_sessions() -> tuple[
+    "onnxruntime.InferenceSession", "onnxruntime.InferenceSession"
+]:
+    """Load the small, checksum-pinned MobileSAM ONNX pair once."""
+    global _mobilesam_encoder_session, _mobilesam_decoder_session
+
+    with _mobilesam_session_lock:
+        if _mobilesam_encoder_session is None or _mobilesam_decoder_session is None:
+            import onnxruntime
+
+            from .models import get_mobilesam_model_paths
+
+            encoder_path, decoder_path = get_mobilesam_model_paths()
+            providers = ["CPUExecutionProvider"]
+            _mobilesam_encoder_session = onnxruntime.InferenceSession(
+                str(encoder_path), providers=providers
+            )
+            _mobilesam_decoder_session = onnxruntime.InferenceSession(
+                str(decoder_path), providers=providers
+            )
+        return _mobilesam_encoder_session, _mobilesam_decoder_session
+
+
+def _v4_mask_rect(
+    binary_mask: np.ndarray,
+    proposal: RotatedRect,
+    predicted_iou: float,
+) -> RotatedRect | None:
+    """Choose a credible rectangular print mask for a v3 proposal."""
+    if predicted_iou < 0.70:
+        return None
+
+    proposal_area = proposal[1][0] * proposal[1][1]
+    contours, _ = cv2.findContours(
+        binary_mask.astype(np.uint8), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    candidates: list[tuple[float, RotatedRect]] = []
+    for contour in contours:
+        contour_area = cv2.contourArea(contour)
+        if contour_area < 100:
+            continue
+        rect = cv2.minAreaRect(contour)
+        rect_width, rect_height = rect[1]
+        rect_area = rect_width * rect_height
+        if rect_area <= 0:
+            continue
+        area_change = rect_area / max(1.0, proposal_area)
+        if not 0.25 <= area_change <= 2.50:
+            continue
+        rectangularity = contour_area / rect_area
+        if rectangularity < 0.62:
+            continue
+        aspect = max(rect_width, rect_height) / max(1.0, min(rect_width, rect_height))
+        if aspect > 5.0:
+            continue
+        overlap = _v3_overlap_fraction(rect, proposal)
+        if overlap < 0.65:
+            continue
+        # Rectangularity distinguishes a physical print from a person/object
+        # segmented inside it. Overlap preserves v3's region identity when
+        # album pages contain tightly packed neighboring photos.
+        score = rectangularity + 0.5 * overlap + 0.15 * min(1.0, area_change)
+        candidates.append((score, rect))
+
+    if not candidates:
+        return None
+    return max(candidates, key=lambda item: item[0])[1]
+
+
+def _v4_refine_rectangles(
+    rgb: np.ndarray,
+    proposals: list[RotatedRect],
+) -> list[RotatedRect]:
+    """Refine v3 proposals with box-prompted MobileSAM masks."""
+    if not proposals:
+        return []
+
+    encoder, decoder = _get_mobilesam_sessions()
+    original_height, original_width = rgb.shape[:2]
+    scale = min(1.0, 1024 / max(original_height, original_width))
+    width = max(1, round(original_width * scale))
+    height = max(1, round(original_height * scale))
+    resized = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_AREA)
+
+    refined: list[RotatedRect] = []
+    # ORT sessions are thread-safe, but serializing this small model avoids
+    # thread-pool oversubscription when a project queues many scans at once.
+    with _mobilesam_inference_lock:
+        embeddings = encoder.run(
+            None, {"input_image": resized.astype(np.float32)}
+        )[0]
+        for proposal in proposals:
+            points = cv2.boxPoints(proposal)
+            x1, y1 = np.min(points, axis=0)
+            x2, y2 = np.max(points, axis=0)
+            margin = 0.04 * min(x2 - x1, y2 - y1)
+            prompt = np.array(
+                [
+                    [
+                        [max(0.0, x1 - margin), max(0.0, y1 - margin)],
+                        [
+                            min(float(original_width - 1), x2 + margin),
+                            min(float(original_height - 1), y2 + margin),
+                        ],
+                    ]
+                ],
+                dtype=np.float32,
+            )
+            prompt *= scale
+            masks, iou_predictions, _ = decoder.run(
+                None,
+                {
+                    "image_embeddings": embeddings,
+                    "point_coords": prompt,
+                    "point_labels": np.array([[2, 3]], dtype=np.float32),
+                    "mask_input": np.zeros((1, 1, 256, 256), dtype=np.float32),
+                    "has_mask_input": np.zeros((1,), dtype=np.float32),
+                    "orig_im_size": np.array([height, width], dtype=np.float32),
+                },
+            )
+            small_proposal: RotatedRect = (
+                (proposal[0][0] * scale, proposal[0][1] * scale),
+                (proposal[1][0] * scale, proposal[1][1] * scale),
+                proposal[2],
+            )
+            mask_rect = _v4_mask_rect(
+                masks[0, 0] > 0,
+                small_proposal,
+                float(iou_predictions[0, 0]),
+            )
+            if mask_rect is None:
+                refined.append(proposal)
+            else:
+                refined.append(
+                    (
+                        (mask_rect[0][0] / scale, mask_rect[0][1] / scale),
+                        (mask_rect[1][0] / scale, mask_rect[1][1] / scale),
+                        mask_rect[2],
+                    )
+                )
+    return refined
+
+
+def detect_photos_v4(
+    image: Image.Image,
+    min_area_ratio: float = 0.02,
+    max_area_ratio: float = 0.80,
+    padding: int = 0,
+    inset: int = 10,
+) -> list[DetectedRegion]:
+    """Detect photos with v3 proposals and MobileSAM border refinement.
+
+    V3 provides stable multi-photo count and separation. A compact promptable
+    segmentation model then traces the physical print selected by each box.
+    Conservative geometry checks retain the v3 proposal when MobileSAM returns
+    a non-rectangular object or an implausibly different region.
+    """
+    proposals = detect_photos_v3(
+        image,
+        min_area_ratio=min_area_ratio,
+        max_area_ratio=max_area_ratio,
+        padding=0,
+        inset=0,
+    )
+    proposal_rects = [
+        (region.center, region.size, region.angle) for region in proposals
+    ]
+    rgb = np.asarray(image.convert("RGB"))
+    original_height, original_width = rgb.shape[:2]
+    original_area = original_height * original_width
+    refined_rects = _v4_refine_rectangles(rgb, proposal_rects)
+
+    regions: list[DetectedRegion] = []
+    net_adjust = padding - inset
+    for proposal, refined in zip(proposal_rects, refined_rects, strict=True):
+        rect_width, rect_height = refined[1]
+        area = rect_width * rect_height
+        area_ratio = area / original_area
+        if not min_area_ratio <= area_ratio <= max_area_ratio:
+            refined = proposal
+            rect_width, rect_height = refined[1]
+            area = rect_width * rect_height
+            area_ratio = area / original_area
+
+        center, _, angle = refined
+        points = cv2.boxPoints(refined)
+        x, y, box_width, box_height = cv2.boundingRect(points)
+        x_adjusted = max(0, x - net_adjust)
+        y_adjusted = max(0, y - net_adjust)
+        width_adjusted = max(
+            1,
+            min(original_width - x_adjusted, box_width + 2 * net_adjust),
+        )
+        height_adjusted = max(
+            1,
+            min(original_height - y_adjusted, box_height + 2 * net_adjust),
+        )
+        adjusted_width = max(1, rect_width + 2 * net_adjust)
+        adjusted_height = max(1, rect_height + 2 * net_adjust)
+        if rect_width < rect_height:
+            adjusted_width, adjusted_height = adjusted_height, adjusted_width
+            angle += 90
+
+        regions.append(
+            DetectedRegion(
+                center=center,
+                size=(adjusted_width, adjusted_height),
+                angle=angle,
+                area=area,
+                area_ratio=area_ratio,
+                x=x_adjusted,
+                y=y_adjusted,
+                width=width_adjusted,
+                height=height_adjusted,
+            )
+        )
+
+    regions.sort(key=lambda region: (region.y // 100, region.x))
+    return regions
+
+
 # Backwards-compatible alias: "classic" / previous default points at ScanSplitterv2.
 detect_photos = detect_photos_v2
 

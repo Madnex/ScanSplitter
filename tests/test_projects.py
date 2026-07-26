@@ -119,21 +119,29 @@ def _wait_for_job(job_id: str) -> dict:
     pytest.fail(f"job {job_id} did not finish")
 
 
-def _create_project(name="Shoebox 1975") -> dict:
+def _create_project(name="Shoebox 1975", detection_mode="scansplitterv3") -> dict:
     response = client.post("/api/projects", json={"name": name})
     assert response.status_code == 200, response.text
-    return response.json()
+    project = response.json()
+    if detection_mode is not None:
+        response = client.patch(
+            f"/api/projects/{project['id']}",
+            json={"settings": {"detection_mode": detection_mode}},
+        )
+        assert response.status_code == 200, response.text
+        project = response.json()
+    return project
 
 
 # --- CRUD -------------------------------------------------------------------
 
 
 def test_project_crud():
-    created = _create_project("My Project")
+    created = _create_project("My Project", detection_mode=None)
     pid = created["id"]
     assert created["version"] == 1
     assert created["name"] == "My Project"
-    assert created["settings"]["detection_mode"] == "scansplitterv3"
+    assert created["settings"]["detection_mode"] == "scansplitterv4"
     assert created["scans"] == []
 
     # List

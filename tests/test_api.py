@@ -392,7 +392,7 @@ def test_detect_job_matches_synchronous_result():
     assert job["result"]["boxes"] == synchronous.json()["boxes"]
 
 
-def test_detect_request_defaults_to_v3(monkeypatch):
+def test_detect_request_defaults_to_v4(monkeypatch):
     data = _upload()
     called = False
 
@@ -401,7 +401,7 @@ def test_detect_request_defaults_to_v3(monkeypatch):
         called = True
         return []
 
-    monkeypatch.setattr(api_module, "detect_photos_v3", fake_detect)
+    monkeypatch.setattr(api_module, "detect_photos_v4", fake_detect)
     response = client.post(
         "/api/detect",
         json={"session_id": data["session_id"], "page": 1},

@@ -47,6 +47,7 @@ export function ProjectDetectorSelect({ value, disabled, onChange }: ProjectDete
         disabled={disabled}
         onChange={(event) => onChange(event.target.value as DetectionMode)}
       >
+        <option value="scansplitterv4">ScanSplitterv4</option>
         <option value="scansplitterv3">ScanSplitterv3</option>
         <option value="scansplitterv2">ScanSplitterv2</option>
         <option value="scansplitterv1">ScanSplitterv1</option>

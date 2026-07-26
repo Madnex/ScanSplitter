@@ -6,7 +6,12 @@ import cv2
 import numpy as np
 from PIL import Image
 
-from scansplitter.detector import _refine_rect_to_edges, detect_photos_v2, detect_photos_v3
+from scansplitter.detector import (
+    _refine_rect_to_edges,
+    _v4_mask_rect,
+    detect_photos_v2,
+    detect_photos_v3,
+)
 
 
 def _shadowed_photo_scan() -> tuple[Image.Image, tuple]:
@@ -145,3 +150,23 @@ def test_v3_is_deterministic_across_concurrent_detection():
         results = list(pool.map(lambda _: detect_photos_v3(image, inset=0), range(4)))
 
     assert all(result == results[0] for result in results[1:])
+
+
+def test_v4_accepts_rectangular_mask_that_expands_a_v3_content_box():
+    proposal = ((100.0, 100.0), (90.0, 60.0), 0.0)
+    mask = np.zeros((220, 220), dtype=np.uint8)
+    cv2.rectangle(mask, (40, 55), (160, 145), 1, -1)
+
+    refined = _v4_mask_rect(mask, proposal, predicted_iou=0.95)
+
+    assert refined is not None
+    assert refined[1][0] * refined[1][1] > proposal[1][0] * proposal[1][1] * 1.8
+
+
+def test_v4_rejects_nonrectangular_object_mask_inside_photo():
+    proposal = ((100.0, 100.0), (120.0, 90.0), 0.0)
+    mask = np.zeros((220, 220), dtype=np.uint8)
+    cv2.rectangle(mask, (65, 50), (90, 155), 1, -1)
+    cv2.rectangle(mask, (90, 125), (155, 155), 1, -1)
+
+    assert _v4_mask_rect(mask, proposal, predicted_iou=0.95) is None
