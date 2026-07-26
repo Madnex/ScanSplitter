@@ -44,7 +44,11 @@ export interface CroppedImage {
 }
 
 // Detection mode
-export type DetectionMode = "scansplitterv1" | "scansplitterv2" | "u2net";
+export type DetectionMode =
+  | "scansplitterv1"
+  | "scansplitterv2"
+  | "scansplitterv3"
+  | "u2net";
 
 // Detection settings
 export interface DetectionSettings {
@@ -52,7 +56,7 @@ export interface DetectionSettings {
   maxArea: number; // percentage
   autoRotate: boolean;
   autoDetect: boolean; // auto-detect on upload
-  detectionMode: DetectionMode; // scansplitterv1 (legacy), scansplitterv2 (default), or u2net (deep learning)
+  detectionMode: DetectionMode;
   u2netLite: boolean; // use lite model (5MB, faster) vs full (176MB, more accurate)
 }
 

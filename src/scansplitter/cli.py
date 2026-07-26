@@ -126,9 +126,9 @@ def main():
     # Phase 2: U2-Net detection mode
     process_parser.add_argument(
         "--detection-mode",
-        choices=["scansplitterv2", "scansplitterv1", "u2net", "classic"],
-        default="scansplitterv2",
-        help="Detection mode: scansplitterv2 (default), scansplitterv1 (legacy), or u2net (deep learning); 'classic' is an alias for scansplitterv2",
+        choices=["scansplitterv3", "scansplitterv2", "scansplitterv1", "u2net", "classic"],
+        default="scansplitterv3",
+        help="Detection mode: scansplitterv3 (default), older ScanSplitter detectors, or u2net; 'classic' aliases scansplitterv2",
     )
     process_parser.add_argument(
         "--u2net-full",

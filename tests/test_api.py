@@ -1,7 +1,6 @@
 """Regression tests for ScanSplitter API security fixes.
 
-These tests avoid any detection / model-download code paths: crops are driven
-by explicit bounding boxes and exports use in-memory image data.
+Model-download paths are avoided; image fixtures stay in memory.
 """
 
 import base64
@@ -16,6 +15,7 @@ from fastapi.testclient import TestClient
 from PIL import Image
 
 import scansplitter
+import scansplitter.api as api_module
 from scansplitter.api import app
 from scansplitter.session import get_session_manager
 
@@ -390,6 +390,25 @@ def test_detect_job_matches_synchronous_result():
 
     assert job["status"] == "succeeded", job
     assert job["result"]["boxes"] == synchronous.json()["boxes"]
+
+
+def test_detect_request_defaults_to_v3(monkeypatch):
+    data = _upload()
+    called = False
+
+    def fake_detect(_image, **_kwargs):
+        nonlocal called
+        called = True
+        return []
+
+    monkeypatch.setattr(api_module, "detect_photos_v3", fake_detect)
+    response = client.post(
+        "/api/detect",
+        json={"session_id": data["session_id"], "page": 1},
+    )
+
+    assert response.status_code == 200, response.text
+    assert called
 
 
 def test_crop_job_returns_images():

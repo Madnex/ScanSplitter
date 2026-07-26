@@ -29,6 +29,7 @@ from .detector import (
     detect_photos_u2net,
     detect_photos_v1,
     detect_photos_v2,
+    detect_photos_v3,
 )
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
 from .jobs import JobCancelled, registry, submit_job
@@ -146,7 +147,7 @@ class DetectRequest(BaseModel):
     border_mode: str = "minAreaRect"  # "minAreaRect" or "convexHull"
     border_padding: float = 0.02
     # Detection algorithms
-    detection_mode: str = "scansplitterv2"  # "scansplitterv1", "scansplitterv2", or "u2net"
+    detection_mode: str = "scansplitterv3"
     u2net_lite: bool = True  # Use lightweight model (faster) vs full (more accurate)
 
 
@@ -673,7 +674,9 @@ def run_detect(
     _check_cancelled(is_cancelled)
 
     detection_mode = request.detection_mode
-    if detection_mode in ("classic", "ScanSplitterv2", "v2"):
+    if detection_mode in ("ScanSplitterv3", "v3"):
+        detection_mode = "scansplitterv3"
+    elif detection_mode in ("classic", "ScanSplitterv2", "v2"):
         detection_mode = "scansplitterv2"
     elif detection_mode in ("ScanSplitterv1", "v1", "legacy"):
         detection_mode = "scansplitterv1"
@@ -687,6 +690,13 @@ def run_detect(
             min_area_ratio=request.min_area / 100,
             max_area_ratio=request.max_area / 100,
             lite=request.u2net_lite,
+        )
+    elif detection_mode == "scansplitterv3":
+        progress_cb(45, "modeling background")
+        regions = detect_photos_v3(
+            image,
+            min_area_ratio=request.min_area / 100,
+            max_area_ratio=request.max_area / 100,
         )
     elif detection_mode == "scansplitterv1":
         progress_cb(45, "detecting")
@@ -1416,11 +1426,11 @@ def redetect_project_scan(pid: str, sid: str):
 
 
 @app.post("/api/projects/{pid}/detect-pending", status_code=202)
-def detect_pending_scans(pid: str):
-    """Queue detection for every pending or failed scan in the project."""
+def detect_pending_scans(pid: str, redetect_all: bool = False):
+    """Queue eligible scans, or explicitly replace detection for all scans."""
     store = get_project_store()
     store.get_project(pid)
-    return {"jobs": store.submit_detect_pending(pid)}
+    return {"jobs": store.submit_detect_pending(pid, redetect_all=redetect_all)}
 
 
 @app.post("/api/projects/{pid}/export", status_code=202)

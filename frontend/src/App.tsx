@@ -67,7 +67,7 @@ function App() {
     maxArea: 80,
     autoRotate: true,
     autoDetect: true,
-    detectionMode: "scansplitterv2",
+    detectionMode: "scansplitterv3",
     u2netLite: true,
   });
 

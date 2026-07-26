@@ -246,7 +246,7 @@ export async function detectBoxes(
   page: number,
   minArea: number,
   maxArea: number,
-  detectionMode: DetectionMode = "scansplitterv2",
+  detectionMode: DetectionMode = "scansplitterv3",
   u2netLite: boolean = true,
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string | null) => void
@@ -670,14 +670,18 @@ export async function detectProjectScan(
 }
 
 /**
- * Queue detect jobs for every `pending`/`failed` scan in the project. Fires
- * and forgets - the returned job list is informational only; progress is
+ * Queue detect jobs for eligible scans, or every scan when `redetectAll` is
+ * explicit. Fires and forgets - the returned job list is informational only; progress is
  * observed by polling `getProject` (matching the spec's "poll while any
  * scan is pending/detecting" overview behavior) rather than by tracking
  * each individual job here.
  */
-export async function detectPendingScans(projectId: string): Promise<DetectPendingResult> {
-  const response = await fetch(`${API_BASE}/projects/${projectId}/detect-pending`, {
+export async function detectProjectScans(
+  projectId: string,
+  redetectAll: boolean = false
+): Promise<DetectPendingResult> {
+  const query = redetectAll ? "?redetect_all=true" : "";
+  const response = await fetch(`${API_BASE}/projects/${projectId}/detect-pending${query}`, {
     method: "POST",
   });
   if (!response.ok) {

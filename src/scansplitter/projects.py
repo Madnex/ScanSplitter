@@ -37,6 +37,7 @@ from .detector import (
     detect_photos_u2net,
     detect_photos_v1,
     detect_photos_v2,
+    detect_photos_v3,
 )
 from .jobs import submit_job
 from .metadata import (
@@ -84,7 +85,7 @@ MASTER_FORMATS = {"png", "tiff"}
 MANIFEST_FORMATS = {"json", "csv", "both"}
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "detection_mode": "scansplitterv2",
+    "detection_mode": "scansplitterv3",
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
     "auto_rotate": True,
@@ -607,12 +608,19 @@ class ProjectStore:
             data["updated_at"] = _now_iso()
             self._write(pid, data)
 
-    def submit_detect_pending(self, pid: str) -> list[dict]:
+    def submit_detect_pending(self, pid: str, redetect_all: bool = False) -> list[dict]:
+        """Queue eligible scans, or every scan when explicitly requested.
+
+        The default preserves reviewed and approved boxes. ``redetect_all`` is
+        intentionally opt-in because successful jobs replace existing boxes
+        and return every scan to confidence-based review state.
+        """
         data = self._read(pid)
         pending = [
             s["id"]
             for s in data["scans"]
-            if s["status"] in ("pending", "failed")
+            if redetect_all
+            or s["status"] in ("pending", "failed")
             or (s["status"] == "needs_review" and not s["boxes"])
         ]
         return [{"scan_id": sid, "job_id": self.submit_detect_job(pid, sid)} for sid in pending]
@@ -883,13 +891,15 @@ def _normalize_box(box: dict) -> dict:
 
 
 def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
-    mode = settings.get("detection_mode", "scansplitterv2")
+    mode = settings.get("detection_mode", "scansplitterv3")
     min_ratio = float(settings.get("min_area_ratio", 2.0)) / 100
     max_ratio = float(settings.get("max_area_ratio", 80.0)) / 100
     if mode == "u2net":
         return detect_photos_u2net(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     if mode == "scansplitterv1":
         return detect_photos_v1(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
+    if mode == "scansplitterv3":
+        return detect_photos_v3(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     return detect_photos_v2(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
 
 

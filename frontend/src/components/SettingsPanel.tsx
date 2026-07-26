@@ -147,21 +147,25 @@ export function SettingsPanel({
                 detectionMode: e.target.value as
                   | "scansplitterv1"
                   | "scansplitterv2"
+                  | "scansplitterv3"
                   | "u2net",
               })
             }
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
+            <option value="scansplitterv3">ScanSplitterv3</option>
             <option value="scansplitterv2">ScanSplitterv2</option>
             <option value="scansplitterv1">ScanSplitterv1</option>
             <option value="u2net">AI (U2-Net)</option>
           </select>
           <p className="text-xs text-muted-foreground">
-            {settings.detectionMode === "u2net"
+            {settings.detectionMode === "scansplitterv3"
+              ? "Background-aware detector — robust for albums and low-contrast scans"
+              : settings.detectionMode === "u2net"
               ? "Deep learning model - best for difficult scans"
               : settings.detectionMode === "scansplitterv1"
                 ? "Legacy contour detector from main"
-                : "Default contour detector - fast and improved"}
+                : "Contour detector — fast on high-contrast scans"}
           </p>
         </div>
 

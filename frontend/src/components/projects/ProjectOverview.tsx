@@ -1,13 +1,14 @@
 import { useCallback, useMemo, useRef, useState } from "react";
 import { ArrowLeft, BookOpen, Download, PlayCircle, RefreshCw, Send, SlidersHorizontal, Tags, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProgressBar } from "@/components/ui/progress";
 import { ScanThumbnail } from "@/components/projects/ScanThumbnail";
 import { MetadataEditor } from "@/components/projects/MetadataEditor";
 import { BackPairingEditor } from "@/components/projects/BackPairingEditor";
 import { DeliveryDialog } from "@/components/projects/DeliveryDialog";
 import { useProject } from "@/hooks/useProject";
-import { detectPendingScans, exportProject, patchProject, uploadProjectScans } from "@/lib/api";
+import { detectProjectScans, exportProject, patchProject, uploadProjectScans } from "@/lib/api";
 import { cn } from "@/lib/utils";
 import type { DetectionMode } from "@/types";
 import type { ProjectScan, ProjectSettings } from "@/types/projects";
@@ -20,6 +21,7 @@ interface ProjectOverviewProps {
 }
 
 type FilterTab = "all" | "needs_review" | "approved" | "pending";
+type DetectionScope = "pending" | "all";
 
 const FILTER_TABS: Array<{ key: FilterTab; label: string }> = [
   { key: "all", label: "All" },
@@ -45,11 +47,54 @@ export function ProjectDetectorSelect({ value, disabled, onChange }: ProjectDete
         disabled={disabled}
         onChange={(event) => onChange(event.target.value as DetectionMode)}
       >
+        <option value="scansplitterv3">ScanSplitterv3</option>
         <option value="scansplitterv2">ScanSplitterv2</option>
         <option value="scansplitterv1">ScanSplitterv1</option>
         <option value="u2net">AI (U2-Net)</option>
       </select>
     </label>
+  );
+}
+
+interface ProjectDetectionControlsProps {
+  scope: DetectionScope;
+  disabled: boolean;
+  isQueueing: boolean;
+  onScopeChange: (scope: DetectionScope) => void;
+  onDetect: () => void;
+}
+
+export function ProjectDetectionControls({
+  scope,
+  disabled,
+  isQueueing,
+  onScopeChange,
+  onDetect,
+}: ProjectDetectionControlsProps) {
+  return (
+    <div className="flex items-center rounded-md border bg-background">
+      <select
+        aria-label="Detection scope"
+        className="h-8 rounded-l-md bg-transparent px-2 text-xs text-foreground"
+        value={scope}
+        disabled={disabled}
+        onChange={(event) => onScopeChange(event.target.value as DetectionScope)}
+      >
+        <option value="pending">Pending only</option>
+        <option value="all">All scans</option>
+      </select>
+      <Button
+        size="sm"
+        variant="ghost"
+        className="rounded-l-none border-l"
+        onClick={onDetect}
+        disabled={disabled}
+        title={scope === "all" ? "Replace existing boxes on every scan" : "Queue pending, failed, and empty-review scans"}
+      >
+        <RefreshCw className={cn("w-4 h-4 mr-1", isQueueing && "animate-spin")} />
+        {scope === "all" ? "Re-detect All" : "Detect Pending"}
+      </Button>
+    </div>
   );
 }
 
@@ -78,6 +123,8 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ progress: number; stage: string | null } | null>(null);
   const [isQueueingDetect, setIsQueueingDetect] = useState(false);
+  const [detectionScope, setDetectionScope] = useState<DetectionScope>("pending");
+  const [confirmRedetectAll, setConfirmRedetectAll] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showPairing, setShowPairing] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
@@ -140,17 +187,36 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
     [handleFilesSelected]
   );
 
-  const handleDetectPending = useCallback(async () => {
+  const queueDetection = useCallback(async (redetectAll: boolean) => {
     setIsQueueingDetect(true);
     try {
-      await detectPendingScans(projectId);
+      const result = await detectProjectScans(projectId, redetectAll);
       await refresh();
+      showToast(
+        result.jobs.length === 0
+          ? "No scans need detection"
+          : `${redetectAll ? "Re-detecting" : "Detecting"} ${result.jobs.length} scan${result.jobs.length === 1 ? "" : "s"}`,
+        "info"
+      );
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to queue detection", "error");
     } finally {
       setIsQueueingDetect(false);
     }
   }, [projectId, refresh, showToast]);
+
+  const handleDetect = useCallback(() => {
+    if (detectionScope === "all") {
+      setConfirmRedetectAll(true);
+      return;
+    }
+    void queueDetection(false);
+  }, [detectionScope, queueDetection]);
+
+  const handleConfirmRedetectAll = useCallback(() => {
+    setConfirmRedetectAll(false);
+    void queueDetection(true);
+  }, [queueDetection]);
 
   const handleExport = useCallback(async () => {
     if (!project || exportableCount === 0) return;
@@ -226,16 +292,13 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           disabled={isSavingSettings || isDetectingAny}
           onChange={(detection_mode) => void handleSettingsChange({ detection_mode })}
         />
-        <Button
-          size="sm"
-          variant="outline"
-          onClick={handleDetectPending}
-          disabled={isQueueingDetect || isSavingSettings}
-          title="Queue detection for pending, failed, and empty-review scans"
-        >
-          <RefreshCw className={cn("w-4 h-4 mr-1", isQueueingDetect && "animate-spin")} />
-          Detect Pending
-        </Button>
+        <ProjectDetectionControls
+          scope={detectionScope}
+          disabled={isQueueingDetect || isSavingSettings || isDetectingAny || scans.length === 0}
+          isQueueing={isQueueingDetect}
+          onScopeChange={setDetectionScope}
+          onDetect={handleDetect}
+        />
         <Button size="sm" variant="outline" onClick={() => setShowMetadata(true)} disabled={scans.length === 0}>
           <Tags className="w-4 h-4 mr-1" />
           Metadata
@@ -296,6 +359,16 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           </div>
           <div className="mt-3 flex flex-wrap items-end gap-4 border-t pt-3"><label className="text-xs">Lossless master<select disabled={isSavingSettings} className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.master_format ?? ""} onChange={(event) => void handleSettingsChange({ master_format: (event.target.value || null) as "png" | "tiff" | null })}><option value="">None</option><option value="png">PNG</option><option value="tiff">TIFF</option></select></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" disabled={isSavingSettings} checked={project.settings.include_gps} onChange={(event) => void handleSettingsChange({ include_gps: event.target.checked })} />Include GPS coordinates</label><label className="flex items-center gap-2 text-xs"><input type="checkbox" disabled={isSavingSettings} checked={project.settings.organize_folders} onChange={(event) => void handleSettingsChange({ organize_folders: event.target.checked })} />Folders by album/year/event</label><label className="text-xs">Manifest<select disabled={isSavingSettings} className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.manifest_format ?? ""} onChange={(event) => void handleSettingsChange({ manifest_format: (event.target.value || null) as "json" | "csv" | "both" | null })}><option value="">None</option><option value="json">JSON</option><option value="csv">CSV</option><option value="both">JSON + CSV</option></select></label></div>
         </section>
+      )}
+
+      {confirmRedetectAll && (
+        <ConfirmDialog
+          title="Re-detect All Scans"
+          message={`Run ${project.settings.detection_mode} on all ${scans.length} scans? Existing boxes and approval states will be replaced by the new detection results.`}
+          confirmLabel="Re-detect All"
+          onConfirm={handleConfirmRedetectAll}
+          onCancel={() => setConfirmRedetectAll(false)}
+        />
       )}
 
       {isExporting && exportProgress && (

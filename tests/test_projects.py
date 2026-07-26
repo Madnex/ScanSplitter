@@ -1,6 +1,6 @@
 """Tests for the persistent-projects backend.
 
-Detection runs in-process using the contour-based ``scansplitterv2`` mode
+Detection runs in-process using local ScanSplitter detection modes
 (never u2net, so no network / model download). Confidence evaluation is
 provided by a spec-faithful in-test placeholder injected into ``sys.modules``
 so the review-status logic is exercised deterministically and independently of
@@ -133,7 +133,7 @@ def test_project_crud():
     pid = created["id"]
     assert created["version"] == 1
     assert created["name"] == "My Project"
-    assert created["settings"]["detection_mode"] == "scansplitterv2"
+    assert created["settings"]["detection_mode"] == "scansplitterv3"
     assert created["scans"] == []
 
     # List
@@ -307,6 +307,43 @@ def test_detect_pending_retries_needs_review_scan_without_boxes(monkeypatch):
     assert [job["scan_id"] for job in retry.json()["jobs"]] == [scan["id"]]
     retried_job = _wait_for_job(retry.json()["jobs"][0]["job_id"])
     assert retried_job["status"] == "succeeded", retried_job
+
+
+def test_redetect_all_queues_every_scan_and_default_preserves_existing_boxes(monkeypatch):
+    _install_confidence(monkeypatch, _spec_evaluate)
+    pid = _create_project()["id"]
+    upload = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[
+            ("files", ("approved.png", _photo_png(), "image/png")),
+            ("files", ("review.png", _photo_png(), "image/png")),
+            ("files", ("pending.png", _photo_png(), "image/png")),
+        ],
+    )
+    assert upload.status_code == 200, upload.text
+    scan_ids = [scan["id"] for scan in upload.json()["scans"]]
+    box = {"id": "box", "x": 400, "y": 300, "width": 300, "height": 200, "angle": 0}
+    store = projects.get_project_store()
+    store.update_scan(pid, scan_ids[0], boxes=[box], status="approved")
+    store.update_scan(pid, scan_ids[1], boxes=[box])
+
+    queued: list[str] = []
+
+    def fake_submit(_self, _pid, sid):
+        queued.append(sid)
+        return f"job-{sid}"
+
+    monkeypatch.setattr(projects.ProjectStore, "submit_detect_job", fake_submit)
+
+    default = client.post(f"/api/projects/{pid}/detect-pending")
+    assert default.status_code == 202, default.text
+    assert [job["scan_id"] for job in default.json()["jobs"]] == [scan_ids[2]]
+
+    queued.clear()
+    forced = client.post(f"/api/projects/{pid}/detect-pending?redetect_all=true")
+    assert forced.status_code == 202, forced.text
+    assert [job["scan_id"] for job in forced.json()["jobs"]] == scan_ids
+    assert queued == scan_ids
 
 
 # --- PATCH scan re-evaluates flags + approve flow ---------------------------

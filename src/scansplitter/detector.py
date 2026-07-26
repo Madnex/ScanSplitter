@@ -8,6 +8,8 @@ import cv2
 import numpy as np
 from PIL import Image
 
+_v3_kmeans_lock = threading.Lock()
+
 
 def _apply_clahe(gray: np.ndarray, clip_limit: float = 2.0) -> np.ndarray:
     """Apply Contrast Limited Adaptive Histogram Equalization."""
@@ -445,6 +447,405 @@ def detect_photos_v2(
     # Sort by position: top-to-bottom, then left-to-right
     regions.sort(key=lambda r: (r.y // 100, r.x))  # Group rows within 100px
 
+    return regions
+
+
+def _v3_background_colors(lab: np.ndarray) -> np.ndarray:
+    """Estimate the scan background as one or more Lab color clusters.
+
+    Multiple clusters are retained because scanner falloff and album-page
+    shadows often make the same sheet of paper span a wide lightness range.
+    K-means is seeded under a short lock because OpenCV's RNG is process-global;
+    this keeps concurrent detection jobs deterministic.
+    """
+    height, width = lab.shape[:2]
+    stride = max(1, int(np.sqrt(height * width / 30_000)))
+    sampled = lab[::stride, ::stride]
+    pixels = sampled.reshape(-1, 3).astype(np.float32)
+    if len(pixels) < 5:
+        return np.mean(pixels, axis=0, keepdims=True)
+
+    criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 30, 0.5)
+    with _v3_kmeans_lock:
+        cv2.setRNGSeed(0)
+        _, labels, centers = cv2.kmeans(
+            pixels,
+            5,
+            None,
+            criteria,
+            3,
+            cv2.KMEANS_PP_CENTERS,
+        )
+
+    counts = np.bincount(labels.ravel(), minlength=len(centers))
+    lightness = centers[:, 0] / 255.0
+    # Prefer a large, light cluster. This selects white/cream scanner paper
+    # instead of a large dark photograph while still supporting colored paper.
+    score = counts * np.clip(lightness, 0.15, 1.0) ** 2
+    primary = centers[int(np.argmax(score))]
+
+    chroma_delta = np.linalg.norm(centers[:, 1:] - primary[1:], axis=1)
+    similar = (centers[:, 0] >= primary[0] - 55) & (chroma_delta <= 24)
+
+    # Do not mistake a pale/sepia photograph's dominant tone for another
+    # shade of paper. Real page/background clusters recur around the scan's
+    # outer band; a color confined to a print does not.
+    label_grid = labels.reshape(sampled.shape[:2])
+    border_depth = max(1, round(min(label_grid.shape) * 0.06))
+    border_mask = np.zeros(label_grid.shape, dtype=bool)
+    border_mask[:border_depth] = True
+    border_mask[-border_depth:] = True
+    border_mask[:, :border_depth] = True
+    border_mask[:, -border_depth:] = True
+    border_counts = np.bincount(label_grid[border_mask], minlength=len(centers))
+    border_share = border_counts / max(1, np.count_nonzero(border_mask))
+    selected = similar & (border_share >= 0.015)
+    selected[int(np.argmax(score))] = True
+
+    # A dark platen or album cover can surround the entire page. When at
+    # least three corners agree on such a cluster it is background too.
+    corners = np.array(
+        [lab[0, 0], lab[0, -1], lab[-1, 0], lab[-1, -1]],
+        dtype=np.float32,
+    )
+    corner_labels = np.argmin(
+        np.linalg.norm(corners[:, None, :] - centers[None, :, :], axis=2),
+        axis=1,
+    )
+    for index in np.unique(corner_labels):
+        if np.count_nonzero(corner_labels == index) >= 3:
+            selected[index] = True
+    return centers[selected]
+
+
+def _v3_snap_angle_to_long_edges(gray: np.ndarray, rect: RotatedRect) -> RotatedRect:
+    """Correct a mask-derived angle using long straight edges near it."""
+    points = cv2.boxPoints(rect)
+    x, y, width, height = cv2.boundingRect(points)
+    short_side = min(rect[1])
+    if short_side < 10:
+        return rect
+    margin = max(8, round(short_side * 0.15))
+    x1, y1 = max(0, x - margin), max(0, y - margin)
+    x2 = min(gray.shape[1], x + width + margin)
+    y2 = min(gray.shape[0], y + height + margin)
+    patch = gray[y1:y2, x1:x2]
+    if patch.size == 0:
+        return rect
+
+    edges = cv2.Canny(cv2.GaussianBlur(patch, (5, 5), 0), 35, 110)
+    minimum = max(20, round(short_side * 0.32))
+    lines = cv2.HoughLinesP(
+        edges,
+        1,
+        np.pi / 360,
+        threshold=max(18, round(minimum * 0.25)),
+        minLineLength=minimum,
+        maxLineGap=max(8, round(minimum * 0.12)),
+    )
+    if lines is None:
+        return rect
+
+    raw_angle = float(rect[2])
+    observations: list[tuple[float, float]] = []
+    for line_x1, line_y1, line_x2, line_y2 in lines.reshape(-1, 4):
+        length = float(np.hypot(line_x2 - line_x1, line_y2 - line_y1))
+        angle = float(np.degrees(np.arctan2(line_y2 - line_y1, line_x2 - line_x1)))
+        # Rectangle orientation is periodic every 90 degrees.
+        delta = ((angle - raw_angle + 45.0) % 90.0) - 45.0
+        if abs(delta) <= 18:
+            observations.append((delta, length * length))
+    if len(observations) < 2:
+        return rect
+
+    bins = np.linspace(-18, 18, 73)
+    histogram = np.zeros(len(bins) - 1, dtype=np.float64)
+    for delta, weight in observations:
+        index = int(np.clip(np.searchsorted(bins, delta) - 1, 0, len(histogram) - 1))
+        histogram[index] += weight
+    peak_index = int(np.argmax(histogram))
+    peak = (bins[peak_index] + bins[peak_index + 1]) / 2
+    nearby = [(delta, weight) for delta, weight in observations if abs(delta - peak) <= 2]
+    total_weight = sum(weight for _, weight in nearby)
+    if total_weight < minimum * minimum:
+        return rect
+    snapped_delta = sum(delta * weight for delta, weight in nearby) / total_weight
+    return rect[0], rect[1], raw_angle + snapped_delta
+
+
+def _v3_overlap_fraction(first: RotatedRect, second: RotatedRect) -> float:
+    kind, points = cv2.rotatedRectangleIntersection(first, second)
+    if kind == cv2.INTERSECT_NONE or points is None:
+        return 0.0
+    intersection = cv2.contourArea(points)
+    first_area = first[1][0] * first[1][1]
+    second_area = second[1][0] * second[1][1]
+    return intersection / max(1.0, min(first_area, second_area))
+
+
+def _v3_iou(first: RotatedRect, second: RotatedRect) -> float:
+    kind, points = cv2.rotatedRectangleIntersection(first, second)
+    if kind == cv2.INTERSECT_NONE or points is None:
+        return 0.0
+    intersection = cv2.contourArea(points)
+    first_area = first[1][0] * first[1][1]
+    second_area = second[1][0] * second[1][1]
+    return intersection / max(1.0, first_area + second_area - intersection)
+
+
+def _v3_merge_fragments(rectangles: list[RotatedRect], max_area: float) -> list[RotatedRect]:
+    """Merge overlapping mask fragments that belong to one physical print."""
+    merged = list(rectangles)
+    changed = True
+    while changed:
+        changed = False
+        for first_index in range(len(merged)):
+            for second_index in range(first_index + 1, len(merged)):
+                first, second = merged[first_index], merged[second_index]
+                if _v3_overlap_fraction(first, second) < 0.08:
+                    continue
+                points = np.vstack([cv2.boxPoints(first), cv2.boxPoints(second)]).astype(
+                    np.float32
+                )
+                union = cv2.minAreaRect(points)
+                if union[1][0] * union[1][1] > max_area:
+                    continue
+                merged[first_index] = union
+                merged.pop(second_index)
+                changed = True
+                break
+            if changed:
+                break
+    return merged
+
+
+def _v3_split_on_gutter(
+    rect: RotatedRect,
+    foreground: np.ndarray,
+    minimum_area: float,
+) -> list[RotatedRect]:
+    """Split two touching prints when a narrow background gutter separates them."""
+    (center_x, center_y), (width, height), angle = rect
+    if min(width, height) <= 0 or max(width, height) / min(width, height) < 1.8:
+        return [rect]
+
+    patch_width, patch_height = max(3, round(width)), max(3, round(height))
+    theta = np.deg2rad(angle)
+    width_axis = np.array([np.cos(theta), np.sin(theta)])
+    height_axis = np.array([-np.sin(theta), np.cos(theta)])
+    transform = np.array(
+        [
+            [
+                width_axis[0],
+                height_axis[0],
+                center_x
+                - width_axis[0] * patch_width / 2
+                - height_axis[0] * patch_height / 2,
+            ],
+            [
+                width_axis[1],
+                height_axis[1],
+                center_y
+                - width_axis[1] * patch_width / 2
+                - height_axis[1] * patch_height / 2,
+            ],
+        ],
+        dtype=np.float32,
+    )
+    patch = cv2.warpAffine(
+        foreground.astype(np.uint8),
+        transform,
+        (patch_width, patch_height),
+        flags=cv2.INTER_NEAREST | cv2.WARP_INVERSE_MAP,
+        borderMode=cv2.BORDER_CONSTANT,
+        borderValue=0,
+    )
+
+    split_width = width >= height
+    profile = np.mean(patch, axis=0 if split_width else 1)
+    profile = cv2.blur(profile.reshape(1, -1).astype(np.float32), (7, 1)).ravel()
+    length = len(profile)
+    start, stop = round(length * 0.25), round(length * 0.75)
+    if stop <= start:
+        return [rect]
+    split = start + int(np.argmin(profile[start:stop]))
+    flank = max(5, round(length * 0.12))
+    before_density = float(np.mean(profile[max(0, split - flank) : split]))
+    after_density = float(np.mean(profile[split + 1 : min(length, split + flank)]))
+    if profile[split] > 0.08 or min(before_density, after_density) < 0.16:
+        return [rect]
+
+    first_length, second_length = float(split), float(length - split)
+    short_side = float(height if split_width else width)
+    if first_length * short_side < minimum_area or second_length * short_side < minimum_area:
+        return [rect]
+
+    axis = width_axis if split_width else height_axis
+    first_center = (
+        float(center_x - axis[0] * second_length / 2),
+        float(center_y - axis[1] * second_length / 2),
+    )
+    second_center = (
+        float(center_x + axis[0] * first_length / 2),
+        float(center_y + axis[1] * first_length / 2),
+    )
+    if split_width:
+        return [
+            (first_center, (first_length, float(height)), angle),
+            (second_center, (second_length, float(height)), angle),
+        ]
+    return [
+        (first_center, (float(width), first_length), angle),
+        (second_center, (float(width), second_length), angle),
+    ]
+
+
+def detect_photos_v3(
+    image: Image.Image,
+    min_area_ratio: float = 0.02,
+    max_area_ratio: float = 0.80,
+    padding: int = 0,
+    inset: int = 10,
+    detection_max_dimension: int = 1800,
+) -> list[DetectedRegion]:
+    """Detect prints using background modeling and region-level evidence.
+
+    Unlike v1/v2, this detector does not treat every thresholded pixel as one
+    contour. It models the paper/platen colors in Lab space, measures the
+    density of non-background evidence, separates narrow gutters between
+    touching prints, and finally snaps candidates to long physical edges.
+    Processing at a bounded resolution makes all morphology scale-independent
+    and keeps very large scans fast and memory-bounded.
+    """
+    rgb = np.asarray(image.convert("RGB"))
+    original_height, original_width = rgb.shape[:2]
+    original_area = original_height * original_width
+    scale = min(1.0, detection_max_dimension / max(original_height, original_width))
+    width = max(1, round(original_width * scale))
+    height = max(1, round(original_height * scale))
+    small = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_AREA)
+    total_area = height * width
+
+    lab = cv2.cvtColor(small, cv2.COLOR_RGB2LAB).astype(np.float32)
+    backgrounds = _v3_background_colors(lab)
+    delta = np.full((height, width), np.inf, dtype=np.float32)
+    for background in backgrounds:
+        difference = lab - background
+        distance = np.sqrt(np.sum(difference * difference, axis=2))
+        np.minimum(delta, distance, out=delta)
+    color_threshold, _ = cv2.threshold(
+        np.clip(delta, 0, 255).astype(np.uint8),
+        0,
+        255,
+        cv2.THRESH_BINARY | cv2.THRESH_OTSU,
+    )
+    foreground = delta > max(18.0, float(color_threshold))
+
+    density_window = max(11, round(min(height, width) * 0.010)) | 1
+    density = cv2.boxFilter(
+        foreground.astype(np.float32),
+        cv2.CV_32F,
+        (density_window, density_window),
+    )
+    mask = (density > 0.16).astype(np.uint8) * 255
+    open_size = max(5, round(min(height, width) * 0.010)) | 1
+    close_size = max(5, round(min(height, width) * 0.008)) | 1
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_size, open_size)),
+    )
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (close_size, close_size)),
+        iterations=2,
+    )
+
+    contours, _ = cv2.findContours(mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    minimum_area = min_area_ratio * total_area
+    maximum_area = max_area_ratio * total_area
+    candidates: list[RotatedRect] = []
+    for contour in contours:
+        rect = cv2.minAreaRect(contour)
+        rect_width, rect_height = rect[1]
+        rect_area = rect_width * rect_height
+        if not minimum_area <= rect_area <= maximum_area:
+            continue
+        x, y, box_width, box_height = cv2.boundingRect(contour)
+        component_fill = cv2.contourArea(contour) / max(1, box_width * box_height)
+        aspect = max(rect_width, rect_height) / max(1, min(rect_width, rect_height))
+        if component_fill < 0.32 or aspect > 5.0:
+            continue
+        candidates.append(rect)
+
+    candidates = _v3_merge_fragments(candidates, maximum_area)
+    deduplicated: list[RotatedRect] = []
+    for rect in sorted(candidates, key=lambda item: item[1][0] * item[1][1], reverse=True):
+        if any(_v3_iou(rect, other) > 0.55 for other in deduplicated):
+            continue
+        deduplicated.append(rect)
+
+    split_candidates: list[RotatedRect] = []
+    for rect in deduplicated:
+        split_candidates.extend(_v3_split_on_gutter(rect, foreground, minimum_area))
+
+    gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+    refined = [
+        _refine_rect_to_edges(
+            gray,
+            _v3_snap_angle_to_long_edges(gray, rect),
+            search_margin_ratio=0.12,
+        )
+        for rect in split_candidates
+    ]
+
+    regions: list[DetectedRegion] = []
+    net_adjust = padding - inset
+    for small_rect in refined:
+        (center_x, center_y), (rect_width, rect_height), angle = small_rect
+        center = (center_x / scale, center_y / scale)
+        rect_width /= scale
+        rect_height /= scale
+        area = rect_width * rect_height
+        area_ratio = area / original_area
+        if not min_area_ratio <= area_ratio <= max_area_ratio:
+            continue
+
+        rect: RotatedRect = (center, (rect_width, rect_height), angle)
+        rect_points = cv2.boxPoints(rect)
+        x, y, box_width, box_height = cv2.boundingRect(rect_points)
+        x_padded = max(0, x - net_adjust)
+        y_padded = max(0, y - net_adjust)
+        width_padded = max(
+            1,
+            min(original_width - x_padded, box_width + 2 * net_adjust),
+        )
+        height_padded = max(
+            1,
+            min(original_height - y_padded, box_height + 2 * net_adjust),
+        )
+        padded_width = max(1, rect_width + 2 * net_adjust)
+        padded_height = max(1, rect_height + 2 * net_adjust)
+        if rect_width < rect_height:
+            padded_width, padded_height = padded_height, padded_width
+            angle += 90
+
+        regions.append(
+            DetectedRegion(
+                center=center,
+                size=(padded_width, padded_height),
+                angle=angle,
+                area=area,
+                area_ratio=area_ratio,
+                x=x_padded,
+                y=y_padded,
+                width=width_padded,
+                height=height_padded,
+            )
+        )
+
+    regions.sort(key=lambda region: (region.y // 100, region.x))
     return regions
 
 

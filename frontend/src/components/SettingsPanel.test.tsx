@@ -8,7 +8,7 @@ const settings: DetectionSettings = {
   maxArea: 80,
   autoRotate: false,
   autoDetect: true,
-  detectionMode: "scansplitterv2",
+  detectionMode: "scansplitterv3",
   u2netLite: true,
 };
 
