@@ -1,7 +1,5 @@
 """Tests for scan confidence flagging."""
 
-import pytest
-
 from scansplitter.confidence import Flag, evaluate_scan
 
 
@@ -67,17 +65,6 @@ def test_overlap_positive_and_negative() -> None:
     assert "overlap" not in codes(evaluate_scan(separate, 1000, 800))
 
 
-@pytest.mark.parametrize("detected", [2, 5])
-def test_count_mismatch_positive(detected: int) -> None:
-    boxes = [box(str(index), 100 + index * 150, 400, 80, 80) for index in range(detected)]
-    assert "count_mismatch" in codes(evaluate_scan(boxes, 1000, 800, expected_count=4))
-
-
-def test_count_mismatch_negative() -> None:
-    boxes = [box(str(index), 150 + index * 220, 400, 100, 80) for index in range(4)]
-    assert "count_mismatch" not in codes(evaluate_scan(boxes, 1000, 800, expected_count=4))
-
-
 def test_clean_multi_box_scan_has_no_flags() -> None:
     boxes = [
         box("top-left", 250, 220, 240, 160),
@@ -85,4 +72,12 @@ def test_clean_multi_box_scan_has_no_flags() -> None:
         box("bottom-left", 250, 580, 240, 160),
         box("bottom-right", 750, 580, 240, 160),
     ]
-    assert evaluate_scan(boxes, 1000, 800, expected_count=4) == []
+    assert evaluate_scan(boxes, 1000, 800) == []
+
+
+def test_clean_scans_can_have_different_photo_counts() -> None:
+    one_photo = [box("single", 500, 400, 240, 160)]
+    two_photos = [box("left", 250, 400, 240, 160), box("right", 750, 400, 240, 160)]
+
+    assert evaluate_scan(one_photo, 1000, 800) == []
+    assert evaluate_scan(two_photos, 1000, 800) == []

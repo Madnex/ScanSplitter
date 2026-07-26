@@ -22,7 +22,6 @@ import re
 import shutil
 import threading
 import uuid
-from collections import Counter
 from collections.abc import Callable
 from datetime import datetime, timezone
 from pathlib import Path
@@ -66,10 +65,6 @@ Image.MAX_IMAGE_PIXELS = 300_000_000
 # PDF pages are rendered once, at review resolution, and stored as images.
 _PDF_STORE_DPI = 150
 _THUMB_WIDTH = 320
-
-# Minimum number of detected scans before a project's modal detected-count is
-# trusted enough to feed `expected_count` into confidence evaluation.
-_EXPECTED_COUNT_MIN_SCANS = 5
 
 PROJECT_STATUSES = (
     "pending",
@@ -179,9 +174,7 @@ def _region_to_box(region: DetectedRegion) -> dict:
     }
 
 
-def _run_confidence(
-    boxes: list[dict], width: int, height: int, expected_count: int | None
-) -> list[dict]:
+def _run_confidence(boxes: list[dict], width: int, height: int) -> list[dict]:
     """Evaluate confidence flags for a scan via the ``confidence`` module.
 
     Imported lazily so a spec-compliant module (possibly authored in parallel)
@@ -189,7 +182,7 @@ def _run_confidence(
     """
     from .confidence import evaluate_scan
 
-    flags = evaluate_scan(boxes, width, height, expected_count)
+    flags = evaluate_scan(boxes, width, height)
     return [{"code": f.code, "box_id": f.box_id, "message": f.message} for f in flags]
 
 
@@ -233,6 +226,16 @@ class ProjectStore:
         data["settings"] = {**DEFAULT_SETTINGS, **data.get("settings", {})}
         data["settings"].pop("remove_dust", None)
         for scan in data.get("scans", []):
+            flags = scan.get("flags", [])
+            had_count_mismatch = any(flag.get("code") == "count_mismatch" for flag in flags)
+            scan["flags"] = [flag for flag in flags if flag.get("code") != "count_mismatch"]
+            if (
+                had_count_mismatch
+                and not scan["flags"]
+                and scan.get("status") == "needs_review"
+                and scan.get("reviewed_at") is None
+            ):
+                scan["status"] = "auto_approved"
             scan.setdefault("metadata", metadata_defaults())
             scan.setdefault("back_of", None)
             scan.pop("ocr_text", None)
@@ -496,10 +499,7 @@ class ProjectStore:
                 clean_boxes = [_normalize_box(b) for b in boxes]
                 scan["boxes"] = clean_boxes
                 scan["detected_count"] = len(clean_boxes)
-                expected = _expected_count(data)
-                scan["flags"] = _run_confidence(
-                    clean_boxes, scan["width"], scan["height"], expected
-                )
+                scan["flags"] = _run_confidence(clean_boxes, scan["width"], scan["height"])
                 # Editing boxes returns the scan to the review queue unless the
                 # client simultaneously supplies an explicit status.
                 if status is None:
@@ -577,8 +577,7 @@ class ProjectStore:
             regions = _detect(image, settings)
             boxes = [_region_to_box(r) for r in regions]
             progress(70, "scoring confidence")
-            expected = _expected_count(data, exclude_sid=sid)
-            flags = _run_confidence(boxes, image.width, image.height, expected)
+            flags = _run_confidence(boxes, image.width, image.height)
             status = "auto_approved" if not flags else "needs_review"
         except Exception:
             self._persist_scan_fields(pid, sid, {"status": "failed"})
@@ -904,18 +903,6 @@ def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
     if mode == "scansplitterv4":
         return detect_photos_v4(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     return detect_photos_v2(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
-
-
-def _expected_count(data: dict, exclude_sid: str | None = None) -> int | None:
-    """Modal detected-count across the project, or None below the threshold."""
-    counts = [
-        s["detected_count"]
-        for s in data["scans"]
-        if s["detected_count"] is not None and s["id"] != exclude_sid
-    ]
-    if len(counts) < _EXPECTED_COUNT_MIN_SCANS:
-        return None
-    return Counter(counts).most_common(1)[0][0]
 
 
 def _count_statuses(scans: list[dict]) -> dict:

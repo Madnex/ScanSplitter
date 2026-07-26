@@ -169,7 +169,8 @@ photos being uploaded to Immich's `/api/assets` endpoint.
 
 Flags explain why a scan needs review. They can report that no photo was found,
 a box touches a scan edge, a box has an unusual aspect ratio or size, boxes
-overlap, or the detected photo count differs from most scans in the project.
+or overlap. Each scan is evaluated independently, so pages may contain
+different numbers of photos.
 Flags are warnings rather than hard errors: correct the boxes if needed, then
 approve the scan. Only approved and automatically approved scans are exported.
 

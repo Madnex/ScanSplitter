@@ -55,7 +55,7 @@ def _install_confidence(monkeypatch, evaluate):
     monkeypatch.setitem(sys.modules, "scansplitter.confidence", module)
 
 
-def _spec_evaluate(boxes, image_width, image_height, expected_count=None):
+def _spec_evaluate(boxes, image_width, image_height):
     """A minimal, spec-faithful confidence evaluation used by most tests."""
     flags = []
     if not boxes:
@@ -73,8 +73,6 @@ def _spec_evaluate(boxes, image_width, image_height, expected_count=None):
             or bottom >= image_height - margin
         ):
             flags.append(_Flag("touches_edge", box["id"], "Box touches an edge"))
-    if expected_count is not None and len(boxes) != expected_count:
-        flags.append(_Flag("count_mismatch", None, "Unexpected number of photos"))
     return flags
 
 
@@ -197,6 +195,33 @@ def test_old_manifest_gets_restoration_defaults(data_dir):
     assert "ocr_text" not in legacy_scan
     assert "ocr_reviewed" not in legacy_scan
     assert "remove_dust" not in legacy_scan["boxes"][0]["restoration"]
+
+
+def test_old_count_mismatch_flag_is_discarded(data_dir):
+    created = _create_project("Different page counts")
+    pid = created["id"]
+    manifest = data_dir / "projects" / pid / "project.json"
+    payload = json.loads(manifest.read_text())
+    payload["scans"] = [
+        {
+            "id": "a" * 32,
+            "status": "needs_review",
+            "flags": [
+                {
+                    "code": "count_mismatch",
+                    "box_id": None,
+                    "message": "Only 2 photos found where most scans have 4",
+                }
+            ],
+            "reviewed_at": None,
+            "boxes": [],
+        }
+    ]
+    manifest.write_text(json.dumps(payload))
+
+    scan = client.get(f"/api/projects/{pid}").json()["scans"][0]
+    assert scan["flags"] == []
+    assert scan["status"] == "auto_approved"
 
 
 def test_create_project_requires_name():

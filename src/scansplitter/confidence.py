@@ -76,7 +76,6 @@ def evaluate_scan(
     boxes: list[dict],
     image_width: int,
     image_height: int,
-    expected_count: int | None = None,
 ) -> list[Flag]:
     """Evaluate detected boxes and return every confidence warning."""
     flags: list[Flag] = []
@@ -129,15 +128,5 @@ def evaluate_scan(
                         f"Box overlaps box {second['id']} ({iou:.0%} overlap)",
                     )
                 )
-
-    if expected_count is not None and len(boxes) != expected_count:
-        qualifier = "Only " if len(boxes) < expected_count else ""
-        flags.append(
-            Flag(
-                "count_mismatch",
-                None,
-                f"{qualifier}{len(boxes)} photos found where most scans have {expected_count}",
-            )
-        )
 
     return flags

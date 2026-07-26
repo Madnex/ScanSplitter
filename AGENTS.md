@@ -55,7 +55,7 @@ ScanSplitter detects and extracts multiple photos from scanned images using Open
   failed jobs preserve HTTPException status/detail as
   `error_status`/`error_detail`
 - `confidence.py` - Pure scan-confidence heuristics (flags like
-  `touches_edge`, `count_mismatch`) used to auto-approve or flag scans
+  `touches_edge` and `overlap`) used to auto-approve or flag scans
 - `projects.py` - Persistent project store under `~/.scansplitter/projects/`
   (`SCANSPLITTER_DATA_DIR` overrides); atomic project.json writes
 - `metadata.py` - Pure project-metadata validation plus export-time EXIF GPS/date

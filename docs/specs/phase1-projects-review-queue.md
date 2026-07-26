@@ -91,7 +91,6 @@ def evaluate_scan(
     boxes: list[dict],       # [{id,x,y,width,height,angle}] center-based px
     image_width: int,
     image_height: int,
-    expected_count: int | None = None,  # e.g. modal count across the project
 ) -> list[Flag]
 ```
 
@@ -104,12 +103,13 @@ Flag codes (v1):
 | `extreme_aspect`  | box aspect ratio > 3:1 (either orientation)                     |
 | `area_outlier`    | box area < 35% of the median box area on the scan (≥3 boxes)    |
 | `overlap`         | two boxes with IoU > 0.15 (axis-aligned approximation is fine)  |
-| `count_mismatch`  | expected_count given and detected count differs                 |
 
 A scan with zero flags after detection gets status `auto_approved`;
-otherwise `needs_review`. The caller (projects layer) computes
-`expected_count` as the modal `detected_count` across the project's
-detected scans when ≥ 5 scans are detected, else passes None.
+otherwise `needs_review`. Each scan is evaluated independently because pages
+within a project may contain different numbers of photos. Deprecated
+`count_mismatch` flags are discarded when existing projects are loaded; a scan
+that needed review only for that flag returns to `auto_approved` unless it was
+explicitly reviewed by a user.
 
 ## Backend API
 
