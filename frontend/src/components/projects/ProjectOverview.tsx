@@ -9,6 +9,7 @@ import { DeliveryDialog } from "@/components/projects/DeliveryDialog";
 import { useProject } from "@/hooks/useProject";
 import { detectPendingScans, exportProject, patchProject, uploadProjectScans } from "@/lib/api";
 import { cn } from "@/lib/utils";
+import type { DetectionMode } from "@/types";
 import type { ProjectScan, ProjectSettings } from "@/types/projects";
 
 interface ProjectOverviewProps {
@@ -26,6 +27,31 @@ const FILTER_TABS: Array<{ key: FilterTab; label: string }> = [
   { key: "approved", label: "Approved" },
   { key: "pending", label: "Pending" },
 ];
+
+interface ProjectDetectorSelectProps {
+  value: DetectionMode;
+  disabled: boolean;
+  onChange: (mode: DetectionMode) => void;
+}
+
+export function ProjectDetectorSelect({ value, disabled, onChange }: ProjectDetectorSelectProps) {
+  return (
+    <label className="flex items-center gap-2 text-xs text-muted-foreground">
+      Detector
+      <select
+        aria-label="Detection mode"
+        className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
+        value={value}
+        disabled={disabled}
+        onChange={(event) => onChange(event.target.value as DetectionMode)}
+      >
+        <option value="scansplitterv2">ScanSplitterv2</option>
+        <option value="scansplitterv1">ScanSplitterv1</option>
+        <option value="u2net">AI (U2-Net)</option>
+      </select>
+    </label>
+  );
+}
 
 // Tab -> status mapping. Only 4 tabs exist for 6 statuses, so this folds
 // `auto_approved` into "Approved" (both are "nothing to do" green states)
@@ -195,12 +221,17 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           Projects
         </Button>
         <h2 className="text-lg font-semibold truncate flex-1">{project.name}</h2>
+        <ProjectDetectorSelect
+          value={project.settings.detection_mode}
+          disabled={isSavingSettings || isDetectingAny}
+          onChange={(detection_mode) => void handleSettingsChange({ detection_mode })}
+        />
         <Button
           size="sm"
           variant="outline"
           onClick={handleDetectPending}
-          disabled={isQueueingDetect}
-          title="Queue detection for pending/failed scans"
+          disabled={isQueueingDetect || isSavingSettings}
+          title="Queue detection for pending, failed, and empty-review scans"
         >
           <RefreshCw className={cn("w-4 h-4 mr-1", isQueueingDetect && "animate-spin")} />
           Detect Pending

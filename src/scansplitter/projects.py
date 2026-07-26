@@ -609,7 +609,12 @@ class ProjectStore:
 
     def submit_detect_pending(self, pid: str) -> list[dict]:
         data = self._read(pid)
-        pending = [s["id"] for s in data["scans"] if s["status"] in ("pending", "failed")]
+        pending = [
+            s["id"]
+            for s in data["scans"]
+            if s["status"] in ("pending", "failed")
+            or (s["status"] == "needs_review" and not s["boxes"])
+        ]
         return [{"scan_id": sid, "job_id": self.submit_detect_job(pid, sid)} for sid in pending]
 
     # --- Export ---

@@ -129,7 +129,7 @@ All endpoints follow existing conventions: sync `def` (threadpool), 404 via
 | `PATCH /api/projects/{pid}/scans/{sid}` | `{boxes?, status?}` | updated scan JSON. Setting `boxes` re-runs `evaluate_scan` and updates flags; allowed `status` values from client: `approved`, `needs_review` |
 | `DELETE /api/projects/{pid}/scans/{sid}` | – | `{"status":"deleted"}` |
 | `POST /api/projects/{pid}/scans/{sid}/detect` | – | `202 {"job_id"}` (re-detect one scan; job result also persisted into the project) |
-| `POST /api/projects/{pid}/detect-pending` | – | `202 {"jobs":[{scan_id, job_id}]}` (all `pending`/`failed` scans) |
+| `POST /api/projects/{pid}/detect-pending` | – | `202 {"jobs":[{scan_id, job_id}]}` (all `pending`/`failed` scans, plus `needs_review` scans with no boxes) |
 | `POST /api/projects/{pid}/export` | `{format?, quality?, include_gps?}` (defaults from project settings) | `202 {"job_id"}` — job crops every **approved + auto_approved** scan's boxes and zips; result `{download_url}` like the existing export job. Note: project scans are re-encoded on ingest and carry no EXIF, so `include_gps` is accepted for API parity but is a no-op in Phase 1 (EXIF-carrying project exports arrive with Phase 2 metadata). |
 
 Job integration: project detect jobs reuse `jobs.submit_job` with kind

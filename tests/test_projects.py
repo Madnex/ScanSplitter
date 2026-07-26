@@ -287,6 +287,28 @@ def test_detect_job_flags_route_to_needs_review(monkeypatch):
     assert scan["detected_count"] == 0
 
 
+def test_detect_pending_retries_needs_review_scan_without_boxes(monkeypatch):
+    _install_confidence(monkeypatch, _spec_evaluate)
+    pid = _create_project()["id"]
+
+    upload = client.post(
+        f"/api/projects/{pid}/scans",
+        files=[("files", ("blank.png", _solid_png(), "image/png"))],
+    )
+    first_job = _wait_for_job(upload.json()["jobs"][0]["job_id"])
+    assert first_job["status"] == "succeeded", first_job
+
+    scan = client.get(f"/api/projects/{pid}").json()["scans"][0]
+    assert scan["status"] == "needs_review"
+    assert scan["boxes"] == []
+
+    retry = client.post(f"/api/projects/{pid}/detect-pending")
+    assert retry.status_code == 202, retry.text
+    assert [job["scan_id"] for job in retry.json()["jobs"]] == [scan["id"]]
+    retried_job = _wait_for_job(retry.json()["jobs"][0]["job_id"])
+    assert retried_job["status"] == "succeeded", retried_job
+
+
 # --- PATCH scan re-evaluates flags + approve flow ---------------------------
 
 
