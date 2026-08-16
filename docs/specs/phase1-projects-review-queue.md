@@ -23,6 +23,7 @@ untouched; Projects is an additional top-level mode.
     project.json        # all state below, atomic-written (tmp + rename)
     scans/<scan_id>.png|jpg   # stored scan images (PDF pages rendered once)
     thumbs/<scan_id>.jpg      # 320px-wide cached thumbnails
+    previews/<scan_id>.jpg    # cached, canvas-safe review previews
   ```
 - `project.json` writes are atomic (write `.tmp`, `os.replace`) and guarded
   by a per-project `threading.Lock`.
@@ -127,7 +128,7 @@ All endpoints follow existing conventions: sync `def` (threadpool), 404 via
 | `PATCH /api/projects/{pid}` | `{name?, settings?}` (partial) | full project JSON |
 | `DELETE /api/projects/{pid}` | – | `{"status":"deleted"}` |
 | `POST /api/projects/{pid}/scans` | multipart, field `files` (repeatable); query `detect` (default `true`) | `{"scans":[scan...], "jobs":[{scan_id, job_id}]}` — PDFs expand to one scan per page; when `detect=true`, one detect job per new scan is queued |
-| `GET  /api/projects/{pid}/scans/{sid}/image` | query `thumb` (bool) | image bytes (thumbnail is cached 320px JPEG) |
+| `GET  /api/projects/{pid}/scans/{sid}/image` | query `thumb` or `preview` (bool) | image bytes (thumbnail is a cached 320px JPEG; preview is a cached, max-4096px JPEG used by the canvas while coordinates remain full-resolution) |
 | `GET  /api/projects/{pid}/scans/{sid}/crops/{box_id}` | – | On-demand JPEG preview of the stored crop geometry with project auto-rotation applied; unknown box is `404` |
 | `PATCH /api/projects/{pid}/scans/{sid}` | `{boxes?, status?}` | updated scan JSON. Setting `boxes` re-runs `evaluate_scan` and updates flags; geometry changes without an explicit status return the scan to `needs_review`, while filename/caption/restoration-only changes preserve status. Allowed client statuses: `approved`, `needs_review` |
 | `DELETE /api/projects/{pid}/scans/{sid}` | – | `{"status":"deleted"}` |

@@ -1,11 +1,16 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import * as fabric from "fabric";
-import { Plus, Trash2, RotateCcw } from "lucide-react";
+import { AlertTriangle, Plus, RefreshCw, Trash2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { BoundingBox } from "@/types";
 
 interface ImageCanvasProps {
   imageUrl: string | null;
+  /**
+   * Dimensions used by box coordinates when imageUrl is a smaller display
+   * proxy. Omit when imageUrl itself is the full-resolution image.
+   */
+  originalImageSize?: { width: number; height: number };
   boxes: BoundingBox[];
   onBoxesChange: (boxes: BoundingBox[]) => void;
   // Called right before boxes are removed (Delete/Backspace, Delete button, or
@@ -14,15 +19,47 @@ interface ImageCanvasProps {
   onBoxesDeleted?: (previousBoxes: BoundingBox[], deletedCount: number) => void;
 }
 
-export function ImageCanvas({ imageUrl, boxes, onBoxesChange, onBoxesDeleted }: ImageCanvasProps) {
+async function explainImageLoadFailure(imageUrl: string): Promise<string> {
+  const controller = new AbortController();
+  const timeoutId = window.setTimeout(() => controller.abort(), 8_000);
+  try {
+    const response = await fetch(imageUrl, { signal: controller.signal });
+    if (response.ok) {
+      return "The image was downloaded, but this browser could not decode or render it.";
+    }
+    let detail = "";
+    try {
+      const payload = await response.json() as { detail?: unknown };
+      if (typeof payload.detail === "string") detail = payload.detail;
+    } catch {
+      // Some proxies return an HTML/text error page rather than API JSON.
+    }
+    return detail || `The image request failed (${response.status} ${response.statusText}).`;
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      return "ScanSplitter did not respond while loading the image.";
+    }
+    return "The image request could not reach ScanSplitter.";
+  } finally {
+    window.clearTimeout(timeoutId);
+  }
+}
+
+export function ImageCanvas({
+  imageUrl,
+  originalImageSize,
+  boxes,
+  onBoxesChange,
+  onBoxesDeleted,
+}: ImageCanvasProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const fabricRef = useRef<fabric.Canvas | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [loadAttempt, setLoadAttempt] = useState(0);
   const isUpdatingRef = useRef(false);
-  const currentImageUrlRef = useRef<string | null>(null);
   const imageScaleRef = useRef(1);
   const [imageMetrics, setImageMetrics] = useState<{
     displayWidth: number;
@@ -207,83 +244,132 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange, onBoxesDeleted }: 
     const canvas = fabricRef.current;
     const container = containerRef.current;
 
-    if (!canvas || !imageUrl || !container) return;
-
-    // Skip if same URL
-    if (currentImageUrlRef.current === imageUrl) return;
-    currentImageUrlRef.current = imageUrl;
-
-    setImageLoaded(false);
-    setImageError(null);
+    if (!canvas || !container) return;
+    if (!imageUrl) return;
 
     // Create an HTML image to load first
     const htmlImg = new Image();
     htmlImg.crossOrigin = "anonymous";
+    let disposed = false;
+    let settled = false;
 
-    htmlImg.onload = () => {
-      const imgWidth = htmlImg.naturalWidth;
-      const imgHeight = htmlImg.naturalHeight;
-      const padding = canvasPaddingRef.current;
+    // Defer React state synchronization so the effect itself only sets up
+    // the external image load and its subscriptions.
+    const resetStateId = window.setTimeout(() => {
+      if (disposed || settled) return;
+      setImageLoaded(false);
+      setImageError(null);
+      setImageMetrics(null);
+    }, 0);
 
-      // Get container dimensions
-      const containerWidth = container.clientWidth || 800;
-      const containerHeight = container.clientHeight || 600;
+    const timeoutId = window.setTimeout(() => {
+      if (disposed || settled) return;
+      settled = true;
+      htmlImg.onload = null;
+      htmlImg.onerror = null;
+      htmlImg.src = "";
+      setImageError("The image took too long to load. ScanSplitter may still be processing it or may no longer be reachable.");
+      setImageLoaded(false);
+      setImageMetrics(null);
+    }, 30_000);
 
-      // Calculate scale to fit container (accounting for padding on canvas)
-      const availableWidth = containerWidth - padding * 2;
-      const availableHeight = containerHeight - padding * 2;
-      const scale = Math.min(
-        availableWidth / imgWidth,
-        availableHeight / imgHeight,
-        1 // Don't scale up small images
-      );
-
-      const scaledImgWidth = Math.round(imgWidth * scale);
-      const scaledImgHeight = Math.round(imgHeight * scale);
-      // Canvas is larger than image to accommodate rotation handles
-      const canvasWidth = scaledImgWidth + padding * 2;
-      const canvasHeight = scaledImgHeight + padding * 2;
-
-      imageScaleRef.current = scale;
-      setImageMetrics({
-        displayWidth: scaledImgWidth,
-        displayHeight: scaledImgHeight,
-        scale,
-        padding,
-      });
-
-      // Set canvas dimensions (image + padding for handles)
-      canvas.setDimensions({
-        width: canvasWidth,
-        height: canvasHeight,
-      });
-
-      // Create Fabric image and position with offset for padding
-      const fabricImg = new fabric.FabricImage(htmlImg, {
-        originX: 'left',
-        originY: 'top',
-        left: padding,
-        top: padding,
-      });
-      fabricImg.scaleToWidth(scaledImgWidth);
-
-      // Clear and set background
-      canvas.clear();
-      canvas.backgroundImage = fabricImg;
-      canvas.renderAll();
-
-      setImageLoaded(true);
-    };
-
-    htmlImg.onerror = (e) => {
-      console.error("Failed to load image:", e);
-      setImageError("Failed to load image");
+    const fail = (message: string) => {
+      if (disposed || settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      setImageError(message);
       setImageLoaded(false);
       setImageMetrics(null);
     };
 
+    htmlImg.onload = () => {
+      if (disposed || settled) return;
+      try {
+        const sourceWidth = htmlImg.naturalWidth;
+        const sourceHeight = htmlImg.naturalHeight;
+        const coordinateWidth = originalImageSize?.width ?? sourceWidth;
+        const coordinateHeight = originalImageSize?.height ?? sourceHeight;
+        if (
+          sourceWidth <= 0 || sourceHeight <= 0 ||
+          coordinateWidth <= 0 || coordinateHeight <= 0
+        ) {
+          throw new Error("Image dimensions are invalid");
+        }
+        const padding = canvasPaddingRef.current;
+
+        // Fit the original-coordinate space into the container. The actual
+        // bitmap may be a smaller preview with the same aspect ratio.
+        const containerWidth = container.clientWidth || 800;
+        const containerHeight = container.clientHeight || 600;
+        const availableWidth = Math.max(1, containerWidth - padding * 2);
+        const availableHeight = Math.max(1, containerHeight - padding * 2);
+        const scale = Math.min(
+          availableWidth / coordinateWidth,
+          availableHeight / coordinateHeight,
+          1 // Don't scale up small images
+        );
+
+        const scaledImgWidth = Math.max(1, Math.round(coordinateWidth * scale));
+        const scaledImgHeight = Math.max(1, Math.round(coordinateHeight * scale));
+        const canvasWidth = scaledImgWidth + padding * 2;
+        const canvasHeight = scaledImgHeight + padding * 2;
+
+        imageScaleRef.current = scale;
+        setImageMetrics({
+          displayWidth: scaledImgWidth,
+          displayHeight: scaledImgHeight,
+          scale,
+          padding,
+        });
+
+        canvas.setDimensions({ width: canvasWidth, height: canvasHeight });
+
+        const fabricImg = new fabric.FabricImage(htmlImg, {
+          originX: 'left',
+          originY: 'top',
+          left: padding,
+          top: padding,
+          scaleX: scaledImgWidth / sourceWidth,
+          scaleY: scaledImgHeight / sourceHeight,
+        });
+
+        canvas.clear();
+        canvas.backgroundImage = fabricImg;
+        canvas.renderAll();
+
+        settled = true;
+        window.clearTimeout(timeoutId);
+        setImageLoaded(true);
+      } catch (error) {
+        console.error("Failed to render image:", error);
+        fail("The image loaded, but the editor could not render it.");
+      }
+    };
+
+    htmlImg.onerror = (e) => {
+      console.error("Failed to load image:", e);
+      if (disposed || settled) return;
+      settled = true;
+      window.clearTimeout(timeoutId);
+      setImageError("The scan image could not be loaded. Checking the stored file…");
+      setImageLoaded(false);
+      setImageMetrics(null);
+      void explainImageLoadFailure(imageUrl).then((message) => {
+        if (!disposed) setImageError(message);
+      });
+    };
+
     htmlImg.src = imageUrl;
-  }, [imageUrl]);
+
+    return () => {
+      disposed = true;
+      window.clearTimeout(resetStateId);
+      window.clearTimeout(timeoutId);
+      htmlImg.onload = null;
+      htmlImg.onerror = null;
+      htmlImg.src = "";
+    };
+  }, [imageUrl, loadAttempt, originalImageSize?.height, originalImageSize?.width]);
 
   // Update boxes on canvas when props change (and image is loaded)
   useEffect(() => {
@@ -492,7 +578,21 @@ export function ImageCanvas({ imageUrl, boxes, onBoxesChange, onBoxesDeleted }: 
           <p className="text-muted-foreground">Loading image...</p>
         )}
         {imageUrl && imageError && (
-          <p className="text-destructive">{imageError}</p>
+          <div className="mx-6 max-w-md rounded-lg border border-destructive/40 bg-background/95 p-5 text-center shadow-sm" role="alert">
+            <AlertTriangle className="mx-auto mb-2 h-6 w-6 text-destructive" />
+            <p className="font-medium">Couldn’t display this scan</p>
+            <p className="mt-1 text-sm text-muted-foreground">{imageError}</p>
+            <p className="mt-2 text-xs text-muted-foreground">Your original file and saved edits have not been changed.</p>
+            <Button
+              className="mt-4"
+              size="sm"
+              variant="outline"
+              onClick={() => setLoadAttempt((attempt) => attempt + 1)}
+            >
+              <RefreshCw className="mr-1 h-4 w-4" />
+              Try again
+            </Button>
+          </div>
         )}
 
         {/* Magnifier overlay for precision corner dragging */}

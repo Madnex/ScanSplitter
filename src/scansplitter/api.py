@@ -1379,9 +1379,13 @@ def add_project_scans(pid: str, files: list[UploadFile] = File(...), detect: boo
 
 
 @app.get("/api/projects/{pid}/scans/{sid}/image")
-def get_project_scan_image(pid: str, sid: str, thumb: bool = False):
-    """Serve a stored scan image (or its cached 320px thumbnail)."""
-    payload, media_type = get_project_store().scan_image_bytes(pid, sid, thumb=thumb)
+def get_project_scan_image(
+    pid: str, sid: str, thumb: bool = False, preview: bool = False
+):
+    """Serve a stored scan image or a cached thumbnail/editor preview."""
+    payload, media_type = get_project_store().scan_image_bytes(
+        pid, sid, thumb=thumb, preview=preview
+    )
     return Response(content=payload, media_type=media_type)
 
 

@@ -582,9 +582,11 @@ export async function uploadProjectScans(
 export function getProjectScanImageUrl(
   projectId: string,
   scanId: string,
-  thumb: boolean = false
+  thumb: boolean = false,
+  preview: boolean = false
 ): string {
-  return `${API_BASE}/projects/${projectId}/scans/${scanId}/image${thumb ? "?thumb=true" : ""}`;
+  const query = preview ? "?preview=true" : thumb ? "?thumb=true" : "";
+  return `${API_BASE}/projects/${projectId}/scans/${scanId}/image${query}`;
 }
 
 /** URL for a rendered preview of one stored project crop. */

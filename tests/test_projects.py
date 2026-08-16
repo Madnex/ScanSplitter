@@ -265,6 +265,27 @@ def test_upload_image_and_pdf_expands_pages(monkeypatch):
     assert Image.open(io.BytesIO(thumb.content)).width <= 320
 
 
+def test_editor_preview_is_bounded_and_cached(monkeypatch, data_dir):
+    monkeypatch.setattr(projects, "_EDITOR_PREVIEW_MAX_DIMENSION", 100)
+    pid = _create_project()["id"]
+    upload = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[("files", ("large.png", _photo_png(), "image/png"))],
+    )
+    assert upload.status_code == 200, upload.text
+    sid = upload.json()["scans"][0]["id"]
+
+    preview = client.get(f"/api/projects/{pid}/scans/{sid}/image?preview=true")
+    assert preview.status_code == 200
+    preview_image = Image.open(io.BytesIO(preview.content))
+    assert max(preview_image.size) == 100
+    assert (data_dir / "projects" / pid / "previews" / f"{sid}.jpg").exists()
+
+    # Preview generation never changes the stored original or its dimensions.
+    original = client.get(f"/api/projects/{pid}/scans/{sid}/image")
+    assert Image.open(io.BytesIO(original.content)).size == (800, 600)
+
+
 def test_upload_rejects_unsupported_extension():
     pid = _create_project()["id"]
     response = client.post(

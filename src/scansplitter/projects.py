@@ -7,6 +7,7 @@ restarts. Each project lives in its own directory under the data root:
         project.json          # all project state (atomic-written)
         scans/<scan_id>.jpg    # stored scan images (PDF pages rendered once)
         thumbs/<scan_id>.jpg   # cached 320px-wide thumbnails
+        previews/<scan_id>.jpg # cached editor-safe previews
 
 All on-disk names are server-generated ids; client-supplied ids from path
 parameters are validated (hex only) before any path is constructed, so there
@@ -65,6 +66,10 @@ Image.MAX_IMAGE_PIXELS = 300_000_000
 # PDF pages are rendered once, at review resolution, and stored as images.
 _PDF_STORE_DPI = 150
 _THUMB_WIDTH = 320
+# Browsers can fail to decode or draw very large scans into a canvas. Keep
+# review images comfortably below common canvas/texture limits; crop and
+# export operations still use the untouched full-resolution original.
+_EDITOR_PREVIEW_MAX_DIMENSION = 4096
 
 PROJECT_STATUSES = (
     "pending",
@@ -274,6 +279,7 @@ class ProjectStore:
         pdir = self.root / pid
         (pdir / "scans").mkdir(parents=True, exist_ok=True)
         (pdir / "thumbs").mkdir(parents=True, exist_ok=True)
+        (pdir / "previews").mkdir(parents=True, exist_ok=True)
 
         now = _now_iso()
         data = {
@@ -530,8 +536,18 @@ class ProjectStore:
         # Remove the on-disk artifacts (best effort, outside the manifest lock).
         (pdir / scan["stored_file"]).unlink(missing_ok=True)
         (pdir / "thumbs" / f"{sid}.jpg").unlink(missing_ok=True)
+        (pdir / "previews" / f"{sid}.jpg").unlink(missing_ok=True)
 
-    def scan_image_bytes(self, pid: str, sid: str, thumb: bool = False) -> tuple[bytes, str]:
+    def scan_image_bytes(
+        self, pid: str, sid: str, thumb: bool = False, preview: bool = False
+    ) -> tuple[bytes, str]:
+        """Return an original, thumbnail, or editor-safe scan image.
+
+        ``preview`` is intentionally separate from ``thumb``: it is large
+        enough for review work but bounded so an archival-resolution scan
+        cannot exhaust the browser's image/canvas limits. It is only a
+        display proxy; box coordinates remain relative to the original.
+        """
         pdir = self._project_dir(pid)
         data = self._read(pid)
         scan = self._find_scan(data, sid)
@@ -539,17 +555,45 @@ class ProjectStore:
         if not stored.exists():
             raise HTTPException(status_code=410, detail="Scan image no longer exists")
 
-        if not thumb:
+        if not thumb and not preview:
             media = "image/png" if stored.suffix.lower() == ".png" else "image/jpeg"
             return stored.read_bytes(), media
 
-        thumb_path = pdir / "thumbs" / f"{sid}.jpg"
-        if not thumb_path.exists():
-            image = Image.open(stored).convert("RGB")
-            image.thumbnail((_THUMB_WIDTH, 10_000))
-            thumb_path.parent.mkdir(exist_ok=True)
-            image.save(thumb_path, "JPEG", quality=85)
-        return thumb_path.read_bytes(), "image/jpeg"
+        if preview:
+            cache_path = pdir / "previews" / f"{sid}.jpg"
+            max_size = (_EDITOR_PREVIEW_MAX_DIMENSION, _EDITOR_PREVIEW_MAX_DIMENSION)
+            quality = 90
+        else:
+            cache_path = pdir / "thumbs" / f"{sid}.jpg"
+            max_size = (_THUMB_WIDTH, 10_000)
+            quality = 85
+
+        # Multiple grid/editor requests can arrive together. Generate a
+        # missing cache entry once and atomically publish it so no request can
+        # observe a partially written JPEG.
+        if not cache_path.exists():
+            with self._lock_for(pid):
+                if not cache_path.exists():
+                    try:
+                        # JPEG decoders can downsample during decode. Asking
+                        # before conversion avoids allocating the full
+                        # 250+ MB RGB buffer of a typical 10k archival scan.
+                        with Image.open(stored) as source:
+                            source.draft("RGB", max_size)
+                            image = source.convert("RGB")
+                        image.thumbnail(max_size)
+                        output = io.BytesIO()
+                        image.save(output, "JPEG", quality=quality)
+                    except Exception as exc:
+                        raise HTTPException(
+                            status_code=422,
+                            detail=f"Stored scan image could not be read: {exc}",
+                        ) from exc
+                    cache_path.parent.mkdir(exist_ok=True)
+                    tmp_path = cache_path.with_suffix(".jpg.tmp")
+                    tmp_path.write_bytes(output.getvalue())
+                    os.replace(tmp_path, cache_path)
+        return cache_path.read_bytes(), "image/jpeg"
 
     def crop_image_bytes(self, pid: str, sid: str, box_id: str) -> bytes:
         """Render a lightweight JPEG preview for one stored photo box."""

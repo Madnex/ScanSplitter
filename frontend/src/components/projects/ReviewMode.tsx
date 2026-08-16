@@ -356,7 +356,10 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     );
   }
 
-  const imageUrl = getProjectScanImageUrl(projectId, currentScan.id, false);
+  // The editor preview is bounded server-side so archival-size scans do not
+  // exceed browser canvas limits. ImageCanvas still maps boxes against these
+  // original dimensions, preserving full-resolution crop coordinates.
+  const imageUrl = getProjectScanImageUrl(projectId, currentScan.id, false, true);
   const projectBoxes = mergeProjectBoxes(boxes, photoDetails, currentScan.boxes);
   const selectedProjectBox = projectBoxes.find((box) => box.id === selectedBoxId) ?? projectBoxes[0];
 
@@ -422,7 +425,12 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
             canvasFocused && "ring-2 ring-primary"
           )}
         >
-          <ImageCanvas imageUrl={imageUrl} boxes={boxes} onBoxesChange={setBoxes} />
+          <ImageCanvas
+            imageUrl={imageUrl}
+            originalImageSize={{ width: currentScan.width, height: currentScan.height }}
+            boxes={boxes}
+            onBoxesChange={setBoxes}
+          />
         </div>
 
         <div className="overflow-y-auto">
