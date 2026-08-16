@@ -7,6 +7,7 @@ const settings: DetectionSettings = {
   minArea: 2,
   maxArea: 80,
   autoRotate: false,
+  edgeCleanupMode: "conservative",
   autoDetect: true,
   detectionMode: "scansplitterv4",
   u2netLite: true,
@@ -35,6 +36,9 @@ describe("SettingsPanel crop actions", () => {
     expect(html).toContain("Crop Current (3)");
     expect(html).toContain("Crop All (7)");
     expect(html).toContain("2 of 3 scans have photos ready");
+    expect(html).toContain("Edge cleanup");
+    expect(html).toContain('<option value="conservative" selected="">Conservative</option>');
+    expect(html).toContain('<option value="tight">Tight</option>');
   });
 
   it("does not show a redundant all-scan action for one scan", () => {

@@ -44,6 +44,7 @@ untouched; Projects is an additional top-level mode.
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
     "auto_rotate": true,
+    "edge_cleanup_mode": "conservative",
     "format": "jpeg",
     "quality": 85,
     "include_gps": false

@@ -93,6 +93,21 @@ def main():
         action="store_true",
         help="Disable auto-rotation",
     )
+    cleanup_group = process_parser.add_mutually_exclusive_group()
+    cleanup_group.add_argument(
+        "--edge-cleanup",
+        dest="edge_cleanup_mode",
+        choices=["off", "conservative", "tight"],
+        default="conservative",
+        help="Post-crop border removal mode (default: conservative)",
+    )
+    cleanup_group.add_argument(
+        "--no-edge-cleanup",
+        dest="edge_cleanup_mode",
+        action="store_const",
+        const="off",
+        help="Alias for --edge-cleanup off",
+    )
     process_parser.add_argument(
         "--min-area",
         type=float,
@@ -207,6 +222,7 @@ def process_files_cli(args):
         results = process_file(
             file_path,
             auto_rotate_enabled=not args.no_rotate,
+            edge_cleanup_mode=args.edge_cleanup_mode,
             min_area_ratio=args.min_area / 100,
             max_area_ratio=args.max_area / 100,
             enhance_contrast=not args.no_enhance,

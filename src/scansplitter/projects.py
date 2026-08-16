@@ -40,6 +40,7 @@ from .detector import (
     detect_photos_v3,
     detect_photos_v4,
 )
+from .edge_cleanup import cleanup_photo_edges
 from .jobs import submit_job
 from .metadata import (
     create_metadata_exif,
@@ -90,6 +91,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
     "auto_rotate": True,
+    "edge_cleanup_mode": "conservative",
     "auto_deskew": False,
     "restore_color": False,
     "upscale_2x": False,
@@ -228,7 +230,13 @@ class ProjectStore:
         pdir = self._project_dir(pid)
         with open(pdir / "project.json", encoding="utf-8") as fh:
             data = json.load(fh)
-        data["settings"] = {**DEFAULT_SETTINGS, **data.get("settings", {})}
+        stored_settings = dict(data.get("settings", {}))
+        if "edge_cleanup_mode" not in stored_settings and "edge_cleanup" in stored_settings:
+            stored_settings["edge_cleanup_mode"] = (
+                "conservative" if stored_settings["edge_cleanup"] else "off"
+            )
+        stored_settings.pop("edge_cleanup", None)
+        data["settings"] = {**DEFAULT_SETTINGS, **stored_settings}
         data["settings"].pop("remove_dust", None)
         for scan in data.get("scans", []):
             flags = scan.get("flags", [])
@@ -249,6 +257,11 @@ class ProjectStore:
                 restoration = box.get("restoration")
                 if isinstance(restoration, dict):
                     restoration.pop("remove_dust", None)
+                    if "edge_cleanup_mode" not in restoration and "edge_cleanup" in restoration:
+                        restoration["edge_cleanup_mode"] = (
+                            "conservative" if restoration["edge_cleanup"] else "off"
+                        )
+                    restoration.pop("edge_cleanup", None)
         return data
 
     def _write(self, pid: str, data: dict) -> None:
@@ -345,6 +358,13 @@ class ProjectStore:
                             raise HTTPException(
                                 status_code=400,
                                 detail="manifest_format must be one of: json, csv, both",
+                            )
+                        if key == "edge_cleanup_mode" and value not in {
+                            "off", "conservative", "tight"
+                        }:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="edge_cleanup_mode must be one of: off, conservative, tight",
                             )
                         merged[key] = value
                 data["settings"] = merged
@@ -616,6 +636,10 @@ class ProjectStore:
         if cropped.size == 0:
             raise HTTPException(status_code=400, detail="Photo box produced an empty crop")
         preview = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
+        effective_settings = {**data["settings"], **box.get("restoration", {})}
+        preview, _ = cleanup_photo_edges(
+            preview, effective_settings.get("edge_cleanup_mode", "conservative")
+        )
         if data["settings"]["auto_rotate"]:
             preview, _ = auto_rotate(preview)
         preview.thumbnail((480, 480))
@@ -836,10 +860,13 @@ class ProjectStore:
             if cropped.size == 0:
                 raise HTTPException(status_code=400, detail="Photo box produced an empty crop")
             before = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
+            effective_settings = {**data["settings"], **box.get("restoration", {})}
+            before, _ = cleanup_photo_edges(
+                before, effective_settings.get("edge_cleanup_mode", "conservative")
+            )
             if data["settings"]["auto_rotate"]:
                 before, _ = auto_rotate(before)
             progress(55, "applying restoration")
-            effective_settings = {**data["settings"], **box.get("restoration", {})}
             after, detail = apply_restorations(before, effective_settings)
             preview = comparison_image(before, after, detail)
             output = io.BytesIO()
@@ -907,11 +934,14 @@ class ProjectStore:
                     if cropped.size == 0:
                         continue
                     crop_pil = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
+                    effective_settings = {**data["settings"], **box.get("restoration", {})}
+                    crop_pil, _ = cleanup_photo_edges(
+                        crop_pil, effective_settings.get("edge_cleanup_mode", "conservative")
+                    )
                     if auto_rotate_enabled:
                         crop_pil, _ = auto_rotate(crop_pil)
                     from .restoration import apply_restorations
 
-                    effective_settings = {**data["settings"], **box.get("restoration", {})}
                     crop_pil, _ = apply_restorations(crop_pil, effective_settings)
 
                     crop_metadata = dict(metadata)
@@ -999,11 +1029,22 @@ def _normalize_box(box: dict) -> dict:
     }
     overrides = box.get("restoration")
     if isinstance(overrides, dict):
-        normalized["restoration"] = {
+        normalized_overrides = {
             key: bool(value)
             for key, value in overrides.items()
             if key in {"auto_deskew", "restore_color", "upscale_2x"}
         }
+        cleanup_mode = overrides.get("edge_cleanup_mode")
+        if cleanup_mode is None and "edge_cleanup" in overrides:
+            cleanup_mode = "conservative" if overrides["edge_cleanup"] else "off"
+        if cleanup_mode is not None:
+            if cleanup_mode not in {"off", "conservative", "tight"}:
+                raise HTTPException(
+                    status_code=400,
+                    detail="edge_cleanup_mode must be one of: off, conservative, tight",
+                )
+            normalized_overrides["edge_cleanup_mode"] = cleanup_mode
+        normalized["restoration"] = normalized_overrides
     for field, limit in (("filename", 255), ("caption", 2000)):
         value = box.get(field)
         if value is not None and not isinstance(value, str):

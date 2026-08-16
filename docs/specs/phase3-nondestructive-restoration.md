@@ -14,6 +14,8 @@ ephemeral before/after preview and no mutation of archival project scans.
 - Files under project `scans/` remain archival sources and are never modified.
 - Restoration runs on in-memory crops after optional 90-degree auto-rotation
   and before encoding and metadata insertion.
+- Conservative edge cleanup, when enabled, runs before that orientation and
+  restoration pipeline; see `edge-post-processing.md`.
 - Preview and export invoke the same restoration pipeline in this order:
   deskew, color/fade, 2× upscale.
 - Project defaults persist in `project.json`; a photo box may override each
@@ -55,9 +57,9 @@ Any stored photo box may add a sparse override map:
 
 Overrides are submitted through the existing
 `PATCH /api/projects/{pid}/scans/{sid}` `boxes` array. Alongside the optional
-per-photo filename and caption, the box normalizer keeps only `auto_deskew`,
-`restore_color`, and `upscale_2x` restoration keys, coercing their values to
-booleans; other override keys are discarded. At execution,
+per-photo filename and caption, the box normalizer keeps the `auto_deskew`,
+`restore_color`, and `upscale_2x` boolean keys plus the `edge_cleanup_mode`
+enum; other override keys are discarded. At execution,
 `{**project.settings, **box.restoration}` is used.
 
 Project settings are submitted through the existing
@@ -91,7 +93,8 @@ The preview is ephemeral and is not written into the project.
 
 ## Frontend
 
-The project overview exposes three opt-in project toggles. Review mode offers
+The project overview exposes the three opt-in restoration toggles plus the
+Off / Conservative / Tight edge-cleanup selector. Review mode offers
 Project default / On / Off overrides for the first displayed photo box and
 persists them with the scan's box geometry. Preview can request a selected box
 by id and shows the returned comparison image in a dialog. Progress and errors

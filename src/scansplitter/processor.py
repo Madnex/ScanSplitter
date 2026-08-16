@@ -14,6 +14,7 @@ from .detector import (
     detect_photos_v3,
     detect_photos_v4,
 )
+from .edge_cleanup import EdgeCleanupMode, cleanup_photo_edges
 from .pdf_handler import extract_images_from_pdf, is_pdf
 from .rotator import auto_rotate
 
@@ -51,6 +52,7 @@ def process_image(
     source_file: str = "unknown",
     source_page: int | None = None,
     auto_rotate_enabled: bool = True,
+    edge_cleanup_mode: EdgeCleanupMode = "conservative",
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
     # Phase 1 improvements
@@ -70,6 +72,7 @@ def process_image(
         source_file: Name of the source file for reference
         source_page: Page number if from PDF
         auto_rotate_enabled: Whether to auto-rotate detected photos
+        edge_cleanup_mode: Off, conservative scan-background trim, or tight margin trim
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
         enhance_contrast: Apply CLAHE for better low-contrast detection
@@ -136,6 +139,8 @@ def process_image(
     for idx, cropped in enumerate(cropped_images):
         rotation = 0
 
+        cropped, _ = cleanup_photo_edges(cropped, edge_cleanup_mode)
+
         if auto_rotate_enabled:
             cropped, rotation = auto_rotate(cropped)
 
@@ -155,6 +160,7 @@ def process_image(
 def process_file(
     file_path: str | Path,
     auto_rotate_enabled: bool = True,
+    edge_cleanup_mode: EdgeCleanupMode = "conservative",
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
     pdf_dpi: int = 300,
@@ -173,6 +179,7 @@ def process_file(
     Args:
         file_path: Path to the file
         auto_rotate_enabled: Whether to auto-rotate detected photos
+        edge_cleanup_mode: Off, conservative scan-background trim, or tight margin trim
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
         pdf_dpi: DPI for PDF rendering
@@ -198,6 +205,7 @@ def process_file(
                 source_file=file_name,
                 source_page=page_num + 1,  # 1-indexed
                 auto_rotate_enabled=auto_rotate_enabled,
+                edge_cleanup_mode=edge_cleanup_mode,
                 min_area_ratio=min_area_ratio,
                 max_area_ratio=max_area_ratio,
                 enhance_contrast=enhance_contrast,
@@ -213,6 +221,7 @@ def process_file(
             image,
             source_file=file_name,
             auto_rotate_enabled=auto_rotate_enabled,
+            edge_cleanup_mode=edge_cleanup_mode,
             min_area_ratio=min_area_ratio,
             max_area_ratio=max_area_ratio,
             enhance_contrast=enhance_contrast,
@@ -227,6 +236,7 @@ def process_file(
 def process_files(
     file_paths: list[str | Path],
     auto_rotate_enabled: bool = True,
+    edge_cleanup_mode: EdgeCleanupMode = "conservative",
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
     pdf_dpi: int = 300,
@@ -237,6 +247,7 @@ def process_files(
     Args:
         file_paths: List of file paths to process
         auto_rotate_enabled: Whether to auto-rotate detected photos
+        edge_cleanup_mode: Off, conservative scan-background trim, or tight margin trim
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
         pdf_dpi: DPI for PDF rendering
@@ -254,6 +265,7 @@ def process_files(
         results = process_file(
             file_path,
             auto_rotate_enabled=auto_rotate_enabled,
+            edge_cleanup_mode=edge_cleanup_mode,
             min_area_ratio=min_area_ratio,
             max_area_ratio=max_area_ratio,
             pdf_dpi=pdf_dpi,

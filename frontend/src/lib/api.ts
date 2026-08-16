@@ -1,5 +1,6 @@
 import type {
   BoundingBox,
+  EdgeCleanupMode,
   CropResponse,
   CroppedImage,
   DetectResponse,
@@ -281,6 +282,7 @@ export async function cropImages(
   page: number,
   boxes: BoundingBox[],
   autoRotate: boolean,
+  edgeCleanupMode: EdgeCleanupMode,
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string | null) => void
 ): Promise<Omit<CroppedImage, "name" | "source" | "dateTaken">[]> {
@@ -298,6 +300,7 @@ export async function cropImages(
         angle: b.angle,
       })),
       auto_rotate: autoRotate,
+      edge_cleanup_mode: edgeCleanupMode,
     },
     { signal, onProgress }
   );

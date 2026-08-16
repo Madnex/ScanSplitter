@@ -2,7 +2,7 @@
 // queue). Mirrors the JSON contract in docs/specs/phase1-projects-review-queue.md
 // exactly - keep in sync with that spec, not with the Quick-mode types in
 // `@/types` (which describe the older single-session flow).
-import type { DetectionMode } from "@/types";
+import type { DetectionMode, EdgeCleanupMode } from "@/types";
 
 /**
  * A box as stored in `project.json` / returned by the projects API.
@@ -27,7 +27,7 @@ export interface ProjectBox {
   angle: number; // degrees
   filename?: string;
   caption?: string;
-  restoration?: Partial<Pick<ProjectSettings, "auto_deskew" | "restore_color" | "upscale_2x">>;
+  restoration?: Partial<Pick<ProjectSettings, "edge_cleanup_mode" | "auto_deskew" | "restore_color" | "upscale_2x">>;
 }
 
 export interface Flag {
@@ -80,6 +80,7 @@ export interface ProjectSettings {
   min_area_ratio: number;
   max_area_ratio: number;
   auto_rotate: boolean;
+  edge_cleanup_mode: EdgeCleanupMode;
   auto_deskew: boolean;
   restore_color: boolean;
   upscale_2x: boolean;

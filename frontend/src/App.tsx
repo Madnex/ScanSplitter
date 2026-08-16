@@ -67,6 +67,7 @@ function App() {
     minArea: 2,
     maxArea: 80,
     autoRotate: true,
+    edgeCleanupMode: "conservative",
     autoDetect: true,
     detectionMode: "scansplitterv4",
     u2netLite: true,
@@ -694,6 +695,7 @@ function App() {
         activeFile.currentPage,
         activeFile.boxes,
         settings.autoRotate,
+        settings.edgeCleanupMode,
         controller.signal,
         (progress, stage) => setCropProgress({ progress, stage })
       );
@@ -740,7 +742,7 @@ function App() {
         setCropProgress(null);
       }
     }
-  }, [activeFile, activeFileIndex, settings.autoRotate, ensureModelReady, namingPattern, showToast]);
+  }, [activeFile, activeFileIndex, settings.autoRotate, settings.edgeCleanupMode, ensureModelReady, namingPattern, showToast]);
 
   // Crop every scan with detected boxes, one at a time. Crop jobs are
   // deliberately serialized because OpenCV/orientation inference is
@@ -766,6 +768,7 @@ function App() {
           target.file.currentPage,
           target.file.boxes,
           settings.autoRotate,
+          settings.edgeCleanupMode,
           controller.signal,
           (progress, stage) => {
             const overall = Math.round(
@@ -825,7 +828,7 @@ function App() {
         setCropProgress(null);
       }
     }
-  }, [batchCropTargets, files, settings.autoRotate, ensureModelReady, namingPattern, showToast]);
+  }, [batchCropTargets, files, settings.autoRotate, settings.edgeCleanupMode, ensureModelReady, namingPattern, showToast]);
 
   // Handle export
   const handleExport = useCallback(async () => {

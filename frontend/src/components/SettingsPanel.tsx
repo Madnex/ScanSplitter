@@ -123,6 +123,26 @@ export function SettingsPanel({
           </div>
         )}
 
+        <label className="block space-y-1 text-sm" htmlFor="edge-cleanup-mode">
+          <span>Edge cleanup</span>
+          <select
+            id="edge-cleanup-mode"
+            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+            value={settings.edgeCleanupMode}
+            onChange={(event) => onSettingsChange({
+              ...settings,
+              edgeCleanupMode: event.target.value as DetectionSettings["edgeCleanupMode"],
+            })}
+          >
+            <option value="off">Off</option>
+            <option value="conservative">Conservative</option>
+            <option value="tight">Tight</option>
+          </select>
+          <span className="block text-xs text-muted-foreground">
+            Tight also removes confident white print margins.
+          </span>
+        </label>
+
         <div className="flex items-center gap-2">
           <input
             type="checkbox"

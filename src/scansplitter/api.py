@@ -11,6 +11,7 @@ import zipfile
 from collections.abc import Callable
 from contextlib import asynccontextmanager
 from pathlib import Path
+from typing import Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,6 +33,7 @@ from .detector import (
     detect_photos_v3,
     detect_photos_v4,
 )
+from .edge_cleanup import cleanup_photo_edges
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
 from .jobs import JobCancelled, registry, submit_job
 from .models import get_model_statuses, start_model_download
@@ -166,6 +168,8 @@ class CropRequest(BaseModel):
     page: int = 1
     boxes: list[BoundingBox]
     auto_rotate: bool = True
+    edge_cleanup_mode: Literal["off", "conservative", "tight"] = "conservative"
+    edge_cleanup: bool | None = None  # backward-compatible boolean alias
 
 
 class CroppedImage(BaseModel):
@@ -801,6 +805,11 @@ def run_crop(
         # Convert back to PIL
         cropped_rgb = cv2.cvtColor(cropped_cv, cv2.COLOR_BGR2RGB)
         cropped_pil = Image.fromarray(cropped_rgb)
+
+        cleanup_mode = request.edge_cleanup_mode
+        if request.edge_cleanup is not None:
+            cleanup_mode = "conservative" if request.edge_cleanup else "off"
+        cropped_pil, _ = cleanup_photo_edges(cropped_pil, cleanup_mode)
 
         # Auto-rotate if enabled
         rotation_applied = 0

@@ -309,7 +309,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
         </Button>
         <Button size="sm" variant="outline" onClick={() => setShowRestoration((value) => !value)}>
           <SlidersHorizontal className="w-4 h-4 mr-1" />
-          Restore
+          Process
         </Button>
         <label className="flex items-center gap-2 text-xs text-muted-foreground">
           Output
@@ -335,12 +335,23 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
         <section className="mb-4 rounded-lg bg-muted/45 px-4 py-3" aria-labelledby="restoration-heading">
           <div className="flex items-start justify-between gap-5">
             <div>
-              <h3 id="restoration-heading" className="text-sm font-semibold">Non-destructive restoration</h3>
+              <h3 id="restoration-heading" className="text-sm font-semibold">Crop processing & restoration</h3>
               <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
                 Applied only to exported copies. Stored scans and crop geometry stay untouched.
               </p>
             </div>
-            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+            <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+              <label className="flex cursor-pointer items-center justify-end gap-3 text-sm">
+                <span className="text-right">
+                  <span className="block font-medium">Edge cleanup</span>
+                  <span className="block text-xs text-muted-foreground">Crop border removal</span>
+                </span>
+                <select className="h-8 rounded border bg-background px-2 text-xs" value={project.settings.edge_cleanup_mode} disabled={isSavingSettings} onChange={(event) => void handleSettingsChange({ edge_cleanup_mode: event.target.value as ProjectSettings["edge_cleanup_mode"] })}>
+                  <option value="off">Off</option>
+                  <option value="conservative">Conservative</option>
+                  <option value="tight">Tight</option>
+                </select>
+              </label>
               <label className="flex cursor-pointer items-center justify-end gap-3 text-sm">
                 <span className="text-right">
                   <span className="block font-medium">Auto-deskew</span>

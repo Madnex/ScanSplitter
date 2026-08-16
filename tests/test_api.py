@@ -9,6 +9,7 @@ import time
 import zipfile
 from importlib.metadata import version
 
+import numpy as np
 import piexif
 import pytest
 from fastapi.testclient import TestClient
@@ -32,6 +33,19 @@ def _png_bytes(color=(200, 100, 50), size=(64, 48)) -> bytes:
 
 def _png_base64() -> str:
     return base64.b64encode(_png_bytes()).decode("utf-8")
+
+
+def _bordered_png(size=(420, 300), border=18) -> bytes:
+    height, width = size[1], size[0]
+    yy, xx = np.mgrid[:height, :width]
+    pixels = np.full((height, width, 3), (245, 241, 225), dtype=np.uint8)
+    interior = np.stack(
+        (35 + xx % 120, 45 + yy % 100, 60 + (xx + yy) % 110), axis=2
+    ).astype(np.uint8)
+    pixels[border:-border, border:-border] = interior[border:-border, border:-border]
+    output = io.BytesIO()
+    Image.fromarray(pixels).save(output, format="PNG")
+    return output.getvalue()
 
 
 def _jpeg_with_exif(
@@ -110,6 +124,41 @@ def _crop(session_id: str, box_id="box1") -> dict:
     )
     assert response.status_code == 200, response.text
     return response.json()
+
+
+def test_crop_edge_cleanup_mode_can_be_conservative_or_off():
+    uploaded = _upload(content=_bordered_png())
+    box = {
+        "id": "bordered",
+        "center_x": 210,
+        "center_y": 150,
+        "width": 420,
+        "height": 300,
+        "angle": 0,
+    }
+
+    raw = client.post(
+        "/api/crop",
+        json={
+            "session_id": uploaded["session_id"],
+            "boxes": [box],
+            "auto_rotate": False,
+            "edge_cleanup_mode": "off",
+        },
+    ).json()["images"][0]
+    cleaned = client.post(
+        "/api/crop",
+        json={
+            "session_id": uploaded["session_id"],
+            "boxes": [box],
+            "auto_rotate": False,
+            "edge_cleanup_mode": "conservative",
+        },
+    ).json()["images"][0]
+
+    assert (raw["width"], raw["height"]) == (420, 300)
+    assert cleaned["width"] < raw["width"]
+    assert cleaned["height"] < raw["height"]
 
 
 def _wait_for_job(job_id: str) -> dict:

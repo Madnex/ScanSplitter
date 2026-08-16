@@ -51,11 +51,14 @@ export type DetectionMode =
   | "scansplitterv4"
   | "u2net";
 
+export type EdgeCleanupMode = "off" | "conservative" | "tight";
+
 // Detection settings
 export interface DetectionSettings {
   minArea: number; // percentage
   maxArea: number; // percentage
   autoRotate: boolean;
+  edgeCleanupMode: EdgeCleanupMode;
   autoDetect: boolean; // auto-detect on upload
   detectionMode: DetectionMode;
   u2netLite: boolean; // use lite model (5MB, faster) vs full (176MB, more accurate)

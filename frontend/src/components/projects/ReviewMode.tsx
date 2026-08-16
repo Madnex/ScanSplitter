@@ -18,6 +18,8 @@ interface ReviewModeProps {
   showToast: (message: string, type?: "success" | "error" | "info") => void;
 }
 
+const EDGE_CLEANUP_PREVIEW_VERSION = 2;
+
 // ProjectBox (wire shape: {id,x,y,width,height,angle}, center-based) <->
 // BoundingBox (ImageCanvas's shape: {id,centerX,centerY,width,height,angle}).
 // See the note in `@/types/projects` on why the field names differ.
@@ -285,12 +287,18 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     }
   }, [boxes.length, currentScan, persistBoxesIfDirty, projectId, showToast]);
 
-  const setSelectedPhotoOverride = useCallback(async (key: "auto_deskew" | "restore_color" | "upscale_2x", value: string) => {
+  const setSelectedPhotoOverride = useCallback(async (key: "edge_cleanup_mode" | "auto_deskew" | "restore_color" | "upscale_2x", value: string) => {
     if (!currentScan || boxes.length === 0) return;
     const current = currentProjectBoxes();
     const selected = current.find((box) => box.id === selectedBoxId) ?? current[0];
     const restoration = { ...(selected.restoration ?? {}) };
-    if (value === "inherit") delete restoration[key]; else restoration[key] = value === "on";
+    if (value === "inherit") {
+      delete restoration[key];
+    } else if (key === "edge_cleanup_mode") {
+      restoration.edge_cleanup_mode = value as ProjectSettings["edge_cleanup_mode"];
+    } else {
+      restoration[key] = value === "on";
+    }
     selected.restoration = restoration;
     setIsSaving(true);
     try {
@@ -441,7 +449,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
             <div className="space-y-3">
               {projectBoxes.map((box, index) => {
                 const details = photoDetails[box.id] ?? { filename: "", caption: "" };
-                const version = `${box.x},${box.y},${box.width},${box.height},${box.angle}`;
+                const version = `${box.x},${box.y},${box.width},${box.height},${box.angle},${box.restoration?.edge_cleanup_mode ?? "inherit"},edge-${EDGE_CLEANUP_PREVIEW_VERSION}`;
                 return (
                   <section
                     key={box.id}
@@ -500,7 +508,29 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
             </ul>
           )}
           </div>
-          {selectedProjectBox && <div className="mt-6 border-t pt-4"><h3 className="text-sm font-semibold">Selected photo restoration</h3><p className="mb-2 text-xs text-muted-foreground">Override project defaults for this crop.</p>{([['auto_deskew','Deskew'],['restore_color','Color & fade'],['upscale_2x','2× upscale']] as Array<[keyof Pick<ProjectSettings, "auto_deskew" | "restore_color" | "upscale_2x">, string]>).map(([key, label]) => { const value = selectedProjectBox.restoration?.[key]; return <label key={key} className="mb-2 flex items-center justify-between gap-2 text-xs"><span>{label}</span><select className="h-8 rounded border bg-background px-2" value={value === undefined ? "inherit" : value ? "on" : "off"} onChange={(event) => void setSelectedPhotoOverride(key, event.target.value)}><option value="inherit">Project default</option><option value="on">On</option><option value="off">Off</option></select></label>; })}</div>}
+          {selectedProjectBox && (
+            <div className="mt-6 border-t pt-4">
+              <h3 className="text-sm font-semibold">Selected photo processing</h3>
+              <p className="mb-2 text-xs text-muted-foreground">Override project defaults for this crop.</p>
+              <label className="mb-2 flex items-center justify-between gap-2 text-xs">
+                <span>Edge cleanup</span>
+                <select
+                  className="h-8 rounded border bg-background px-2"
+                  value={selectedProjectBox.restoration?.edge_cleanup_mode ?? "inherit"}
+                  onChange={(event) => void setSelectedPhotoOverride("edge_cleanup_mode", event.target.value)}
+                >
+                  <option value="inherit">Project default</option>
+                  <option value="off">Off</option>
+                  <option value="conservative">Conservative</option>
+                  <option value="tight">Tight</option>
+                </select>
+              </label>
+              {([['auto_deskew','Deskew'],['restore_color','Color & fade'],['upscale_2x','2× upscale']] as Array<[keyof Pick<ProjectSettings, "auto_deskew" | "restore_color" | "upscale_2x">, string]>).map(([key, label]) => {
+                const value = selectedProjectBox.restoration?.[key];
+                return <label key={key} className="mb-2 flex items-center justify-between gap-2 text-xs"><span>{label}</span><select className="h-8 rounded border bg-background px-2" value={value === undefined ? "inherit" : value ? "on" : "off"} onChange={(event) => void setSelectedPhotoOverride(key, event.target.value)}><option value="inherit">Project default</option><option value="on">On</option><option value="off">Off</option></select></label>;
+              })}
+            </div>
+          )}
         </div>
       </div>
     </div>

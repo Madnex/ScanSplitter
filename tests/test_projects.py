@@ -140,6 +140,7 @@ def test_project_crud():
     assert created["version"] == 1
     assert created["name"] == "My Project"
     assert created["settings"]["detection_mode"] == "scansplitterv4"
+    assert created["settings"]["edge_cleanup_mode"] == "conservative"
     assert created["scans"] == []
 
     # List
@@ -156,13 +157,22 @@ def test_project_crud():
     # Patch name + settings
     patched = client.patch(
         f"/api/projects/{pid}",
-        json={"name": "Renamed", "settings": {"quality": 70, "bogus": "ignored"}},
+        json={
+            "name": "Renamed",
+            "settings": {"quality": 70, "edge_cleanup_mode": "tight", "bogus": "ignored"},
+        },
     )
     assert patched.status_code == 200, patched.text
     body = patched.json()
     assert body["name"] == "Renamed"
     assert body["settings"]["quality"] == 70
+    assert body["settings"]["edge_cleanup_mode"] == "tight"
     assert "bogus" not in body["settings"]
+
+    invalid = client.patch(
+        f"/api/projects/{pid}", json={"settings": {"edge_cleanup_mode": "maximum"}}
+    )
+    assert invalid.status_code == 400
 
     # Delete
     assert client.delete(f"/api/projects/{pid}").json() == {"status": "deleted"}
@@ -175,12 +185,14 @@ def test_old_manifest_gets_restoration_defaults(data_dir):
     manifest = data_dir / "projects" / pid / "project.json"
     payload = json.loads(manifest.read_text())
     payload["settings"].pop("auto_deskew")
+    payload["settings"].pop("edge_cleanup_mode")
+    payload["settings"]["edge_cleanup"] = True
     payload["settings"]["remove_dust"] = True
     payload["scans"] = [{
         "id": "a" * 32,
         "boxes": [{
             "id": "legacy-box", "x": 1, "y": 1, "width": 1, "height": 1,
-            "angle": 0, "restoration": {"remove_dust": True},
+            "angle": 0, "restoration": {"remove_dust": True, "edge_cleanup": False},
         }],
         "metadata": {}, "back_of": None, "ocr_text": "legacy", "ocr_reviewed": True,
     }]
@@ -189,12 +201,14 @@ def test_old_manifest_gets_restoration_defaults(data_dir):
     fetched = client.get(f"/api/projects/{pid}")
     assert fetched.status_code == 200
     assert fetched.json()["settings"]["auto_deskew"] is False
+    assert fetched.json()["settings"]["edge_cleanup_mode"] == "conservative"
     assert fetched.json()["settings"]["restore_color"] is False
     assert "remove_dust" not in fetched.json()["settings"]
     legacy_scan = fetched.json()["scans"][0]
     assert "ocr_text" not in legacy_scan
     assert "ocr_reviewed" not in legacy_scan
     assert "remove_dust" not in legacy_scan["boxes"][0]["restoration"]
+    assert legacy_scan["boxes"][0]["restoration"]["edge_cleanup_mode"] == "off"
 
 
 def test_old_count_mismatch_flag_is_discarded(data_dir):
@@ -601,6 +615,7 @@ def test_crop_preview_and_per_photo_names_and_captions(monkeypatch):
         {
             "id": "b1", "x": 250, "y": 200, "width": 200, "height": 150, "angle": 0,
             "filename": "Kirmes 1952.jpg", "caption": "Kirmes 1952",
+            "restoration": {"edge_cleanup_mode": "off"},
         },
         {"id": "b2", "x": 550, "y": 400, "width": 200, "height": 150, "angle": 0},
     ]
@@ -610,6 +625,7 @@ def test_crop_preview_and_per_photo_names_and_captions(monkeypatch):
     assert updated.status_code == 200, updated.text
     assert updated.json()["boxes"][0]["filename"] == "Kirmes 1952.jpg"
     assert updated.json()["boxes"][0]["caption"] == "Kirmes 1952"
+    assert updated.json()["boxes"][0]["restoration"]["edge_cleanup_mode"] == "off"
 
     renamed = [dict(box) for box in updated.json()["boxes"]]
     renamed[1]["filename"] = "Second photo"
@@ -644,6 +660,7 @@ def test_crop_preview_and_per_photo_names_and_captions(monkeypatch):
     first = next(record for record in manifest if record["box_id"] == "b1")
     second = next(record for record in manifest if record["box_id"] == "b2")
     assert first["metadata"]["caption"] == "Kirmes 1952"
+    assert first["restoration"]["edge_cleanup_mode"] == "off"
     assert second["metadata"]["caption"] is None
 
 

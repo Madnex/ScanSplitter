@@ -71,11 +71,13 @@ Spec: [docs/specs/phase2-archival-metadata.md](specs/phase2-archival-metadata.md
 ## Phase 3 — Non-destructive restoration ✅
 
 Spec: [docs/specs/phase3-nondestructive-restoration.md](specs/phase3-nondestructive-restoration.md)
+and [docs/specs/edge-post-processing.md](specs/edge-post-processing.md)
 
 - ✅ Opt-in auto-deskew for the 1–5° tilt that 90° auto-rotate can't fix.
 - ✅ Color & fade restoration (white-balance yellowed prints). Semantic
   colorization is intentionally excluded; see decisions below.
 - ✅ Opt-in non-generative 2× archival upscale for low-DPI scans.
+- ✅ Conservative post-crop edge cleanup for residual scan whitespace.
 - Always before/after; never overwrite the archival crop. Runs as
   background jobs.
 
