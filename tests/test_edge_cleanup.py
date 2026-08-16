@@ -90,9 +90,7 @@ def test_tight_mode_removes_page_border_and_white_print_margin():
     pixels = np.full((height, width, 3), (236, 211, 162), dtype=np.uint8)
     pixels[12:-12, 12:-12] = (248, 248, 244)
     yy, xx = np.mgrid[:height, :width]
-    photo = np.stack(
-        (30 + xx % 130, 45 + yy % 110, 60 + (xx + yy) % 120), axis=2
-    ).astype(np.uint8)
+    photo = np.stack((30 + xx % 130, 45 + yy % 110, 60 + (xx + yy) % 120), axis=2).astype(np.uint8)
     pixels[36:-36, 42:-42] = photo[36:-36, 42:-42]
     source = Image.fromarray(pixels)
 
@@ -109,9 +107,7 @@ def test_tight_mode_removes_page_border_and_white_print_margin():
 def test_tight_mode_removes_two_pixel_high_resolution_fringe():
     height, width = 900, 1200
     yy, xx = np.mgrid[:height, :width]
-    pixels = np.stack(
-        (25 + xx % 150, 40 + yy % 130, 55 + (xx + yy) % 140), axis=2
-    ).astype(np.uint8)
+    pixels = np.stack((25 + xx % 150, 40 + yy % 130, 55 + (xx + yy) % 140), axis=2).astype(np.uint8)
     pixels[:2] = (250, 250, 246)
     source = Image.fromarray(pixels)
 
@@ -128,9 +124,7 @@ def test_tight_mode_removes_two_pixel_high_resolution_fringe():
 def test_tight_mode_removes_partial_white_wedge():
     height, width = 600, 800
     yy, xx = np.mgrid[:height, :width]
-    pixels = np.stack(
-        (30 + xx % 140, 45 + yy % 120, 60 + (xx + yy) % 130), axis=2
-    ).astype(np.uint8)
+    pixels = np.stack((30 + xx % 140, 45 + yy % 120, 60 + (xx + yy) % 130), axis=2).astype(np.uint8)
     wedge = np.array([[0, 0], [32, 0], [5, 290], [0, 310]], dtype=np.int32)
     cv2.fillConvexPoly(pixels, wedge, (249, 248, 242))
     source = Image.fromarray(pixels)
@@ -145,9 +139,7 @@ def test_tight_mode_removes_partial_white_wedge():
 def test_tight_mode_accepts_color_varied_aged_white_border():
     height, width = 420, 640
     yy, xx = np.mgrid[:height, :width]
-    pixels = np.stack(
-        (25 + xx % 145, 40 + yy % 125, 55 + (xx + yy) % 135), axis=2
-    ).astype(np.uint8)
+    pixels = np.stack((25 + xx % 145, 40 + yy % 125, 55 + (xx + yy) % 135), axis=2).astype(np.uint8)
     for start in range(0, width, 80):
         color = (248, 247, 241) if (start // 80) % 2 == 0 else (242, 229, 185)
         pixels[:14, start : start + 80] = color
@@ -163,9 +155,7 @@ def test_tight_mode_accepts_color_varied_aged_white_border():
 def test_tight_mode_final_shave_removes_low_coverage_pale_remnant():
     height, width = 520, 760
     yy, xx = np.mgrid[:height, :width]
-    pixels = np.stack(
-        (25 + xx % 135, 40 + yy % 115, 55 + (xx + yy) % 125), axis=2
-    ).astype(np.uint8)
+    pixels = np.stack((25 + xx % 135, 40 + yy % 115, 55 + (xx + yy) % 125), axis=2).astype(np.uint8)
     pixels[:7, 180:255] = (249, 248, 243)
     source = Image.fromarray(pixels)
 
@@ -174,3 +164,34 @@ def test_tight_mode_final_shave_removes_low_coverage_pale_remnant():
     assert detail.applied
     assert "top" in detail.sides
     assert tight.height <= source.height - 7
+
+
+def test_tight_mode_snaps_to_photo_boundary_when_scene_is_also_bright():
+    height, width = 900, 1200
+    pixels = np.full((height, width, 3), (245, 238, 216), dtype=np.uint8)
+    pixels[45:-45, 60:-60] = (222, 222, 218)
+    yy, xx = np.mgrid[: height - 90, : width - 120]
+    scene = pixels[45:-45, 60:-60]
+    scene[180:700, 80:360] = (75, 82, 78)
+    scene[420:740, 650:940] = (95, 91, 85)
+    scene[:, :, 0] = np.minimum(255, scene[:, :, 0] + (xx % 7)).astype(np.uint8)
+    source = Image.fromarray(pixels)
+
+    tight, detail = cleanup_photo_edges(source, mode="tight")
+
+    assert set(detail.sides) == {"top", "right", "bottom", "left"}
+    assert 1060 <= tight.width <= 1090
+    assert 790 <= tight.height <= 820
+
+
+def test_tight_mode_ignores_internal_line_without_light_outer_margin():
+    height, width = 600, 800
+    yy, xx = np.mgrid[:height, :width]
+    pixels = np.stack((35 + xx % 90, 45 + yy % 80, 55 + (xx + yy) % 70), axis=2).astype(np.uint8)
+    pixels[55:58] = (235, 235, 230)
+    source = Image.fromarray(pixels)
+
+    tight, detail = cleanup_photo_edges(source, mode="tight")
+
+    assert tight is source
+    assert not detail.applied
