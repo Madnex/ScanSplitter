@@ -587,6 +587,17 @@ export function getProjectScanImageUrl(
   return `${API_BASE}/projects/${projectId}/scans/${scanId}/image${thumb ? "?thumb=true" : ""}`;
 }
 
+/** URL for a rendered preview of one stored project crop. */
+export function getProjectScanCropUrl(
+  projectId: string,
+  scanId: string,
+  boxId: string,
+  version: string = ""
+): string {
+  const suffix = version ? `?v=${encodeURIComponent(version)}` : "";
+  return `${API_BASE}/projects/${projectId}/scans/${scanId}/crops/${encodeURIComponent(boxId)}${suffix}`;
+}
+
 /**
  * PATCH a scan's boxes and/or status. Setting `boxes` re-runs confidence
  * evaluation server-side and updates `flags` accordingly - callers should
@@ -710,6 +721,24 @@ export async function exportProject(
   );
   const safeName = projectName.trim().replace(/[^\w.-]+/g, "_") || "project";
   triggerBrowserDownload(result.download_url, `${safeName}.zip`);
+}
+
+/** Crop and download only one project scan/page, regardless of review status. */
+export async function exportProjectScan(
+  projectId: string,
+  scanId: string,
+  originalName: string,
+  options: { format?: "jpeg" | "png"; quality?: number; include_gps?: boolean } = {},
+  onProgress?: (progress: number, stage: string | null) => void
+): Promise<void> {
+  const result = await runJobAt<{ download_url: string }>(
+    `${API_BASE}/projects/${projectId}/scans/${scanId}/export`,
+    options,
+    "export",
+    { onProgress }
+  );
+  const safeStem = originalName.replace(/\.[^.]+$/, "").trim().replace(/[^\w.-]+/g, "_") || "page";
+  triggerBrowserDownload(result.download_url, `${safeStem}_crops.zip`);
 }
 
 export async function deliverProject(

@@ -567,6 +567,65 @@ def test_export_job_produces_zip_with_expected_names(monkeypatch):
             assert archive.read(name)
 
 
+def test_crop_preview_and_per_photo_names_and_captions(monkeypatch):
+    _install_confidence(monkeypatch, lambda *a, **k: [])
+    monkeypatch.setattr("scansplitter.projects.auto_rotate", lambda image: (image, 0))
+    pid = _create_project()["id"]
+    upload = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[("files", ("Vacation.png", _photo_png(), "image/png"))],
+    )
+    sid = upload.json()["scans"][0]["id"]
+    boxes = [
+        {
+            "id": "b1", "x": 250, "y": 200, "width": 200, "height": 150, "angle": 0,
+            "filename": "Kirmes 1952.jpg", "caption": "Kirmes 1952",
+        },
+        {"id": "b2", "x": 550, "y": 400, "width": 200, "height": 150, "angle": 0},
+    ]
+    updated = client.patch(
+        f"/api/projects/{pid}/scans/{sid}", json={"boxes": boxes, "status": "approved"}
+    )
+    assert updated.status_code == 200, updated.text
+    assert updated.json()["boxes"][0]["filename"] == "Kirmes 1952.jpg"
+    assert updated.json()["boxes"][0]["caption"] == "Kirmes 1952"
+
+    renamed = [dict(box) for box in updated.json()["boxes"]]
+    renamed[1]["filename"] = "Second photo"
+    detail_update = client.patch(
+        f"/api/projects/{pid}/scans/{sid}", json={"boxes": renamed}
+    )
+    assert detail_update.status_code == 200
+    assert detail_update.json()["status"] == "approved"
+    renamed[1].pop("filename")
+    detail_update = client.patch(
+        f"/api/projects/{pid}/scans/{sid}", json={"boxes": renamed}
+    )
+    assert detail_update.json()["status"] == "approved"
+
+    preview = client.get(f"/api/projects/{pid}/scans/{sid}/crops/b1")
+    assert preview.status_code == 200
+    assert preview.headers["content-type"] == "image/jpeg"
+    assert Image.open(io.BytesIO(preview.content)).size == (200, 150)
+
+    client.patch(f"/api/projects/{pid}/scans/{sid}", json={"status": "needs_review"})
+    started = client.post(
+        f"/api/projects/{pid}/scans/{sid}/export",
+        json={"format": "jpeg", "manifest_format": "json"},
+    )
+    job = _wait_for_job(started.json()["job_id"])
+    assert job["status"] == "succeeded", job
+    archive = zipfile.ZipFile(io.BytesIO(client.get(job["result"]["download_url"]).content))
+    assert "Kirmes_1952.jpg" in archive.namelist()
+    assert "Vacation_2.jpg" in archive.namelist()
+    assert b"Kirmes 1952" in archive.read("Kirmes_1952.jpg")
+    manifest = json.loads(archive.read("digitization-manifest.json"))
+    first = next(record for record in manifest if record["box_id"] == "b1")
+    second = next(record for record in manifest if record["box_id"] == "b2")
+    assert first["metadata"]["caption"] == "Kirmes 1952"
+    assert second["metadata"]["caption"] is None
+
+
 def test_restoration_preview_job_returns_inline_jpeg(monkeypatch):
     _install_confidence(monkeypatch, lambda *a, **k: [])
     pid = _create_project()["id"]

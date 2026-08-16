@@ -128,12 +128,14 @@ session to finish:
    scans **CHECK**. Use **Start review** or open a scan from the grid.
 3. In review, adjust the photo boxes when necessary and choose **Approve**.
    Press `Enter` to approve and advance, or use the arrow keys to move through
-   the queue. **Re-detect** runs detection again for the current scan.
+   the queue. The sidebar shows each crop and lets you give it an individual
+   filename or caption. **Crop page** immediately downloads only the current
+   page's crops; **Re-detect** runs detection again for the current scan.
 4. Add collection or per-scan metadata such as dates, places, captions, people,
    album/roll, and event. Front/back pairing links a photographed print's
    reverse side to its front; record any inscription manually in the caption.
 5. Optionally enable non-destructive deskew, color/fade correction, or 2×
-   upscale. **Compare** previews the first photo without
+   upscale. Select a crop and choose **Compare** to preview it without
    changing the stored scan; each photo can override the project defaults.
 6. Export approved photos as JPEG or lossless PNG. Projects can also create a
    PNG/TIFF master, organize files by metadata, include a JSON/CSV manifest, or
@@ -168,9 +170,11 @@ delivery returns `401` or `403`, check that the key is valid and has
 photos being uploaded to Immich's `/api/assets` endpoint.
 
 Flags explain why a scan needs review. They can report that no photo was found,
-a box touches a scan edge, a box has an unusual aspect ratio or size, boxes
-or overlap. Each scan is evaluated independently, so pages may contain
-different numbers of photos.
+a box touches a scan edge, a box has an unusual aspect ratio or size, or boxes
+overlap. Each scan is evaluated independently, so pages may contain different
+numbers of photos. Review mode also shows every cropped photo on the page. Give
+an individual crop a filename or record a written note such as "Kirmes 1952";
+blank filenames continue to use the automatic source-name and photo-index rule.
 Flags are warnings rather than hard errors: correct the boxes if needed, then
 approve the scan. Only approved and automatically approved scans are exported.
 

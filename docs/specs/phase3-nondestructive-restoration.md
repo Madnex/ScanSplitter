@@ -54,8 +54,9 @@ Any stored photo box may add a sparse override map:
 ```
 
 Overrides are submitted through the existing
-`PATCH /api/projects/{pid}/scans/{sid}` `boxes` array. The box normalizer keeps
-only `auto_deskew`, `restore_color`, and `upscale_2x`, coercing their values to
+`PATCH /api/projects/{pid}/scans/{sid}` `boxes` array. Alongside the optional
+per-photo filename and caption, the box normalizer keeps only `auto_deskew`,
+`restore_color`, and `upscale_2x` restoration keys, coercing their values to
 booleans; other override keys are discarded. At execution,
 `{**project.settings, **box.restoration}` is used.
 
@@ -82,7 +83,7 @@ facts.
 | Method & path | Body | Returns / errors |
 |---|---|---|
 | `PATCH /api/projects/{pid}` | `{settings: {auto_deskew?, restore_color?, upscale_2x?}}` | Full project JSON with merged settings. Missing project is `404`. |
-| `PATCH /api/projects/{pid}/scans/{sid}` | `{boxes: [{id,x,y,width,height,angle,restoration?}, ...], status?}` | Updated scan with normalized per-box overrides. Missing project/scan is `404`. Editing boxes without an explicit status returns the scan to `needs_review`. |
+| `PATCH /api/projects/{pid}/scans/{sid}` | `{boxes: [{id,x,y,width,height,angle,filename?,caption?,restoration?}, ...], status?}` | Updated scan with normalized per-box details. Missing project/scan is `404`. Geometry changes without an explicit status return the scan to `needs_review`; descriptive/restoration-only changes preserve status. |
 | `POST /api/projects/{pid}/scans/{sid}/restoration-preview` | `{box_id?: string \| null}` | `202 {"job_id"}`. `box_id` selects any stored box; null/omitted selects the first. No boxes is `400`; an unknown box id is `404`. The job result contains `{detail,download_url}` and the download is an inline `image/jpeg` labeled side-by-side comparison. An empty crop fails the job with `400`. |
 | `POST /api/projects/{pid}/export` | Phase 4 export body | `202 {"job_id"}`; applies effective per-box restoration to every exported crop. |
 

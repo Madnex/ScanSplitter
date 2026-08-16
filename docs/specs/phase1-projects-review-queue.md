@@ -67,8 +67,10 @@ untouched; Projects is an additional top-level mode.
 
 - `page`: null for images; 1-based page number when the scan came from a
   PDF (each PDF page becomes its own scan entry).
-- `boxes`: same shape as the existing detect/crop API
-  (`{id, x, y, width, height, angle}` — center-based, like `BoundingBox`).
+- `boxes`: center-based crop geometry
+  (`{id, x, y, width, height, angle}`), plus optional per-photo `filename`,
+  `caption`, and restoration overrides. Empty filename/caption values are not
+  stored. Filename is limited to 255 characters and caption to 2,000.
 - `status` lifecycle:
   `pending → detecting → (auto_approved | needs_review | failed)`;
   user actions move any of the last three to `approved` (or back to
@@ -126,18 +128,21 @@ All endpoints follow existing conventions: sync `def` (threadpool), 404 via
 | `DELETE /api/projects/{pid}` | – | `{"status":"deleted"}` |
 | `POST /api/projects/{pid}/scans` | multipart, field `files` (repeatable); query `detect` (default `true`) | `{"scans":[scan...], "jobs":[{scan_id, job_id}]}` — PDFs expand to one scan per page; when `detect=true`, one detect job per new scan is queued |
 | `GET  /api/projects/{pid}/scans/{sid}/image` | query `thumb` (bool) | image bytes (thumbnail is cached 320px JPEG) |
-| `PATCH /api/projects/{pid}/scans/{sid}` | `{boxes?, status?}` | updated scan JSON. Setting `boxes` re-runs `evaluate_scan` and updates flags; allowed `status` values from client: `approved`, `needs_review` |
+| `GET  /api/projects/{pid}/scans/{sid}/crops/{box_id}` | – | On-demand JPEG preview of the stored crop geometry with project auto-rotation applied; unknown box is `404` |
+| `PATCH /api/projects/{pid}/scans/{sid}` | `{boxes?, status?}` | updated scan JSON. Setting `boxes` re-runs `evaluate_scan` and updates flags; geometry changes without an explicit status return the scan to `needs_review`, while filename/caption/restoration-only changes preserve status. Allowed client statuses: `approved`, `needs_review` |
 | `DELETE /api/projects/{pid}/scans/{sid}` | – | `{"status":"deleted"}` |
 | `POST /api/projects/{pid}/scans/{sid}/detect` | – | `202 {"job_id"}` (re-detect one scan; job result also persisted into the project) |
+| `POST /api/projects/{pid}/scans/{sid}/export` | Project export options | `202 {"job_id"}` — crops only this scan/page into a ZIP, including while it still needs review; no boxes is `400` |
 | `POST /api/projects/{pid}/detect-pending` | Query: `redetect_all=false` | `202 {"jobs":[{scan_id, job_id}]}`. Default: all `pending`/`failed` scans plus `needs_review` scans with no boxes. With `redetect_all=true`, replaces detection boxes and review state for every scan. |
 | `POST /api/projects/{pid}/export` | `{format?, quality?, include_gps?}` (defaults from project settings) | `202 {"job_id"}` — job crops every **approved + auto_approved** scan's boxes and zips; result `{download_url}` like the existing export job. Note: project scans are re-encoded on ingest and carry no EXIF, so `include_gps` is accepted for API parity but is a no-op in Phase 1 (EXIF-carrying project exports arrive with Phase 2 metadata). |
 
 Job integration: project detect jobs reuse `jobs.submit_job` with kind
 `"detect"`; on success the worker persists boxes + flags + status into the
 project before marking the job succeeded, so a poller can rely on either
-the job result or a project re-fetch. Naming inside the export zip:
-`{original_name_stem}_{photo_index}.{ext}` where `photo_index` is 1-based
-per box within its scan; cross-scan stem collisions get `_2`/`_3` suffixes.
+the job result or a project re-fetch. An optional per-photo filename supplies
+the export stem after sanitization. With no custom filename, naming uses
+`{original_name_stem}_{photo_index}.{ext}` where `photo_index` is 1-based per
+box within its scan; cross-scan stem collisions get `_2`/`_3` suffixes.
 PDF-page scans share the PDF filename as `original_name` (all pages same
 stem) and rely on collision-suffixing to disambiguate.
 
@@ -160,7 +165,10 @@ Screens:
    every ~1.5s while any scan is pending/detecting; stop when idle.
 3. **Review mode** — entered from the grid (or "Start review" button which
    walks `needs_review` scans in order). Full-width scan image with the
-   existing `ImageCanvas` box editor; flag messages listed beside it.
+   existing `ImageCanvas` box editor; the sidebar shows every rendered crop
+   with optional filename and caption fields plus flag messages. **Crop page**
+   downloads a ZIP containing only the current page's crops without waiting for
+   project-wide batch export.
    Keyboard (with the standard input-focus guard):
    - `Enter` approve → advance to next needs_review scan
    - `→` / `←` next / previous scan (any status)

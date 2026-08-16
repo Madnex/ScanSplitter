@@ -497,12 +497,15 @@ class ProjectStore:
 
             if boxes is not None:
                 clean_boxes = [_normalize_box(b) for b in boxes]
+                geometry_changed = [_box_geometry(box) for box in clean_boxes] != [
+                    _box_geometry(box) for box in scan["boxes"]
+                ]
                 scan["boxes"] = clean_boxes
                 scan["detected_count"] = len(clean_boxes)
                 scan["flags"] = _run_confidence(clean_boxes, scan["width"], scan["height"])
-                # Editing boxes returns the scan to the review queue unless the
-                # client simultaneously supplies an explicit status.
-                if status is None:
+                # Only crop geometry affects review confidence. Descriptive
+                # fields and restoration overrides preserve approval state.
+                if status is None and geometry_changed:
                     scan["status"] = "needs_review"
 
             if status is not None:
@@ -530,7 +533,8 @@ class ProjectStore:
 
     def scan_image_bytes(self, pid: str, sid: str, thumb: bool = False) -> tuple[bytes, str]:
         pdir = self._project_dir(pid)
-        scan = self._find_scan(self._read(pid), sid)
+        data = self._read(pid)
+        scan = self._find_scan(data, sid)
         stored = pdir / scan["stored_file"]
         if not stored.exists():
             raise HTTPException(status_code=410, detail="Scan image no longer exists")
@@ -546,6 +550,34 @@ class ProjectStore:
             thumb_path.parent.mkdir(exist_ok=True)
             image.save(thumb_path, "JPEG", quality=85)
         return thumb_path.read_bytes(), "image/jpeg"
+
+    def crop_image_bytes(self, pid: str, sid: str, box_id: str) -> bytes:
+        """Render a lightweight JPEG preview for one stored photo box."""
+        import cv2
+        import numpy as np
+
+        pdir = self._project_dir(pid)
+        data = self._read(pid)
+        scan = self._find_scan(data, sid)
+        box = next((item for item in scan["boxes"] if item["id"] == box_id), None)
+        if box is None:
+            raise HTTPException(status_code=404, detail="Photo box not found")
+        stored = pdir / scan["stored_file"]
+        if not stored.exists():
+            raise HTTPException(status_code=410, detail="Scan image no longer exists")
+
+        image = Image.open(stored).convert("RGB")
+        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
+        cropped = crop_rotated_region(cv_image, _box_to_region(box, image.width, image.height))
+        if cropped.size == 0:
+            raise HTTPException(status_code=400, detail="Photo box produced an empty crop")
+        preview = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
+        if data["settings"]["auto_rotate"]:
+            preview, _ = auto_rotate(preview)
+        preview.thumbnail((480, 480))
+        output = io.BytesIO()
+        preview.save(output, "JPEG", quality=88)
+        return output.getvalue()
 
     # --- Detection jobs ---
 
@@ -636,6 +668,8 @@ class ProjectStore:
         master_format: str | None = None,
         organize_folders: bool | None = None,
         manifest_format: str | None = None,
+        scan_ids: set[str] | None = None,
+        include_unapproved: bool = False,
     ) -> str:
         data = self._read(pid)  # validates the project exists up front
         settings = data["settings"]
@@ -650,11 +684,38 @@ class ProjectStore:
         def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
             payload = self._build_export_zip(
                 pid, out_format, out_quality, out_include_gps, progress, cancelled,
-                out_master, out_organize, out_manifest,
+                out_master, out_organize, out_manifest, scan_ids, include_unapproved,
             )
             return {"__download_bytes": payload}
 
         return submit_job("export", pid, worker).job_id
+
+    def submit_scan_export_job(
+        self,
+        pid: str,
+        sid: str,
+        fmt: str | None = None,
+        quality: int | None = None,
+        include_gps: bool | None = None,
+        master_format: str | None = None,
+        organize_folders: bool | None = None,
+        manifest_format: str | None = None,
+    ) -> str:
+        """Export one review page regardless of its current approval state."""
+        scan = self._find_scan(self._read(pid), sid)
+        if not scan["boxes"]:
+            raise HTTPException(status_code=400, detail="Scan has no photo boxes to crop")
+        return self.submit_export_job(
+            pid,
+            fmt=fmt,
+            quality=quality,
+            include_gps=include_gps,
+            master_format=master_format,
+            organize_folders=organize_folders,
+            manifest_format=manifest_format,
+            scan_ids={sid},
+            include_unapproved=True,
+        )
 
     def submit_delivery_job(self, pid: str, target: str, config: dict[str, Any]) -> str:
         """Build canonical artifacts and send them to one explicit target."""
@@ -754,6 +815,8 @@ class ProjectStore:
         master_format: str | None = None,
         organize_folders: bool = False,
         manifest_format: str | None = None,
+        scan_ids: set[str] | None = None,
+        include_unapproved: bool = False,
     ) -> bytes:
         import zipfile
 
@@ -767,7 +830,12 @@ class ProjectStore:
         auto_rotate_enabled = bool(data["settings"]["auto_rotate"])
         ext = "png" if out_format == "png" else "jpg"
 
-        exportable = [s for s in data["scans"] if s["status"] in _EXPORTABLE_STATUSES]
+        exportable = [
+            scan
+            for scan in data["scans"]
+            if (include_unapproved or scan["status"] in _EXPORTABLE_STATUSES)
+            and (scan_ids is None or scan["id"] in scan_ids)
+        ]
 
         buffer = io.BytesIO()
         used_names: set[str] = set()
@@ -802,24 +870,29 @@ class ProjectStore:
                     effective_settings = {**data["settings"], **box.get("restoration", {})}
                     crop_pil, _ = apply_restorations(crop_pil, effective_settings)
 
+                    crop_metadata = dict(metadata)
+                    if box.get("caption"):
+                        crop_metadata["caption"] = box["caption"]
                     payload = _encode_image(
-                        crop_pil, ext, out_quality, metadata, include_gps
+                        crop_pil, ext, out_quality, crop_metadata, include_gps
                     )
 
-                    base = f"{folder}/{stem}_{photo_index}" if folder else f"{stem}_{photo_index}"
+                    default_stem = f"{stem}_{photo_index}"
+                    photo_stem = _sanitize_stem(box["filename"]) if box.get("filename") else default_stem
+                    base = f"{folder}/{photo_stem}" if folder else photo_stem
                     name = _unique_name(base, ext, used_names)
                     zf.writestr(name, payload)
                     master_name = None
                     if master_format in MASTER_FORMATS:
                         master_ext = "png" if master_format == "png" else "tif"
-                        master_base = f"masters/{folder}/{stem}_{photo_index}" if folder else f"masters/{stem}_{photo_index}"
+                        master_base = f"masters/{folder}/{photo_stem}" if folder else f"masters/{photo_stem}"
                         master_name = _unique_name(master_base, master_ext, used_names)
                         zf.writestr(
                             master_name,
-                            _encode_image(crop_pil, master_ext, out_quality, metadata, include_gps),
+                            _encode_image(crop_pil, master_ext, out_quality, crop_metadata, include_gps),
                         )
                     if wants_manifest:
-                        manifest_metadata = dict(metadata)
+                        manifest_metadata = dict(crop_metadata)
                         if not include_gps:
                             manifest_metadata.pop("latitude", None)
                             manifest_metadata.pop("longitude", None)
@@ -887,7 +960,28 @@ def _normalize_box(box: dict) -> dict:
             for key, value in overrides.items()
             if key in {"auto_deskew", "restore_color", "upscale_2x"}
         }
+    for field, limit in (("filename", 255), ("caption", 2000)):
+        value = box.get(field)
+        if value is not None and not isinstance(value, str):
+            raise HTTPException(status_code=400, detail=f"Box {field} must be text")
+        value = value.strip() if isinstance(value, str) else ""
+        if len(value) > limit:
+            raise HTTPException(status_code=400, detail=f"Box {field} is too long")
+        if value:
+            normalized[field] = value
     return normalized
+
+
+def _box_geometry(box: dict) -> tuple:
+    """Stable geometry identity used to decide whether review is invalidated."""
+    return (
+        str(box["id"]),
+        float(box["x"]),
+        float(box["y"]),
+        float(box["width"]),
+        float(box["height"]),
+        float(box.get("angle", 0.0)),
+    )
 
 
 def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
@@ -918,8 +1012,7 @@ def _count_statuses(scans: list[dict]) -> dict:
 def _sanitize_stem(name: str) -> str:
     """A filesystem-safe stem from an original filename (no extension)."""
     stem = Path(name).stem or "photo"
-    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", stem).strip("_") or "photo"
-    return cleaned
+    return sanitize_name(stem, default="photo", allow_dot=False).strip("_") or "photo"
 
 
 def _metadata_folder(metadata: dict) -> str:

@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeft, ArrowRight, Check, Eye, Loader2, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, ArrowRight, Check, Download, Eye, Loader2, RefreshCw, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ImageCanvas } from "@/components/ImageCanvas";
 import { useProject } from "@/hooks/useProject";
 import { useReviewQueue } from "@/hooks/useReviewQueue";
-import { detectProjectScan, getProject, getProjectScanImageUrl, patchProjectScan, previewProjectRestoration } from "@/lib/api";
+import { detectProjectScan, exportProjectScan, getProject, getProjectScanCropUrl, getProjectScanImageUrl, patchProjectScan, previewProjectRestoration } from "@/lib/api";
 import { StatusChip } from "@/components/projects/StatusChip";
 import { cn } from "@/lib/utils";
 import type { BoundingBox } from "@/types";
@@ -25,7 +25,17 @@ function toBoundingBox(box: ProjectBox): BoundingBox {
   return { id: box.id, centerX: box.x, centerY: box.y, width: box.width, height: box.height, angle: box.angle };
 }
 function toProjectBox(box: BoundingBox, saved?: ProjectBox): ProjectBox {
-  return { id: box.id, x: box.centerX, y: box.centerY, width: box.width, height: box.height, angle: box.angle, ...(saved?.restoration ? { restoration: saved.restoration } : {}) };
+  return {
+    id: box.id,
+    x: box.centerX,
+    y: box.centerY,
+    width: box.width,
+    height: box.height,
+    angle: box.angle,
+    ...(saved?.filename ? { filename: saved.filename } : {}),
+    ...(saved?.caption ? { caption: saved.caption } : {}),
+    ...(saved?.restoration ? { restoration: saved.restoration } : {}),
+  };
 }
 function boxesEqual(a: ProjectBox[], b: ProjectBox[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
@@ -39,9 +49,12 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   const currentScan = queue.currentScan;
 
   const [boxes, setBoxes] = useState<BoundingBox[]>([]);
+  const [photoDetails, setPhotoDetails] = useState<Record<string, { filename: string; caption: string }>>({});
+  const [selectedBoxId, setSelectedBoxId] = useState<string | null>(null);
   const savedBoxesRef = useRef<ProjectBox[]>([]);
   const [isSaving, setIsSaving] = useState(false);
   const [isDetecting, setIsDetecting] = useState(false);
+  const [isCroppingPage, setIsCroppingPage] = useState(false);
   const [isPreviewing, setIsPreviewing] = useState(false);
   const [preview, setPreview] = useState<{ imageUrl: string; detail: string } | null>(null);
   const [canvasFocused, setCanvasFocused] = useState(false);
@@ -50,9 +63,26 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   const previewAbortRef = useRef<AbortController | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const currentProjectBoxes = useCallback(
-    () => boxes.map((box) => toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id))),
-    [boxes]
+    () => boxes.map((box) => {
+      const converted = toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id));
+      const details = photoDetails[box.id];
+      if (!details) return converted;
+      return {
+        ...converted,
+        ...(details.filename.trim() ? { filename: details.filename } : { filename: undefined }),
+        ...(details.caption.trim() ? { caption: details.caption } : { caption: undefined }),
+      };
+    }),
+    [boxes, photoDetails]
   );
+
+  const syncPhotoDetails = useCallback((projectBoxes: ProjectBox[]) => {
+    setPhotoDetails(Object.fromEntries(projectBoxes.map((box) => [box.id, {
+      filename: box.filename ?? "",
+      caption: box.caption ?? "",
+    }])));
+    setSelectedBoxId((current) => projectBoxes.some((box) => box.id === current) ? current : (projectBoxes[0]?.id ?? null));
+  }, []);
 
   const closePreview = useCallback(() => {
     previewAbortRef.current?.abort();
@@ -87,9 +117,10 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     const timeoutId = setTimeout(() => {
       setBoxes(scan.boxes.map(toBoundingBox));
       savedBoxesRef.current = scan.boxes;
+      syncPhotoDetails(scan.boxes);
     }, 0);
     return () => clearTimeout(timeoutId);
-  }, [scanId, scans]);
+  }, [scanId, scans, syncPhotoDetails]);
 
   // Persist box edits if they differ from the last-saved server copy.
   // Returns the (possibly updated) scan status so callers can decide what
@@ -103,12 +134,37 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
       const updated = await patchProjectScan(projectId, currentScan.id, { boxes: current });
       updateScan(updated.id, () => updated);
       savedBoxesRef.current = updated.boxes;
+      syncPhotoDetails(updated.boxes);
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to save box edits", "error");
     } finally {
       setIsSaving(false);
     }
-  }, [currentProjectBoxes, currentScan, projectId, updateScan, showToast]);
+  }, [currentProjectBoxes, currentScan, projectId, updateScan, showToast, syncPhotoDetails]);
+
+  const savePhotoDetails = useCallback(async (
+    boxId: string,
+    details: { filename: string; caption: string }
+  ): Promise<void> => {
+    if (!currentScan) return;
+    const current = currentProjectBoxes();
+    const target = current.find((box) => box.id === boxId);
+    if (!target) return;
+    target.filename = details.filename.trim() || undefined;
+    target.caption = details.caption.trim() || undefined;
+    if (boxesEqual(current, savedBoxesRef.current)) return;
+    setIsSaving(true);
+    try {
+      const updated = await patchProjectScan(projectId, currentScan.id, { boxes: current });
+      updateScan(updated.id, () => updated);
+      savedBoxesRef.current = updated.boxes;
+      syncPhotoDetails(updated.boxes);
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to save photo details", "error");
+    } finally {
+      setIsSaving(false);
+    }
+  }, [currentProjectBoxes, currentScan, projectId, showToast, syncPhotoDetails, updateScan]);
 
   const goTo = useCallback(
     async (targetId: string | null) => {
@@ -133,6 +189,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
       });
       updateScan(updated.id, () => updated);
       savedBoxesRef.current = updated.boxes;
+      syncPhotoDetails(updated.boxes);
       const next = queue.nextNeedsReviewId();
       if (next) {
         setScanId(next);
@@ -145,7 +202,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     } finally {
       setIsSaving(false);
     }
-  }, [currentProjectBoxes, currentScan, projectId, updateScan, queue, showToast, onBack]);
+  }, [currentProjectBoxes, currentScan, projectId, updateScan, queue, showToast, onBack, syncPhotoDetails]);
 
   const handleRedetect = useCallback(async () => {
     if (!currentScan) return;
@@ -166,6 +223,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
         // scan already being viewed needs its boxes applied here directly.
         setBoxes(freshScan.boxes.map(toBoundingBox));
         savedBoxesRef.current = freshScan.boxes;
+        syncPhotoDetails(freshScan.boxes);
       }
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Re-detect failed", "error");
@@ -175,7 +233,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
         setIsDetecting(false);
       }
     }
-  }, [currentScan, projectId, updateScan, showToast]);
+  }, [currentScan, projectId, updateScan, showToast, syncPhotoDetails]);
 
   const handlePreview = useCallback(async () => {
     if (!currentScan || boxes.length === 0) return;
@@ -186,7 +244,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
     setIsPreviewing(true);
     try {
       const result = await previewProjectRestoration(
-        projectId, currentScan.id, boxes[0].id, controller.signal
+        projectId, currentScan.id, selectedBoxId ?? boxes[0].id, controller.signal
       );
       previewUrlRef.current = result.imageUrl;
       setPreview(result);
@@ -200,27 +258,42 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
         setIsPreviewing(false);
       }
     }
-  }, [boxes, closePreview, currentScan, persistBoxesIfDirty, projectId, showToast]);
+  }, [boxes, closePreview, currentScan, persistBoxesIfDirty, projectId, selectedBoxId, showToast]);
 
   const handleBack = useCallback(() => {
     void persistBoxesIfDirty().finally(onBack);
   }, [persistBoxesIfDirty, onBack]);
 
-  const setFirstPhotoOverride = useCallback(async (key: "auto_deskew" | "restore_color" | "upscale_2x", value: string) => {
+  const handleCropPage = useCallback(async () => {
+    if (!currentScan || boxes.length === 0) return;
+    setIsCroppingPage(true);
+    try {
+      await persistBoxesIfDirty();
+      await exportProjectScan(projectId, currentScan.id, currentScan.original_name);
+      showToast(`Downloaded ${boxes.length} crop${boxes.length === 1 ? "" : "s"} from this page`, "success");
+    } catch (err) {
+      showToast(err instanceof Error ? err.message : "Failed to crop this page", "error");
+    } finally {
+      setIsCroppingPage(false);
+    }
+  }, [boxes.length, currentScan, persistBoxesIfDirty, projectId, showToast]);
+
+  const setSelectedPhotoOverride = useCallback(async (key: "auto_deskew" | "restore_color" | "upscale_2x", value: string) => {
     if (!currentScan || boxes.length === 0) return;
     const current = currentProjectBoxes();
-    const first = current[0];
-    const restoration = { ...(first.restoration ?? {}) };
+    const selected = current.find((box) => box.id === selectedBoxId) ?? current[0];
+    const restoration = { ...(selected.restoration ?? {}) };
     if (value === "inherit") delete restoration[key]; else restoration[key] = value === "on";
-    first.restoration = restoration;
+    selected.restoration = restoration;
     setIsSaving(true);
     try {
       const updated = await patchProjectScan(projectId, currentScan.id, { boxes: current });
       updateScan(updated.id, () => updated);
       savedBoxesRef.current = updated.boxes;
+      syncPhotoDetails(updated.boxes);
     } catch (err) { showToast(err instanceof Error ? err.message : "Failed to save override", "error"); }
     finally { setIsSaving(false); }
-  }, [boxes.length, currentProjectBoxes, currentScan, projectId, showToast, updateScan]);
+  }, [boxes.length, currentProjectBoxes, currentScan, projectId, selectedBoxId, showToast, syncPhotoDetails, updateScan]);
 
   // Keyboard map (standard input-focus guard, matching ImageCanvas/App).
   useEffect(() => {
@@ -277,6 +350,8 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   }
 
   const imageUrl = getProjectScanImageUrl(projectId, currentScan.id, false);
+  const projectBoxes = currentProjectBoxes();
+  const selectedProjectBox = projectBoxes.find((box) => box.id === selectedBoxId) ?? projectBoxes[0];
 
   return (
     <div className="flex-1 flex flex-col min-h-0">
@@ -308,6 +383,10 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
             {isPreviewing ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Eye className="w-4 h-4 mr-1" />}
             Compare
           </Button>
+          <Button size="sm" variant="outline" onClick={() => void handleCropPage()} disabled={isCroppingPage || boxes.length === 0}>
+            {isCroppingPage ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <Download className="w-4 h-4 mr-1" />}
+            Crop page
+          </Button>
           <Button size="sm" onClick={() => void handleApprove()} disabled={isSaving} title="Approve & next (Enter)">
             <Check className="w-4 h-4 mr-1" />
             Approve
@@ -321,13 +400,13 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
               <X className="h-5 w-5" />
             </button>
             <img src={preview.imageUrl} alt={`Before and after restoration comparison: ${preview.detail}`} className="max-h-[82dvh] max-w-full rounded" />
-            <p className="px-1 pt-2 text-sm text-muted-foreground">{preview.detail}. Preview uses the first photo box.</p>
+            <p className="px-1 pt-2 text-sm text-muted-foreground">{preview.detail}. Preview uses the selected photo.</p>
           </div>
         </div>
       )}
 
       {/* Body: canvas + flags */}
-      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_280px] gap-4 min-h-0">
+      <div className="flex-1 grid grid-cols-1 lg:grid-cols-[1fr_360px] gap-4 min-h-0">
         <div
           ref={canvasWrapperRef}
           tabIndex={-1}
@@ -340,6 +419,54 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
         </div>
 
         <div className="overflow-y-auto">
+          <h3 className="text-sm font-semibold mb-2">Photos on this page ({boxes.length})</h3>
+          {projectBoxes.length === 0 ? (
+            <p className="text-sm text-muted-foreground">No photo crops detected.</p>
+          ) : (
+            <div className="space-y-3">
+              {projectBoxes.map((box, index) => {
+                const details = photoDetails[box.id] ?? { filename: "", caption: "" };
+                const version = `${box.x},${box.y},${box.width},${box.height},${box.angle}`;
+                return (
+                  <section
+                    key={box.id}
+                    className={cn("rounded-lg border p-2.5", selectedProjectBox?.id === box.id && "border-primary ring-1 ring-primary")}
+                    onClick={() => setSelectedBoxId(box.id)}
+                  >
+                    <img
+                      src={getProjectScanCropUrl(projectId, currentScan.id, box.id, version)}
+                      alt={`Cropped photo ${index + 1}`}
+                      className="mb-2 h-32 w-full rounded-md bg-muted object-contain"
+                    />
+                    <label className="block text-xs font-medium">
+                      Filename
+                      <input
+                        className="mt-1 h-8 w-full rounded border bg-background px-2 text-sm"
+                        value={details.filename}
+                        maxLength={255}
+                        placeholder={`${currentScan.original_name.replace(/\.[^.]+$/, "")}_${index + 1}`}
+                        onChange={(event) => setPhotoDetails((current) => ({ ...current, [box.id]: { ...details, filename: event.target.value } }))}
+                        onBlur={(event) => void savePhotoDetails(box.id, { ...details, filename: event.currentTarget.value })}
+                      />
+                    </label>
+                    <label className="mt-2 block text-xs font-medium">
+                      Caption or written note
+                      <textarea
+                        className="mt-1 min-h-16 w-full rounded border bg-background px-2 py-1.5 text-sm"
+                        value={details.caption}
+                        maxLength={2000}
+                        placeholder="e.g. Kirmes 1952"
+                        onChange={(event) => setPhotoDetails((current) => ({ ...current, [box.id]: { ...details, caption: event.target.value } }))}
+                        onBlur={(event) => void savePhotoDetails(box.id, { ...details, caption: event.currentTarget.value })}
+                      />
+                    </label>
+                  </section>
+                );
+              })}
+            </div>
+          )}
+
+          <div className="mt-6 border-t pt-4">
           <h3 className="text-sm font-semibold mb-2">
             Flags {currentScan.flags.length > 0 && `(${currentScan.flags.length})`}
           </h3>
@@ -357,7 +484,8 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
               ))}
             </ul>
           )}
-          {boxes.length > 0 && <div className="mt-6 border-t pt-4"><h3 className="text-sm font-semibold">First photo restoration</h3><p className="mb-2 text-xs text-muted-foreground">Override project defaults for this crop.</p>{([['auto_deskew','Deskew'],['restore_color','Color & fade'],['upscale_2x','2× upscale']] as Array<[keyof Pick<ProjectSettings, "auto_deskew" | "restore_color" | "upscale_2x">, string]>).map(([key, label]) => { const value = currentScan.boxes[0]?.restoration?.[key]; return <label key={key} className="mb-2 flex items-center justify-between gap-2 text-xs"><span>{label}</span><select className="h-8 rounded border bg-background px-2" value={value === undefined ? "inherit" : value ? "on" : "off"} onChange={(event) => void setFirstPhotoOverride(key, event.target.value)}><option value="inherit">Project default</option><option value="on">On</option><option value="off">Off</option></select></label>; })}</div>}
+          </div>
+          {selectedProjectBox && <div className="mt-6 border-t pt-4"><h3 className="text-sm font-semibold">Selected photo restoration</h3><p className="mb-2 text-xs text-muted-foreground">Override project defaults for this crop.</p>{([['auto_deskew','Deskew'],['restore_color','Color & fade'],['upscale_2x','2× upscale']] as Array<[keyof Pick<ProjectSettings, "auto_deskew" | "restore_color" | "upscale_2x">, string]>).map(([key, label]) => { const value = selectedProjectBox.restoration?.[key]; return <label key={key} className="mb-2 flex items-center justify-between gap-2 text-xs"><span>{label}</span><select className="h-8 rounded border bg-background px-2" value={value === undefined ? "inherit" : value ? "on" : "off"} onChange={(event) => void setSelectedPhotoOverride(key, event.target.value)}><option value="inherit">Project default</option><option value="on">On</option><option value="off">Off</option></select></label>; })}</div>}
         </div>
       </div>
     </div>

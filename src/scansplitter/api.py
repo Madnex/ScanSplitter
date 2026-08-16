@@ -1385,6 +1385,15 @@ def get_project_scan_image(pid: str, sid: str, thumb: bool = False):
     return Response(content=payload, media_type=media_type)
 
 
+@app.get("/api/projects/{pid}/scans/{sid}/crops/{box_id}")
+def get_project_scan_crop(pid: str, sid: str, box_id: str):
+    """Render a JPEG preview of one detected crop."""
+    return Response(
+        content=get_project_store().crop_image_bytes(pid, sid, box_id),
+        media_type="image/jpeg",
+    )
+
+
 @app.patch("/api/projects/{pid}/scans/{sid}")
 def patch_project_scan(pid: str, sid: str, request: ScanPatchRequest):
     """Update a scan's boxes (re-runs confidence) and/or review status."""
@@ -1452,6 +1461,22 @@ def export_project(pid: str, request: ProjectExportRequest):
     job_id = store.submit_export_job(
         pid, fmt=request.format, quality=request.quality, include_gps=request.include_gps,
         master_format=request.master_format, organize_folders=request.organize_folders,
+        manifest_format=request.manifest_format,
+    )
+    return {"job_id": job_id}
+
+
+@app.post("/api/projects/{pid}/scans/{sid}/export", status_code=202)
+def export_project_scan(pid: str, sid: str, request: ProjectExportRequest):
+    """Crop and zip only the selected review page as a background job."""
+    job_id = get_project_store().submit_scan_export_job(
+        pid,
+        sid,
+        fmt=request.format,
+        quality=request.quality,
+        include_gps=request.include_gps,
+        master_format=request.master_format,
+        organize_folders=request.organize_folders,
         manifest_format=request.manifest_format,
     )
     return {"job_id": job_id}

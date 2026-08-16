@@ -90,6 +90,8 @@ segment; PNG uses `XML:com.adobe.xmp`; TIFF uses tag 700.
 - XMP carries ScanSplitter `representativeDate`, `dateLabel`, and
   `datePrecision`; Photoshop location; Dublin Core caption; and keywords
   `Person: <name>`, `Event: <event>`, and `Album: <album>`.
+- A non-empty per-photo box caption overrides the scan-level caption for that
+  crop only. Other metadata continues to come from the scan.
 - Manifest JSON includes the metadata object, but removes `latitude` and
   `longitude` unless that same request has `include_gps: true`.
 - With no metadata, no synthetic EXIF/XMP is added.
@@ -101,10 +103,11 @@ all scans. It submits only dirty fields, so untouched values remain intact.
 Fields cover date/precision/wording, place and coordinates, caption, people,
 event, and album. Place search is a button action and identifies Nominatim.
 
-The front/back editor selects and pairs two scans. It directs users to record
-inscriptions manually in the front scan's caption. Thumbnail metadata markers
-show coverage. The UI exposes an Include GPS export/delivery default and
-explains that coordinates are omitted unless it is enabled.
+The review sidebar provides a crop-specific caption for inscriptions or other
+notes that apply to only one photo. The front/back editor remains available for
+pairing scans. Thumbnail metadata markers show scan-level coverage. The UI
+exposes an Include GPS export/delivery default and explains that coordinates
+are omitted unless it is enabled.
 
 ## Testing
 
@@ -118,4 +121,4 @@ explains that coordinates are omitted unless it is enabled.
 ## Non-goals
 
 Automatic geocoding, built-in OCR, face recognition, controlled-vocabulary
-person records, per-crop metadata overrides, and metadata sidecar files.
+person records, per-crop overrides beyond caption, and metadata sidecar files.

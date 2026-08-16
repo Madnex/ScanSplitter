@@ -25,6 +25,8 @@ export interface ProjectBox {
   width: number;
   height: number;
   angle: number; // degrees
+  filename?: string;
+  caption?: string;
   restoration?: Partial<Pick<ProjectSettings, "auto_deskew" | "restore_color" | "upscale_2x">>;
 }
 

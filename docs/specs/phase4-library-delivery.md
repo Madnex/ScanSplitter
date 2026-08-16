@@ -39,11 +39,17 @@ folder, Immich, or Nextcloud.
 
 The job result exposes `download_url`; that URL returns `application/zip`.
 
+`POST /api/projects/{pid}/scans/{sid}/export` accepts the same body and returns
+the same job contract, but includes only the selected scan's boxes regardless
+of review status. It returns `400` when the scan has no boxes. This powers the
+review screen's immediate **Crop page** download; project-wide export remains
+restricted to approved and auto-approved scans.
+
 ## ZIP layout and naming
 
 ```text
-<album>/<year>/<event>/<source_stem>_<box_index>.jpg|png
-masters/<album>/<year>/<event>/<source_stem>_<box_index>.png|tif
+<album>/<year>/<event>/<custom_photo_name | source_stem_box_index>.jpg|png
+masters/<album>/<year>/<event>/<custom_photo_name | source_stem_box_index>.png|tif
 digitization-manifest.json
 digitization-manifest.csv
 ```
@@ -55,8 +61,10 @@ digitization-manifest.csv
   have the top-level `masters/` prefix.
 - With organization disabled, access copies are at ZIP root and masters under
   `masters/`.
-- The source filename stem is separately made filesystem-safe; the box index is
-  1-based. Collisions receive `_2`, `_3`, and so on.
+- A non-empty per-photo filename is used as the output stem for both access and
+  master copies. It is stripped of any supplied extension and passed through
+  `sanitize_name`. Otherwise the safe source filename stem plus 1-based box
+  index remains the default. Collisions receive `_2`, `_3`, and so on.
 - TIFF masters are deliberately uncompressed: Pillow cannot combine TIFF
   compression with nested EXIF plus XMP tag 700 in this implementation.
 
@@ -73,7 +81,7 @@ JSON is an array of records with:
 | `output` | Access-copy path in the artifact set. |
 | `master` | Master path, or null. |
 | `sha256` | SHA-256 of the access-copy bytes. |
-| `metadata` | Full normalized scan metadata, except latitude/longitude are removed unless this request has `include_gps: true`. |
+| `metadata` | Full normalized scan metadata with any per-photo caption override, except latitude/longitude are removed unless this request has `include_gps: true`. |
 | `restoration` | Effective merged project settings plus per-box overrides used for the derivative. |
 
 CSV contains the columns `project_id,scan_id,box_id,source,output,master,sha256`.
