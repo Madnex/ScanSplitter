@@ -37,6 +37,22 @@ function toProjectBox(box: BoundingBox, saved?: ProjectBox): ProjectBox {
     ...(saved?.restoration ? { restoration: saved.restoration } : {}),
   };
 }
+function mergeProjectBoxes(
+  boxes: BoundingBox[],
+  photoDetails: Record<string, { filename: string; caption: string }>,
+  savedBoxes: ProjectBox[]
+): ProjectBox[] {
+  return boxes.map((box) => {
+    const converted = toProjectBox(box, savedBoxes.find((saved) => saved.id === box.id));
+    const details = photoDetails[box.id];
+    if (!details) return converted;
+    return {
+      ...converted,
+      ...(details.filename.trim() ? { filename: details.filename } : { filename: undefined }),
+      ...(details.caption.trim() ? { caption: details.caption } : { caption: undefined }),
+    };
+  });
+}
 function boxesEqual(a: ProjectBox[], b: ProjectBox[]): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
@@ -63,16 +79,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   const previewAbortRef = useRef<AbortController | null>(null);
   const previewUrlRef = useRef<string | null>(null);
   const currentProjectBoxes = useCallback(
-    () => boxes.map((box) => {
-      const converted = toProjectBox(box, savedBoxesRef.current.find((saved) => saved.id === box.id));
-      const details = photoDetails[box.id];
-      if (!details) return converted;
-      return {
-        ...converted,
-        ...(details.filename.trim() ? { filename: details.filename } : { filename: undefined }),
-        ...(details.caption.trim() ? { caption: details.caption } : { caption: undefined }),
-      };
-    }),
+    () => mergeProjectBoxes(boxes, photoDetails, savedBoxesRef.current),
     [boxes, photoDetails]
   );
 
@@ -350,7 +357,7 @@ export function ReviewMode({ projectId, initialScanId, onBack, showToast }: Revi
   }
 
   const imageUrl = getProjectScanImageUrl(projectId, currentScan.id, false);
-  const projectBoxes = currentProjectBoxes();
+  const projectBoxes = mergeProjectBoxes(boxes, photoDetails, currentScan.boxes);
   const selectedProjectBox = projectBoxes.find((box) => box.id === selectedBoxId) ?? projectBoxes[0];
 
   return (
