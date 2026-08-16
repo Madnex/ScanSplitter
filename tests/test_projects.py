@@ -140,7 +140,7 @@ def test_project_crud():
     assert created["version"] == 1
     assert created["name"] == "My Project"
     assert created["settings"]["detection_mode"] == "scansplitterv4"
-    assert created["settings"]["edge_cleanup_mode"] == "conservative"
+    assert created["settings"]["edge_cleanup_mode"] == "tight"
     assert created["scans"] == []
 
     # List

@@ -30,13 +30,13 @@ without risking automatic removal of ambiguous photographic content.
 ## Settings and overrides
 
 New projects and legacy manifests default `settings.edge_cleanup_mode` to
-`"conservative"`. The setting accepts `off`, `conservative`, or `tight`, is
+`"tight"`. The setting accepts `off`, `conservative`, or `tight`, is
 exposed in the project overview, and may be overridden per photo through
 `box.restoration.edge_cleanup_mode`. Legacy boolean `edge_cleanup` settings and
 overrides migrate to `conservative`/`off` while loading.
 
-Quick-mode crop requests accept `edge_cleanup_mode`, defaulting to
-`conservative`; the former boolean request field remains an alias. Quick mode
+Quick-mode crop requests accept `edge_cleanup_mode`, defaulting to `tight`;
+the former boolean request field remains an alias. Quick mode
 exposes all three choices. The CLI accepts
 `--edge-cleanup {off,conservative,tight}` and keeps `--no-edge-cleanup` as an
 alias for `off`.

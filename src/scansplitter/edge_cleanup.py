@@ -591,7 +591,7 @@ def _tight_residual_shave(
 
 def cleanup_photo_edges(
     image: Image.Image,
-    mode: EdgeCleanupMode = "conservative",
+    mode: EdgeCleanupMode = "tight",
 ) -> tuple[Image.Image, EdgeCleanupDetail]:
     """Remove crop-edge whitespace according to the selected mode.
 

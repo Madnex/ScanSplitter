@@ -168,7 +168,7 @@ class CropRequest(BaseModel):
     page: int = 1
     boxes: list[BoundingBox]
     auto_rotate: bool = True
-    edge_cleanup_mode: Literal["off", "conservative", "tight"] = "conservative"
+    edge_cleanup_mode: Literal["off", "conservative", "tight"] = "tight"
     edge_cleanup: bool | None = None  # backward-compatible boolean alias
 
 

@@ -67,7 +67,7 @@ function App() {
     minArea: 2,
     maxArea: 80,
     autoRotate: true,
-    edgeCleanupMode: "conservative",
+    edgeCleanupMode: "tight",
     autoDetect: true,
     detectionMode: "scansplitterv4",
     u2netLite: true,

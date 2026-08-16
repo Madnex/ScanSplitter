@@ -91,7 +91,7 @@ DEFAULT_SETTINGS: dict[str, Any] = {
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
     "auto_rotate": True,
-    "edge_cleanup_mode": "conservative",
+    "edge_cleanup_mode": "tight",
     "auto_deskew": False,
     "restore_color": False,
     "upscale_2x": False,
@@ -638,7 +638,7 @@ class ProjectStore:
         preview = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
         effective_settings = {**data["settings"], **box.get("restoration", {})}
         preview, _ = cleanup_photo_edges(
-            preview, effective_settings.get("edge_cleanup_mode", "conservative")
+            preview, effective_settings.get("edge_cleanup_mode", "tight")
         )
         if data["settings"]["auto_rotate"]:
             preview, _ = auto_rotate(preview)
@@ -862,7 +862,7 @@ class ProjectStore:
             before = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
             effective_settings = {**data["settings"], **box.get("restoration", {})}
             before, _ = cleanup_photo_edges(
-                before, effective_settings.get("edge_cleanup_mode", "conservative")
+                before, effective_settings.get("edge_cleanup_mode", "tight")
             )
             if data["settings"]["auto_rotate"]:
                 before, _ = auto_rotate(before)
@@ -936,7 +936,7 @@ class ProjectStore:
                     crop_pil = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
                     effective_settings = {**data["settings"], **box.get("restoration", {})}
                     crop_pil, _ = cleanup_photo_edges(
-                        crop_pil, effective_settings.get("edge_cleanup_mode", "conservative")
+                        crop_pil, effective_settings.get("edge_cleanup_mode", "tight")
                     )
                     if auto_rotate_enabled:
                         crop_pil, _ = auto_rotate(crop_pil)

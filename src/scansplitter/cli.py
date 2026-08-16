@@ -98,8 +98,8 @@ def main():
         "--edge-cleanup",
         dest="edge_cleanup_mode",
         choices=["off", "conservative", "tight"],
-        default="conservative",
-        help="Post-crop border removal mode (default: conservative)",
+        default="tight",
+        help="Post-crop border removal mode (default: tight)",
     )
     cleanup_group.add_argument(
         "--no-edge-cleanup",

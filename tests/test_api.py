@@ -161,6 +161,41 @@ def test_crop_edge_cleanup_mode_can_be_conservative_or_off():
     assert cleaned["height"] < raw["height"]
 
 
+def test_crop_edge_cleanup_mode_defaults_to_tight():
+    uploaded = _upload(content=_bordered_png())
+    box = {
+        "id": "bordered-default",
+        "center_x": 210,
+        "center_y": 150,
+        "width": 420,
+        "height": 300,
+        "angle": 0,
+    }
+
+    defaulted = client.post(
+        "/api/crop",
+        json={
+            "session_id": uploaded["session_id"],
+            "boxes": [box],
+            "auto_rotate": False,
+        },
+    ).json()["images"][0]
+    tight = client.post(
+        "/api/crop",
+        json={
+            "session_id": uploaded["session_id"],
+            "boxes": [box],
+            "auto_rotate": False,
+            "edge_cleanup_mode": "tight",
+        },
+    ).json()["images"][0]
+
+    assert (defaulted["width"], defaulted["height"]) == (
+        tight["width"],
+        tight["height"],
+    )
+
+
 def _wait_for_job(job_id: str) -> dict:
     deadline = time.monotonic() + 10
     while time.monotonic() < deadline:

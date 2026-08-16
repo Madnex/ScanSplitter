@@ -52,7 +52,7 @@ def process_image(
     source_file: str = "unknown",
     source_page: int | None = None,
     auto_rotate_enabled: bool = True,
-    edge_cleanup_mode: EdgeCleanupMode = "conservative",
+    edge_cleanup_mode: EdgeCleanupMode = "tight",
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
     # Phase 1 improvements
@@ -160,7 +160,7 @@ def process_image(
 def process_file(
     file_path: str | Path,
     auto_rotate_enabled: bool = True,
-    edge_cleanup_mode: EdgeCleanupMode = "conservative",
+    edge_cleanup_mode: EdgeCleanupMode = "tight",
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
     pdf_dpi: int = 300,
@@ -236,7 +236,7 @@ def process_file(
 def process_files(
     file_paths: list[str | Path],
     auto_rotate_enabled: bool = True,
-    edge_cleanup_mode: EdgeCleanupMode = "conservative",
+    edge_cleanup_mode: EdgeCleanupMode = "tight",
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
     pdf_dpi: int = 300,
