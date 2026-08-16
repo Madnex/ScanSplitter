@@ -44,12 +44,18 @@ alias for `off`.
 ## Algorithm
 
 For each side, the crop is represented as inward depth by distance along the
-edge. Tight mode first searches the outer 12% for a prominent normal-direction
-gradient that is continuous across the side and starts in a light strip. This
-snaps directly to the inner printed-image rectangle even when snow, sky, or
-another bright subject has nearly the same color as its paper margin. Snapped
-sides use an axis crop and are excluded from later passes, preventing repeated
-trimming into the photograph.
+edge. Tight mode first searches the outer 18% for normal-direction gradient
+candidates that are continuous across the side. A strong candidate is accepted
+directly when its outer material is consistent with a dark print outline. A
+weaker candidate is accepted only when a smooth, light paper strip gives way to
+darker, more textured image content. Several separated candidates are screened
+so a shallow scanner artifact cannot hide the true printed-image boundary. The
+deepest robust local position across the selected line determines the axis
+crop, covering slightly sloped or wavy edges without following isolated noise.
+This snaps directly to the inner printed-image rectangle even when snow, sky,
+or another bright subject has nearly the same color as its paper margin.
+Snapped sides are excluded from later passes, preventing repeated trimming into
+the photograph.
 
 For sides without that boundary, a Lab-color model is learned from the outer
 strip, and matching pixels not connected to the boundary are discarded. The
@@ -76,6 +82,9 @@ retain their original crop boundary.
 - Tight mode snaps to a print boundary even when the photographed scene is as
   bright as the surrounding margin, without following internal lines in a dark
   edge region.
+- Tight mode detects deep, low-contrast paper boundaries, covers the deepest
+  reliable point of a sloped edge, and ignores shallow scanner artifacts in
+  favor of the real boundary farther inward.
 - The final shave removes a pale remnant covering less than the fitted-line
   support threshold.
 - Uniform bright images and dark borders remain unchanged.

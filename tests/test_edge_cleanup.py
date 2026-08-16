@@ -31,7 +31,7 @@ def test_cleanup_trims_sloped_light_border_and_rectifies_photo():
 
     assert detail.applied
     assert set(detail.sides) == {"top", "right", "bottom", "left"}
-    assert 0.1 < detail.removed_fraction < 0.25
+    assert 0.1 < detail.removed_fraction < 0.27
     assert 440 <= cleaned.width <= 480
     assert 300 <= cleaned.height <= 330
     pixels = np.asarray(cleaned)
@@ -195,3 +195,63 @@ def test_tight_mode_ignores_internal_line_without_light_outer_margin():
 
     assert tight is source
     assert not detail.applied
+
+
+def test_tight_mode_finds_deep_low_contrast_paper_boundary():
+    height, width = 500, 700
+    rng = np.random.default_rng(21)
+    pixels = np.clip(
+        rng.normal(210, 11, (height, width, 1)) + np.array([[[2, 0, -3]]]),
+        0,
+        255,
+    ).astype(np.uint8)
+    pixels[:82] = (246, 244, 237)
+    source = Image.fromarray(pixels)
+
+    tight, detail = cleanup_photo_edges(source, mode="tight")
+
+    assert detail.applied
+    assert "top" in detail.sides
+    assert tight.height <= source.height - 82
+    assert float(np.asarray(tight)[0].mean()) < 225
+
+
+def test_tight_mode_uses_deep_boundary_instead_of_scanner_artifact():
+    height, width = 600, 800
+    rng = np.random.default_rng(22)
+    pixels = np.clip(
+        rng.normal(205, 13, (height, width, 1)) + np.array([[[3, 0, -4]]]),
+        0,
+        255,
+    ).astype(np.uint8)
+    pixels[:, :101] = (247, 245, 238)
+    pixels[:, 7:9] = (118, 116, 112)
+    source = Image.fromarray(pixels)
+
+    tight, detail = cleanup_photo_edges(source, mode="tight")
+
+    assert detail.applied
+    assert "left" in detail.sides
+    assert tight.width <= source.width - 101
+    assert float(np.asarray(tight)[:, 0].mean()) < 225
+
+
+def test_tight_mode_covers_deepest_part_of_sloped_paper_boundary():
+    height, width = 520, 760
+    rng = np.random.default_rng(23)
+    pixels = np.clip(
+        rng.normal(202, 14, (height, width, 1)) + np.array([[[4, 0, -5]]]),
+        0,
+        255,
+    ).astype(np.uint8)
+    boundary = np.rint(np.linspace(46, 78, width)).astype(np.int32)
+    for column, depth in enumerate(boundary):
+        pixels[:depth, column] = (246, 244, 236)
+    source = Image.fromarray(pixels)
+
+    tight, detail = cleanup_photo_edges(source, mode="tight")
+
+    assert detail.applied
+    assert "top" in detail.sides
+    assert tight.height <= source.height - int(boundary.max())
+    assert float(np.asarray(tight)[0].mean()) < 225

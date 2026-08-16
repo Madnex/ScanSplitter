@@ -459,14 +459,15 @@ def _tight_boundary_trim(oriented_gray: np.ndarray, minimum_dimension: int) -> i
     A pale print margin and snow inside a photograph can have almost identical
     colors.  Their boundary is nevertheless a strong, nearly continuous line.
     Tight mode uses that line as the authoritative trim when it is prominent
-    across a substantial part of the side.  The light outer-strip check keeps
-    ordinary architectural or horizon lines inside dark photographs from
-    becoming crop candidates.
+    across a substantial part of the side. Low-contrast candidates are also
+    accepted when a smooth light paper strip gives way to darker, more textured
+    image content. The outer-strip checks keep ordinary architectural or
+    horizon lines inside photographs from becoming crop candidates.
     """
     available_depth, span = oriented_gray.shape
     max_depth = min(
-        max(12, round(minimum_dimension * 0.12)),
-        384,
+        max(16, round(minimum_dimension * 0.18)),
+        512,
         available_depth - 2,
     )
     if max_depth < 6 or span < 32:
@@ -486,30 +487,96 @@ def _tight_boundary_trim(oriented_gray: np.ndarray, minimum_dimension: int) -> i
     coverage = np.mean(gradient > 20, axis=1)
     score = mean_gradient + 0.6 * common_gradient + 30.0 * coverage
 
-    usable = score[3:]
+    usable = score[6:]
     if usable.size == 0:
         return 0
-    depth = int(np.argmax(usable)) + 3
     median = float(np.median(usable))
     mad = float(np.median(np.abs(usable - median)))
     threshold = max(28.0, median * 1.8, median + 4.0 * max(1.0, mad))
-    if (
-        float(score[depth]) < threshold
-        or float(mean_gradient[depth]) < 18.0
-        or float(coverage[depth]) < 0.10
-    ):
-        return 0
 
-    # Broad trims must actually start in paper-like material. Very shallow
-    # trims are also allowed so a thin dark print outline can be removed.
-    thin_boundary = depth <= max(14, round(minimum_dimension * 0.012))
-    outer_stop = max(1, depth - 3)
-    outer = band[:outer_stop]
-    if not thin_boundary and float(np.median(outer)) < 150.0:
+    # Scanner interpolation and print outlines can create a stronger line near
+    # the crop edge than the real paper-to-photo boundary. Screen several
+    # separated peaks instead of trusting only the global maximum.
+    candidates: list[int] = []
+    for item in np.argsort(usable)[::-1] + 6:
+        depth = int(item)
+        if all(abs(depth - previous) > 8 for previous in candidates):
+            candidates.append(depth)
+        if len(candidates) >= 20:
+            break
+
+    def horizontal_texture(values: np.ndarray) -> float:
+        return float(
+            np.mean(np.abs(cv2.Sobel(values, cv2.CV_32F, 1, 0, ksize=3)))
+        )
+
+    accepted_candidates: list[int] = []
+    comparison_depth = max(12, min(48, round(minimum_dimension * 0.012)))
+    for depth in candidates:
+        before = band[max(0, depth - comparison_depth) : max(1, depth - 3)]
+        after = band[
+            min(max_depth - 1, depth + 3) : min(
+                max_depth,
+                depth + 3 + comparison_depth,
+            )
+        ]
+        if not before.size or not after.size:
+            continue
+
+        before_texture = horizontal_texture(before)
+        after_texture = horizontal_texture(after)
+        tone_change = float(np.mean(before) - np.mean(after))
+        outer_median = float(np.median(band[: max(1, depth - 3)]))
+        strong = (
+            float(score[depth]) >= threshold
+            and float(mean_gradient[depth]) >= 18.0
+            and float(coverage[depth]) >= 0.10
+        )
+
+        # A very shallow dark print outline is valid only when the material
+        # before it is itself dark and the pixels inward become much brighter.
+        # This rejects dark scanner artifacts lying on an otherwise pale edge.
+        dark_outline = (
+            depth <= max(14, round(minimum_dimension * 0.012))
+            and strong
+            and outer_median < 150.0
+            and tone_change <= -20.0
+        )
+        paper_transition = (
+            outer_median >= 200.0
+            and float(score[depth]) >= 12.0
+            and float(mean_gradient[depth]) >= 8.0
+            and float(coverage[depth]) >= 0.10
+            and tone_change >= 8.0
+            and (strong or after_texture >= before_texture * 1.25 + 0.4)
+        )
+        if dark_outline or paper_transition:
+            accepted_candidates.append(depth)
+
+    if not accepted_candidates:
         return 0
+    # The first credible paper-to-image transition is the print boundary. A
+    # stronger line farther inward is photographic content and must not win
+    # merely because it has more contrast.
+    selected = min(accepted_candidates)
+
+    # The average peak locates the boundary, but a slightly sloped or wavy
+    # print edge can extend farther inward at one end. Find each column's local
+    # peak and trim to a robust deep percentile so no pale corner remains.
+    radius = max(8, min(32, round(minimum_dimension * 0.01)))
+    low = max(1, selected - radius)
+    high = min(max_depth, selected + radius + 1)
+    local_gradient = gradient[low:high]
+    local_offsets = np.argmax(local_gradient, axis=0)
+    strengths = np.max(local_gradient, axis=0)
+    supported = strengths >= max(8.0, float(np.percentile(strengths, 35)))
+    deepest = selected
+    if int(supported.sum()) >= max(20, round(supported.size * 0.10)):
+        positions = low + local_offsets[supported]
+        deepest = int(np.ceil(np.percentile(positions, 98)))
 
     safety_inset = max(3, min(8, round(minimum_dimension * 0.0015)))
-    return min(max_depth, depth + safety_inset)
+    return min(max_depth, deepest + safety_inset)
 
 
 def _tight_inner_rectangle_snap(
