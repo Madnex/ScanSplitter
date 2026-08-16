@@ -158,3 +158,19 @@ def test_tight_mode_accepts_color_varied_aged_white_border():
     assert detail.applied
     assert "top" in detail.sides
     assert tight.height < source.height - 10
+
+
+def test_tight_mode_final_shave_removes_low_coverage_pale_remnant():
+    height, width = 520, 760
+    yy, xx = np.mgrid[:height, :width]
+    pixels = np.stack(
+        (25 + xx % 135, 40 + yy % 115, 55 + (xx + yy) % 125), axis=2
+    ).astype(np.uint8)
+    pixels[:7, 180:255] = (249, 248, 243)
+    source = Image.fromarray(pixels)
+
+    tight, detail = cleanup_photo_edges(source, mode="tight")
+
+    assert detail.applied
+    assert "top" in detail.sides
+    assert tight.height <= source.height - 7

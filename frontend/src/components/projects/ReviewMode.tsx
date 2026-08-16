@@ -18,7 +18,7 @@ interface ReviewModeProps {
   showToast: (message: string, type?: "success" | "error" | "info") => void;
 }
 
-const EDGE_CLEANUP_PREVIEW_VERSION = 2;
+const EDGE_CLEANUP_PREVIEW_VERSION = 3;
 
 // ProjectBox (wire shape: {id,x,y,width,height,angle}, center-based) <->
 // BoundingBox (ImageCanvas's shape: {id,centerX,centerY,width,height,angle}).

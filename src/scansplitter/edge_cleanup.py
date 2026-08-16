@@ -58,6 +58,7 @@ class _CleanupConfig:
     transition_factor: float
     safety_percentile: float
     safety_inset: float
+    safety_inset_ratio: float
     include_candidate_outliers: bool
     allow_axis_fallback: bool
     confidence_floor: float
@@ -83,6 +84,7 @@ _CONSERVATIVE = _CleanupConfig(
     transition_factor=0.4,
     safety_percentile=92,
     safety_inset=0.5,
+    safety_inset_ratio=0.0,
     include_candidate_outliers=False,
     allow_axis_fallback=False,
     confidence_floor=0.38,
@@ -108,6 +110,7 @@ _TIGHT = _CleanupConfig(
     transition_factor=0.25,
     safety_percentile=99,
     safety_inset=2.0,
+    safety_inset_ratio=0.0015,
     include_candidate_outliers=True,
     allow_axis_fallback=True,
     confidence_floor=0.15,
@@ -263,16 +266,20 @@ def _estimate_side(
         residual = y - (slope * x + intercept)
     else:
         residual = y[inliers] - (slope * x[inliers] + intercept)
+    safety_inset = max(
+        config.safety_inset,
+        min(8.0, minimum_dimension * config.safety_inset_ratio),
+    )
     intercept += (
         max(0.0, float(np.percentile(residual, config.safety_percentile)))
-        + config.safety_inset
+        + safety_inset
     )
     predicted = slope * np.array([usable.start, usable.stop - 1]) + intercept
     if float(np.min(predicted)) < 1 or float(np.max(predicted)) > max_depth * 0.95:
         if not config.allow_axis_fallback:
             return None
         slope = 0.0
-        intercept = float(np.percentile(y, config.safety_percentile)) + config.safety_inset
+        intercept = float(np.percentile(y, config.safety_percentile)) + safety_inset
         predicted = np.array([intercept, intercept])
         if float(np.max(predicted)) > min(max_depth * 0.95, minimum_dimension * 0.08):
             return None
@@ -388,6 +395,103 @@ def _cleanup_once(
     return Image.fromarray(cleaned), detail
 
 
+def _residual_side_trim(
+    oriented_lab: np.ndarray,
+    minimum_dimension: int,
+    global_lightness: float,
+) -> int:
+    """Return an axis-aligned shave for a small remaining pale fringe."""
+    available_depth, span = oriented_lab.shape[:2]
+    max_depth = min(max(3, round(minimum_dimension * 0.04)), 64, available_depth - 2)
+    if max_depth < 3 or span < 32:
+        return 0
+
+    corner_margin = max(1, round(span * 0.01))
+    start, stop = corner_margin, span - corner_margin
+    usable_count = stop - start
+    if usable_count < 24:
+        return 0
+
+    band = oriented_lab[: max_depth + 2].astype(np.float32)
+    boundary = band[:2, start:stop].reshape(-1, 3)
+    lightness_floor = max(
+        145.0,
+        global_lightness,
+        float(np.percentile(boundary[:, 0], 55)),
+    )
+    chroma = np.linalg.norm(band[:, :, 1:] - 128.0, axis=2)
+    paper = (band[:, :, 0] >= lightness_floor) & (chroma <= 72)
+    paper = cv2.morphologyEx(
+        paper.astype(np.uint8),
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
+    ).astype(bool)
+
+    depths: list[int] = []
+    brightness_drops: list[float] = []
+    for position in range(start, stop):
+        column = paper[: max_depth + 1, position]
+        if not column[0]:
+            continue
+        non_paper = np.flatnonzero(~column)
+        if non_paper.size == 0:
+            continue
+        depth = int(non_paper[0])
+        if depth < 1 or depth > max_depth:
+            continue
+        before = band[max(0, depth - 1), position]
+        after = band[min(max_depth + 1, depth + 1), position]
+        if float(np.linalg.norm(after - before)) < 6:
+            continue
+        depths.append(depth)
+        brightness_drops.append(float(band[0, position, 0] - after[0]))
+
+    if len(depths) < max(12, round(usable_count * 0.08)):
+        return 0
+    if float(np.median(brightness_drops)) < 3:
+        return 0
+
+    trim = int(np.ceil(np.percentile(depths, 99))) + 1
+    return min(trim, max(1, round(minimum_dimension * 0.04)))
+
+
+def _tight_residual_shave(image: Image.Image) -> tuple[Image.Image, tuple[str, ...]]:
+    """Crop tiny pale remnants missed by fitted lines without resampling again."""
+    rgb = np.asarray(image.convert("RGB"))
+    height, width = rgb.shape[:2]
+    minimum_dimension = min(width, height)
+    if minimum_dimension < 48:
+        return image, ()
+
+    lab = cv2.cvtColor(rgb, cv2.COLOR_RGB2LAB)
+    global_lightness = float(np.percentile(lab[:, :, 0], 70))
+    oriented = {
+        "top": lab,
+        "right": np.transpose(lab[:, ::-1], (1, 0, 2)),
+        "bottom": lab[::-1],
+        "left": np.transpose(lab, (1, 0, 2)),
+    }
+    trims = {
+        side: _residual_side_trim(values, minimum_dimension, global_lightness)
+        for side, values in oriented.items()
+    }
+    left, right = trims["left"], trims["right"]
+    top, bottom = trims["top"], trims["bottom"]
+    if not any(trims.values()):
+        return image, ()
+    if width - left - right < 32 or height - top - bottom < 32:
+        return image, ()
+    retained_fraction = (width - left - right) * (height - top - bottom) / float(
+        width * height
+    )
+    if retained_fraction < 0.85:
+        return image, ()
+
+    shaved = image.crop((left, top, width - right, height - bottom))
+    sides = tuple(side for side, trim in trims.items() if trim)
+    return shaved, sides
+
+
 def cleanup_photo_edges(
     image: Image.Image,
     mode: EdgeCleanupMode = "conservative",
@@ -419,6 +523,14 @@ def cleanup_photo_edges(
             break
         current = cleaned
         all_sides.extend(detail.sides)
+
+    if mode == "tight":
+        shaved, shaved_sides = _tight_residual_shave(current)
+        if shaved is not current:
+            cumulative_removed = 1.0 - (shaved.width * shaved.height) / float(original_area)
+            if cumulative_removed <= config.max_removed_fraction:
+                current = shaved
+                all_sides.extend(shaved_sides)
 
     if current is image:
         return image, unchanged

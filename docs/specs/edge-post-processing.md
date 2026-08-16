@@ -48,8 +48,11 @@ each row or column becomes an edge candidate only when followed by a strong
 transition. A robust linear fit removes outliers and is shifted just inside a
 high percentile of the remaining uneven boundary. Tight mode relaxes the
 thresholds, learns from the brightest low-chroma boundary cluster, bridges
-small color/shadow gaps, uses a two-pixel safety inset, and repeats the pass.
-This allows thin fringes, partial wedges, color-varied aged borders, an album
+small color/shadow gaps, uses a safety inset that grows from two to eight pixels
+with crop resolution, and repeats the pass. A final axis-aligned shave searches
+the outer 4% for pale remnants covering as little as 8% of a side; it is capped
+at 15% area for that pass and does not resample the image again. This allows
+thin fringes, small partial wedges, color-varied aged borders, an album
 background, and then a white print margin to be removed separately. Sides
 without sufficient support or confidence retain their original crop boundary.
 
@@ -61,6 +64,8 @@ without sufficient support or confidence retain their original crop boundary.
   conservative mode; off returns the original object.
 - Tight mode covers two-pixel high-resolution fringes, partial wedges, and
   alternating white/yellowed border segments.
+- The final shave removes a pale remnant covering less than the fitted-line
+  support threshold.
 - Uniform bright images and dark borders remain unchanged.
 - The quick crop API honors enabled and disabled cleanup.
 - Project defaults, legacy-manifest defaults, and per-photo overrides persist.
