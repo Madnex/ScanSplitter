@@ -35,6 +35,7 @@ from .detector import (
 from .edge_cleanup import cleanup_photo_edges
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
 from .jobs import JobCancelled, registry, submit_job
+from .llm_detector import OpenRouterDetectionError, detect_photos_openrouter
 from .models import get_model_statuses, start_model_download
 from .pdf_handler import extract_pdf_page, get_pdf_page_count
 from .projects import MANIFEST_FORMATS, MASTER_FORMATS, get_project_store
@@ -721,6 +722,8 @@ def run_detect(
         detection_mode = "scansplitterv4"
     elif detection_mode in ("ScanSplitterv3", "v3"):
         detection_mode = "scansplitterv3"
+    elif detection_mode in ("OpenRouter", "llm", "llm-based"):
+        detection_mode = "openrouter"
 
     # Run detection based on mode
     if detection_mode in ("album", "album_splitter", "album-splitter"):
@@ -750,12 +753,24 @@ def run_detect(
             min_area_ratio=request.min_area / 100,
             max_area_ratio=request.max_area / 100,
         )
+    elif detection_mode == "openrouter":
+        progress_cb(30, "sending scan to OpenRouter")
+        try:
+            regions = detect_photos_openrouter(
+                image,
+                min_area_ratio=request.min_area / 100,
+                max_area_ratio=request.max_area / 100,
+            )
+        except OpenRouterDetectionError as exc:
+            status = 503 if "not configured" in str(exc) else 502
+            raise HTTPException(status_code=status, detail=str(exc)) from exc
+        progress_cb(75, "converting LLM photo corners")
     else:
         raise HTTPException(
             status_code=400,
             detail=(
                 "detection_mode must be one of: scansplitterv5, "
-                "scansplitterv4, scansplitterv3, album-splitter"
+                "scansplitterv4, scansplitterv3, openrouter, album-splitter"
             ),
         )
 

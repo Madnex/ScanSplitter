@@ -14,6 +14,7 @@ from PIL import Image
 from scansplitter.album_detector import detect_album_pages
 from scansplitter.benchmark_metrics import score_rectangles
 from scansplitter.detector import detect_photos_v3, detect_photos_v4, detect_photos_v5
+from scansplitter.llm_detector import detect_photos_openrouter, openrouter_model
 
 ROOT = Path(__file__).resolve().parent
 
@@ -38,6 +39,7 @@ def detector_for(case: dict[str, Any], scan_detector: str):
         "v3": detect_photos_v3,
         "v4": detect_photos_v4,
         "v5": detect_photos_v5,
+        "openrouter": detect_photos_openrouter,
     }[scan_detector]
 
 
@@ -105,10 +107,13 @@ def summarize(results: list[dict[str, Any]]) -> dict[str, Any]:
 
 
 def markdown_report(report: dict[str, Any]) -> str:
+    detector = f"`{report['scan_detector']}`"
+    if report.get("scan_detector_model"):
+        detector += f" using `{report['scan_detector_model']}`"
     lines = [
         "# ScanSplitter benchmark result",
         "",
-        f"Scan detector: `{report['scan_detector']}`. Detection F1 uses IoU "
+        f"Scan detector: {detector}. Detection F1 uses IoU "
         f"`{report['iou_threshold']:.2f}`; strict F1 uses IoU "
         f"`{report['strict_iou_threshold']:.2f}`. Box quality is IoU-weighted F1. "
         "Tightness is wanted image area divided by detected crop area; coverage is "
@@ -152,7 +157,11 @@ def markdown_report(report: dict[str, Any]) -> str:
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--suite", choices=("all", "scansplitter", "album"), default="all")
-    parser.add_argument("--scan-detector", choices=("v3", "v4", "v5"), default="v5")
+    parser.add_argument(
+        "--scan-detector",
+        choices=("v3", "v4", "v5", "openrouter"),
+        default="v5",
+    )
     parser.add_argument("--iou-threshold", type=float, default=0.5)
     parser.add_argument("--strict-iou-threshold", type=float, default=0.85)
     parser.add_argument("--output", type=Path, default=ROOT / "results" / "latest.md")
@@ -186,6 +195,9 @@ def main() -> None:
     report = {
         "benchmark_version": manifest["version"],
         "scan_detector": args.scan_detector,
+        "scan_detector_model": (
+            openrouter_model() if args.scan_detector == "openrouter" else None
+        ),
         "iou_threshold": args.iou_threshold,
         "strict_iou_threshold": args.strict_iou_threshold,
         "summary": summary,

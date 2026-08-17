@@ -56,6 +56,21 @@ uvx scansplitter api --port 8001
 - **ScanSplitterv5 (default)**: Combines conservative v3/MobileSAM anchors with color-independent texture and frame passes. Agreeing texture rectangles tighten crops, multiple texture islands split merged page proposals, closed frames recover pale photographs, and tightly prompted segmentation verifies candidates near scan edges. Conflicting evidence falls back to the conservative anchor.
 - **ScanSplitterv4**: The previous tightly prompted MobileSAM detector, retained for comparisons and existing saved projects.
 - **ScanSplitterv3**: A model-free, background-aware OpenCV detector for album pages and low-contrast scans. It models paper/platen colors in Lab space, finds dense non-background regions, separates touching prints at narrow gutters, and snaps boxes to long physical edges.
+- **OpenRouter LLM (experimental)**: Sends a resized copy of the complete scan to a configurable OpenRouter vision model and asks for four corners around every inner photographic image. Select it in the Quick-mode detection menu. This mode is not local: the scan is uploaded to OpenRouter and the selected model provider.
+
+To enable the experimental detector, copy the example environment file and add
+your key:
+
+```bash
+cp .env.example .env
+# edit .env
+./scripts/openrouter.py serve
+```
+
+`OPENROUTER_MODEL` is optional and defaults to `google/gemini-2.5-flash`.
+The `.env` file is ignored by git, and the key is never sent to or stored by
+the frontend. Run `./scripts/openrouter.py report` to evaluate the OpenRouter
+model against all ten ScanSplitter benchmark fixtures.
 
 ### Whole album pages
 

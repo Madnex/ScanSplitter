@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 from fastapi.testclient import TestClient
 
+from scansplitter import benchmarking
 from scansplitter.api import app
 from scansplitter.benchmark_metrics import best_pairs, rotated_iou
 
@@ -69,6 +70,21 @@ def test_directional_crop_metrics_distinguish_overshoot_from_lost_content():
     assert clipped["crop_tightness"] == pytest.approx(1.0)
 
 
+def test_markdown_report_records_exact_detector_model():
+    report = {
+        "scan_detector": "openrouter",
+        "scan_detector_model": "google/gemini-3.7-flash",
+        "iou_threshold": 0.5,
+        "strict_iou_threshold": 0.85,
+        "summary": {},
+        "cases": [],
+    }
+
+    markdown = EVALUATE.markdown_report(report)
+
+    assert "`openrouter` using `google/gemini-3.7-flash`" in markdown
+
+
 def test_benchmark_api_is_disabled_by_default(monkeypatch):
     monkeypatch.delenv("SCANSPLITTER_BENCHMARK", raising=False)
 
@@ -83,3 +99,26 @@ def test_benchmark_api_lists_fixed_cases_when_enabled(monkeypatch):
     assert response.status_code == 200
     assert len(response.json()["cases"]) == 20
     assert response.json()["cases"][0]["ground_truth"]
+    assert response.json()["openrouter_enabled"] is False
+
+
+def test_benchmark_adds_openrouter_variant_only_when_configured(monkeypatch):
+    def empty(_image):
+        return []
+
+    monkeypatch.setattr(benchmarking, "detect_photos_v3", empty)
+    monkeypatch.setattr(benchmarking, "detect_photos_v4", empty)
+    monkeypatch.setattr(benchmarking, "detect_photos_v5", empty)
+    monkeypatch.setattr(benchmarking, "detect_photos_openrouter", empty)
+    monkeypatch.setattr(benchmarking, "is_openrouter_configured", lambda: True)
+    monkeypatch.setattr(benchmarking, "openrouter_model", lambda: "vendor/vision")
+
+    result = benchmarking.run_case("scansplitter-01-aged-album-spread")
+
+    assert [variant["key"] for variant in result["variants"]] == [
+        "v3",
+        "v4",
+        "v5",
+        "llm",
+    ]
+    assert result["variants"][-1]["label"] == "OpenRouter · vendor/vision"

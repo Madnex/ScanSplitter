@@ -174,6 +174,7 @@ export function SettingsPanel({
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="scansplitterv5">ScanSplitterv5</option>
+            <option value="openrouter">OpenRouter LLM (uploads scan)</option>
             <option value="scansplitterv4">ScanSplitterv4</option>
             <option value="album-splitter">Album Splitter (whole pages)</option>
             <option value="scansplitterv3">ScanSplitterv3</option>
@@ -183,6 +184,8 @@ export function SettingsPanel({
               ? "Preserves complete album pages, photos, and handwritten notes"
               : settings.detectionMode === "scansplitterv5"
               ? "Context-aware MobileSAM refinement that preserves complete print edges"
+              : settings.detectionMode === "openrouter"
+              ? "Experimental vision-model detection; sends the scan to the configured OpenRouter model"
               : settings.detectionMode === "scansplitterv4"
               ? "V3 proposals plus MobileSAM border refinement — highest accuracy (~43MB)"
               : settings.detectionMode === "scansplitterv3"
