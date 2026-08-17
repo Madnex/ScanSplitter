@@ -31,6 +31,7 @@ from typing import Any
 from fastapi import HTTPException
 from PIL import Image, PngImagePlugin
 
+from .album_detector import detect_album_pages
 from .detector import (
     DetectedRegion,
     crop_rotated_region,
@@ -88,6 +89,7 @@ MANIFEST_FORMATS = {"json", "csv", "both"}
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "detection_mode": "scansplitterv4",
+    "album_layout": "auto",
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
     "auto_rotate": True,
@@ -366,6 +368,13 @@ class ProjectStore:
                                 status_code=400,
                                 detail="edge_cleanup_mode must be one of: off, conservative, tight",
                             )
+                        if key == "album_layout" and value not in {
+                            "auto", "single", "spread"
+                        }:
+                            raise HTTPException(
+                                status_code=400,
+                                detail="album_layout must be one of: auto, single, spread",
+                            )
                         merged[key] = value
                 data["settings"] = merged
             data["updated_at"] = _now_iso()
@@ -638,7 +647,7 @@ class ProjectStore:
         preview = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
         effective_settings = {**data["settings"], **box.get("restoration", {})}
         preview, _ = cleanup_photo_edges(
-            preview, effective_settings.get("edge_cleanup_mode", "tight")
+            preview, _effective_edge_cleanup_mode(data["settings"], effective_settings)
         )
         if data["settings"]["auto_rotate"]:
             preview, _ = auto_rotate(preview)
@@ -862,7 +871,7 @@ class ProjectStore:
             before = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
             effective_settings = {**data["settings"], **box.get("restoration", {})}
             before, _ = cleanup_photo_edges(
-                before, effective_settings.get("edge_cleanup_mode", "tight")
+                before, _effective_edge_cleanup_mode(data["settings"], effective_settings)
             )
             if data["settings"]["auto_rotate"]:
                 before, _ = auto_rotate(before)
@@ -936,7 +945,8 @@ class ProjectStore:
                     crop_pil = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
                     effective_settings = {**data["settings"], **box.get("restoration", {})}
                     crop_pil, _ = cleanup_photo_edges(
-                        crop_pil, effective_settings.get("edge_cleanup_mode", "tight")
+                        crop_pil,
+                        _effective_edge_cleanup_mode(data["settings"], effective_settings),
                     )
                     if auto_rotate_enabled:
                         crop_pil, _ = auto_rotate(crop_pil)
@@ -1073,6 +1083,8 @@ def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
     mode = settings.get("detection_mode", "scansplitterv4")
     min_ratio = float(settings.get("min_area_ratio", 2.0)) / 100
     max_ratio = float(settings.get("max_area_ratio", 80.0)) / 100
+    if mode == "album-splitter":
+        return detect_album_pages(image, layout=settings.get("album_layout", "auto"))
     if mode == "u2net":
         return detect_photos_u2net(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     if mode == "scansplitterv1":
@@ -1082,6 +1094,13 @@ def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
     if mode == "scansplitterv4":
         return detect_photos_v4(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     return detect_photos_v2(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
+
+
+def _effective_edge_cleanup_mode(settings: dict, effective_settings: dict) -> str:
+    """Album pages keep their physical margins and handwritten edge notes."""
+    if settings.get("detection_mode") == "album-splitter":
+        return "off"
+    return str(effective_settings.get("edge_cleanup_mode", "tight"))
 
 
 def _count_statuses(scans: list[dict]) -> dict:

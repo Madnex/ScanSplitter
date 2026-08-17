@@ -495,6 +495,29 @@ def test_detect_request_defaults_to_v4(monkeypatch):
     assert called
 
 
+def test_album_detector_receives_page_layout(monkeypatch):
+    data = _upload()
+    received_layout = None
+
+    def fake_detect(_image, layout):
+        nonlocal received_layout
+        received_layout = layout
+        return []
+
+    monkeypatch.setattr(api_module, "detect_album_pages", fake_detect)
+    response = client.post(
+        "/api/detect",
+        json={
+            "session_id": data["session_id"],
+            "detection_mode": "album-splitter",
+            "album_layout": "spread",
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert received_layout == "spread"
+
+
 def test_crop_job_returns_images():
     data = _upload()
     request = {

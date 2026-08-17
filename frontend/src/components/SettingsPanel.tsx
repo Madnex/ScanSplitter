@@ -3,7 +3,7 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ui/progress";
 import { Loader2 } from "lucide-react";
-import type { DetectionSettings, ModelKey, ModelStatus } from "@/types";
+import type { DetectionMode, DetectionSettings, ModelKey, ModelStatus } from "@/types";
 
 interface JobProgress {
   progress: number;
@@ -47,6 +47,8 @@ export function SettingsPanel({
   isBatchDetectionPending,
   modelStatuses = null,
 }: SettingsPanelProps) {
+  const isAlbumMode = settings.detectionMode === "album-splitter";
+  const itemLabel = isAlbumMode ? "page" : "photo";
   const u2netKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
   const u2netStatus = modelStatuses?.[u2netKey] ?? null;
   const mobileSamStatuses = [
@@ -61,7 +63,7 @@ export function SettingsPanel({
         <CardTitle className="text-base">Settings</CardTitle>
       </CardHeader>
       <CardContent className="space-y-4">
-        <div className="space-y-2">
+        {!isAlbumMode && <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>Min Area</span>
             <span className="text-muted-foreground">{settings.minArea}%</span>
@@ -75,9 +77,9 @@ export function SettingsPanel({
             max={50}
             step={1}
           />
-        </div>
+        </div>}
 
-        <div className="space-y-2">
+        {!isAlbumMode && <div className="space-y-2">
           <div className="flex justify-between text-sm">
             <span>Max Area</span>
             <span className="text-muted-foreground">{settings.maxArea}%</span>
@@ -91,7 +93,7 @@ export function SettingsPanel({
             max={100}
             step={1}
           />
-        </div>
+        </div>}
 
         <div className="flex items-center gap-2">
           <input
@@ -104,7 +106,7 @@ export function SettingsPanel({
             className="rounded"
           />
           <label htmlFor="auto-rotate" className="text-sm">
-            Auto-rotate photos
+            Auto-rotate {isAlbumMode ? "pages" : "photos"}
           </label>
         </div>
         {settings.autoRotate && orientationStatus && (orientationStatus.status === "downloading" || orientationStatus.status === "error") && (
@@ -123,7 +125,7 @@ export function SettingsPanel({
           </div>
         )}
 
-        <label className="block space-y-1 text-sm" htmlFor="edge-cleanup-mode">
+        {!isAlbumMode && <label className="block space-y-1 text-sm" htmlFor="edge-cleanup-mode">
           <span>Edge cleanup</span>
           <select
             id="edge-cleanup-mode"
@@ -141,7 +143,7 @@ export function SettingsPanel({
           <span className="block text-xs text-muted-foreground">
             Tight also removes confident white print margins.
           </span>
-        </label>
+        </label>}
 
         <div className="flex items-center gap-2">
           <input
@@ -168,24 +170,22 @@ export function SettingsPanel({
             onChange={(e) =>
               onSettingsChange({
                 ...settings,
-                detectionMode: e.target.value as
-                  | "scansplitterv1"
-                  | "scansplitterv2"
-                  | "scansplitterv3"
-                  | "scansplitterv4"
-                  | "u2net",
+                detectionMode: e.target.value as DetectionMode,
               })
             }
             className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
             <option value="scansplitterv4">ScanSplitterv4</option>
+            <option value="album-splitter">Album Splitter (whole pages)</option>
             <option value="scansplitterv3">ScanSplitterv3</option>
             <option value="scansplitterv2">ScanSplitterv2</option>
             <option value="scansplitterv1">ScanSplitterv1</option>
             <option value="u2net">AI (U2-Net)</option>
           </select>
           <p className="text-xs text-muted-foreground">
-            {settings.detectionMode === "scansplitterv4"
+            {settings.detectionMode === "album-splitter"
+              ? "Preserves complete album pages, photos, and handwritten notes"
+              : settings.detectionMode === "scansplitterv4"
               ? "V3 proposals plus MobileSAM border refinement — highest accuracy (~43MB)"
               : settings.detectionMode === "scansplitterv3"
               ? "Background-aware detector — robust for albums and low-contrast scans"
@@ -196,6 +196,28 @@ export function SettingsPanel({
                 : "Contour detector — fast on high-contrast scans"}
           </p>
         </div>
+
+        {isAlbumMode && (
+          <label className="block space-y-1 text-sm" htmlFor="album-layout">
+            <span>Pages in each photo</span>
+            <select
+              id="album-layout"
+              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+              value={settings.albumLayout}
+              onChange={(event) => onSettingsChange({
+                ...settings,
+                albumLayout: event.target.value as DetectionSettings["albumLayout"],
+              })}
+            >
+              <option value="auto">Auto</option>
+              <option value="single">One physical page</option>
+              <option value="spread">Two-page spread / split in half</option>
+            </select>
+            <span className="block text-xs text-muted-foreground">
+              Auto selects the strongest physical page, and splits only unusually wide spreads.
+            </span>
+          </label>
+        )}
 
         {settings.detectionMode === "scansplitterv4" &&
           mobileSamStatuses.some((status) => status.status !== "ready") && (
@@ -265,7 +287,7 @@ export function SettingsPanel({
             disabled={isDetecting}
             className="w-full"
           >
-            {isDetecting ? "Detecting..." : "Detect Photos"}
+            {isDetecting ? "Detecting..." : `Detect ${isAlbumMode ? "Album Pages" : "Photos"}`}
           </Button>
           {isDetecting && detectProgress && (
             <ProgressBar
@@ -279,7 +301,7 @@ export function SettingsPanel({
             variant="secondary"
             className="w-full"
           >
-            {isCropping ? "Cropping..." : `Crop Current (${currentPhotoCount})`}
+            {isCropping ? "Cropping..." : `Crop Current (${currentPhotoCount} ${itemLabel}${currentPhotoCount === 1 ? "" : "s"})`}
           </Button>
           {totalScanCount > 1 && (
             <>
@@ -289,12 +311,12 @@ export function SettingsPanel({
                 variant="secondary"
                 className="w-full"
               >
-                {isCropping ? "Cropping..." : `Crop All (${cropAllPhotoCount})`}
+                {isCropping ? "Cropping..." : `Crop All (${cropAllPhotoCount} ${itemLabel}${cropAllPhotoCount === 1 ? "" : "s"})`}
               </Button>
               <p className="text-xs text-muted-foreground text-center">
                 {isBatchDetectionPending
                   ? "Waiting for auto-detection to finish"
-                  : `${cropAllScanCount} of ${totalScanCount} scans have photos ready`}
+                  : `${cropAllScanCount} of ${totalScanCount} scans have ${itemLabel}s ready`}
               </p>
             </>
           )}

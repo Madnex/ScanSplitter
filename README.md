@@ -40,7 +40,7 @@ uvx scansplitter api --port 8001
 
 ## Features
 
-- **Multiple detection modes** - Choose ScanSplitterv4 (default), an earlier local detector, or AI (U2-Net)
+- **Multiple detection modes** - Split individual photos or preserve complete physical album pages with Album Splitter
 - **Interactive editing** - Adjust, rotate, and resize bounding boxes before cropping
 - **Auto-rotation** - Detects and corrects 90°/180°/270° rotations
 - **PDF support** - Extract and process pages from PDF files
@@ -58,6 +58,10 @@ uvx scansplitter api --port 8001
 - **ScanSplitterv2**: An improved contour-based detector. It applies contrast enhancement (CLAHE), adaptive thresholding, adaptive morphology (kernel scales with resolution), contour quality filtering (solidity/aspect/extent), and a guarded edge-refinement pass that keeps high-resolution crops aligned with the physical photo border. It can also use convex-hull borders for irregular edges.
 - **ScanSplitterv1**: The first contour-based detector used with adaptive threshold + fixed morphology + `minAreaRect` filtering. It’s simpler and can be useful as a fallback if v2 behaves unexpectedly on a specific scan.
 - **AI (U2-Net)**: A deep-learning salient-object model (ONNX) that produces a mask; ScanSplitter then extracts regions from that mask. It’s best for difficult scans (busy backgrounds, low contrast), but requires downloading a model on first use. Might be less accurate for multiple photos at once.
+
+### Whole album pages
+
+- **Album Splitter**: Detects the physical page instead of its mounted photos, preserving handwriting, tape, patina, spacing, and page context while cropping away the surface around the album. It distinguishes the content-bearing leaf from a facing page or translucent interleaf. Choose **Auto**, **One physical page**, or **Two-page spread / split in half**. It runs locally without a model download and disables photo-oriented edge cleanup so page margins are not lost.
 
 ScanSplitterv4 uses the MIT-licensed [MobileSAM](https://github.com/ChaoningZhang/MobileSAM) architecture and checksum-pinned ONNX exports from [Acly/MobileSAM](https://huggingface.co/Acly/MobileSAM). Images and model inference stay on the local machine.
 
@@ -217,7 +221,8 @@ uv run scansplitter process scan.jpg \
 | `--no-rotate` | Disable auto-rotation |
 | `--min-area` | Minimum photo size as % of scan (default: 2) |
 | `--max-area` | Maximum photo size as % of scan (default: 80) |
-| `--detection-mode` | `scansplitterv4` (default), `scansplitterv3`, `scansplitterv2`, `scansplitterv1` (legacy), or `u2net`; `classic` aliases `scansplitterv2` |
+| `--detection-mode` | `scansplitterv4` (default), `album-splitter`, `scansplitterv3`, `scansplitterv2`, `scansplitterv1` (legacy), or `u2net`; `classic` aliases `scansplitterv2` |
+| `--album-layout` | Album mode: `auto` (default), `single`, or `spread` |
 | `--u2net-full` | Use full U2-Net model instead of lite (slower, more accurate) |
 | `--format` | Output format: `png` or `jpg` (default: png) |
 

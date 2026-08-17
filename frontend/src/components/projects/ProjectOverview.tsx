@@ -48,6 +48,7 @@ export function ProjectDetectorSelect({ value, disabled, onChange }: ProjectDete
         onChange={(event) => onChange(event.target.value as DetectionMode)}
       >
         <option value="scansplitterv4">ScanSplitterv4</option>
+        <option value="album-splitter">Album Splitter</option>
         <option value="scansplitterv3">ScanSplitterv3</option>
         <option value="scansplitterv2">ScanSplitterv2</option>
         <option value="scansplitterv1">ScanSplitterv1</option>
@@ -293,6 +294,24 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           disabled={isSavingSettings || isDetectingAny}
           onChange={(detection_mode) => void handleSettingsChange({ detection_mode })}
         />
+        {project.settings.detection_mode === "album-splitter" && (
+          <label className="flex items-center gap-2 text-xs text-muted-foreground">
+            Pages
+            <select
+              aria-label="Album page layout"
+              className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
+              value={project.settings.album_layout}
+              disabled={isSavingSettings || isDetectingAny}
+              onChange={(event) => void handleSettingsChange({
+                album_layout: event.target.value as ProjectSettings["album_layout"],
+              })}
+            >
+              <option value="auto">Auto</option>
+              <option value="single">One page</option>
+              <option value="spread">Split spread</option>
+            </select>
+          </label>
+        )}
         <ProjectDetectionControls
           scope={detectionScope}
           disabled={isQueueingDetect || isSavingSettings || isDetectingAny || scans.length === 0}

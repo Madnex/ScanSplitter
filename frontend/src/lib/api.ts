@@ -1,5 +1,6 @@
 import type {
   BoundingBox,
+  AlbumLayout,
   EdgeCleanupMode,
   CropResponse,
   CroppedImage,
@@ -248,6 +249,7 @@ export async function detectBoxes(
   minArea: number,
   maxArea: number,
   detectionMode: DetectionMode = "scansplitterv4",
+  albumLayout: AlbumLayout = "auto",
   u2netLite: boolean = true,
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string | null) => void
@@ -260,6 +262,7 @@ export async function detectBoxes(
       min_area: minArea,
       max_area: maxArea,
       detection_mode: detectionMode,
+      album_layout: albumLayout,
       u2net_lite: u2netLite,
     },
     { signal, onProgress }

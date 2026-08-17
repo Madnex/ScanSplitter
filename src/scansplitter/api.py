@@ -23,6 +23,7 @@ from pydantic import BaseModel
 import scansplitter
 
 from . import credentials
+from .album_detector import AlbumLayout, detect_album_pages
 from .delivery import DELIVERY_REQUIRED_FIELDS
 from .detector import (
     DetectedRegion,
@@ -151,6 +152,7 @@ class DetectRequest(BaseModel):
     border_padding: float = 0.02
     # Detection algorithms
     detection_mode: str = "scansplitterv4"
+    album_layout: AlbumLayout = "auto"
     u2net_lite: bool = True  # Use lightweight model (faster) vs full (more accurate)
 
 
@@ -689,7 +691,11 @@ def run_detect(
         detection_mode = "scansplitterv1"
 
     # Run detection based on mode
-    if detection_mode == "u2net":
+    if detection_mode in ("album", "album_splitter", "album-splitter"):
+        progress_cb(35, "finding album page")
+        regions = detect_album_pages(image, layout=request.album_layout)
+        progress_cb(75, "refining page edges")
+    elif detection_mode == "u2net":
         # Use U2-Net deep learning detection
         progress_cb(35, "running model")
         regions = detect_photos_u2net(

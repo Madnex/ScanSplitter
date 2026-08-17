@@ -141,9 +141,15 @@ def main():
     # Phase 2: U2-Net detection mode
     process_parser.add_argument(
         "--detection-mode",
-        choices=["scansplitterv4", "scansplitterv3", "scansplitterv2", "scansplitterv1", "u2net", "classic"],
+        choices=["scansplitterv4", "scansplitterv3", "scansplitterv2", "scansplitterv1", "album-splitter", "u2net", "classic"],
         default="scansplitterv4",
         help="Detection mode: scansplitterv4 (default), older ScanSplitter detectors, or u2net; 'classic' aliases scansplitterv2",
+    )
+    process_parser.add_argument(
+        "--album-layout",
+        choices=["auto", "single", "spread"],
+        default="auto",
+        help="Album Splitter layout: auto, one physical page, or split spread",
     )
     process_parser.add_argument(
         "--u2net-full",
@@ -215,6 +221,7 @@ def process_files_cli(args):
     args.output.mkdir(parents=True, exist_ok=True)
 
     total_saved = 0
+    item_label = "page" if args.detection_mode == "album-splitter" else "photo"
 
     for file_path in args.files:
         print(f"Processing: {file_path}")
@@ -228,10 +235,11 @@ def process_files_cli(args):
             enhance_contrast=not args.no_enhance,
             border_mode=args.border_mode,
             detection_mode="scansplitterv2" if args.detection_mode == "classic" else args.detection_mode,
+            album_layout=args.album_layout,
             u2net_lite=not args.u2net_full,
         )
 
-        print(f"  Found {len(results)} photo(s)")
+        print(f"  Found {len(results)} {item_label}(s)")
 
         for result in results:
             # Generate output filename
@@ -253,7 +261,7 @@ def process_files_cli(args):
             print(f"  Saved: {output_path}{rotation_info}")
             total_saved += 1
 
-    print(f"\nDone! Saved {total_saved} photo(s) to {args.output}")
+    print(f"\nDone! Saved {total_saved} {item_label}(s) to {args.output}")
 
 
 if __name__ == "__main__":
