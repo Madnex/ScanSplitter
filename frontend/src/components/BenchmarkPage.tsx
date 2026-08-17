@@ -42,7 +42,7 @@ interface Metrics {
 }
 
 interface Variant {
-  key: "v3" | "v4" | "v5" | "album";
+  key: "v3" | "v4" | "v5" | "llm" | "album";
   label: string;
   boxes: BenchmarkBox[];
   metrics: Metrics;
@@ -51,6 +51,8 @@ interface Variant {
 interface BenchmarkIndex {
   image_width: number;
   image_height: number;
+  openrouter_enabled: boolean;
+  openrouter_model: string | null;
   cases: BenchmarkCase[];
 }
 
@@ -59,6 +61,7 @@ const COLORS: Record<string, string> = {
   v3: "#f59e0b",
   v4: "#3b82f6",
   v5: "#ef4444",
+  llm: "#06b6d4",
   album: "#a855f7",
 };
 
@@ -275,6 +278,9 @@ export function BenchmarkPage() {
             <div>
               <h1 className="text-xl font-semibold tracking-tight">Detector benchmark</h1>
               <p className="text-sm text-muted-foreground">Live visual comparison against fixed ground truth</p>
+              {index && !index.openrouter_enabled && (
+                <p className="text-xs text-amber-700 dark:text-amber-300">Set OPENROUTER_API_KEY to add the LLM comparison.</p>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-4 text-sm">

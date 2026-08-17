@@ -48,6 +48,7 @@ export type DetectionMode =
   | "scansplitterv3"
   | "scansplitterv4"
   | "scansplitterv5"
+  | "openrouter"
   | "album-splitter";
 
 export type AlbumLayout = "auto" | "single" | "spread";

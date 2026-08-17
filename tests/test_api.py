@@ -510,6 +510,30 @@ def test_detect_request_defaults_to_v5(monkeypatch):
     assert called
 
 
+def test_detect_can_use_openrouter_mode_without_exposing_key(monkeypatch):
+    data = _upload()
+    received = None
+
+    def fake_detect(_image, **kwargs):
+        nonlocal received
+        received = kwargs
+        return []
+
+    monkeypatch.setattr(api_module, "detect_photos_openrouter", fake_detect)
+    response = client.post(
+        "/api/detect",
+        json={
+            "session_id": data["session_id"],
+            "detection_mode": "openrouter",
+            "min_area": 3,
+            "max_area": 70,
+        },
+    )
+
+    assert response.status_code == 200, response.text
+    assert received == {"min_area_ratio": 0.03, "max_area_ratio": 0.7}
+
+
 def test_album_detector_receives_page_layout(monkeypatch):
     data = _upload()
     received_layout = None

@@ -13,6 +13,7 @@ from PIL import Image
 from .album_detector import detect_album_pages
 from .benchmark_metrics import score_rectangles
 from .detector import DetectedRegion, detect_photos_v3, detect_photos_v4, detect_photos_v5
+from .llm_detector import detect_photos_openrouter, is_openrouter_configured, openrouter_model
 
 BENCHMARK_ROOT = Path(__file__).resolve().parents[2] / "benchmarks"
 _ENABLED_VALUES = {"1", "true", "yes", "on"}
@@ -65,6 +66,8 @@ def list_cases() -> dict[str, Any]:
     return {
         "image_width": width,
         "image_height": height,
+        "openrouter_enabled": is_openrouter_configured(),
+        "openrouter_model": openrouter_model() if is_openrouter_configured() else None,
         "cases": [
             {
                 "id": case["id"],
@@ -103,6 +106,14 @@ def run_case(case_id: str) -> dict[str, Any]:
             ("v4", "ScanSplitter v4", detect_photos_v4(image)),
             ("v5", "ScanSplitter v5", detect_photos_v5(image)),
         ]
+        if is_openrouter_configured():
+            runs.append(
+                (
+                    "llm",
+                    f"OpenRouter · {openrouter_model()}",
+                    detect_photos_openrouter(image),
+                )
+            )
     else:
         runs = [
             (

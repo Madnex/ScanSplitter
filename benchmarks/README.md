@@ -29,8 +29,30 @@ developer flag and open `/benchmark`:
 SCANSPLITTER_BENCHMARK=1 uv run scansplitter api
 ```
 
+To add an OpenRouter vision-model column to every ScanSplitter row:
+
+```bash
+SCANSPLITTER_BENCHMARK=1 \
+OPENROUTER_API_KEY="..." \
+OPENROUTER_MODEL="google/gemini-2.5-flash" \
+uv run scansplitter api
+```
+
+For a machine-readable/Markdown OpenRouter-only score instead of the browser:
+
+```bash
+OPENROUTER_API_KEY="..." uv run benchmarks/evaluate.py \
+  --suite scansplitter --scan-detector openrouter \
+  --output benchmarks/results/openrouter.md
+```
+
+This makes ten paid external API calls per complete benchmark run and uploads
+the ten ScanSplitter fixtures to OpenRouter/model providers. The Album Splitter
+rows remain local. Without `OPENROUTER_API_KEY`, the benchmark continues to show
+only the local detector versions.
+
 Every fixture row shows the original, ground truth, and applicable live
-detectors side by side (ScanSplitter v3/v4/v5 or Album Splitter). Without the
+detectors side by side (ScanSplitter v3/v4/v5/OpenRouter or Album Splitter). Without the
 flag, both the page and its benchmark API return 404.
 
 The evaluator uses one-to-one maximum-IoU matching and separates discovery from
