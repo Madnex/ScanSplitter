@@ -36,12 +36,12 @@ describe("SettingsPanel crop actions", () => {
     expect(html).toContain("Crop Current (3 photos)");
     expect(html).toContain("Crop All (7 photos)");
     expect(html).toContain("2 of 3 scans have photos ready");
-    expect(html).toContain("1. Output");
-    expect(html).toContain("Individual photos");
-    expect(html).toContain("Switch to Whole album pages");
-    expect(html).toContain("2. Detection method");
-    expect(html).toContain("On this device");
-    expect(html).toContain("Switch to Cloud AI");
+    expect(html).toContain("Output");
+    expect(html).toContain("Photos");
+    expect(html).toContain("Album pages");
+    expect(html).toContain("Detection");
+    expect(html).toContain("Local");
+    expect(html).toContain("Cloud AI");
     expect(html).toContain("Advanced photo settings");
     expect(html).toContain("Edge cleanup");
     expect(html).toContain('<option value="scansplitterv5">ScanSplitter v5 · Recommended</option>');
@@ -115,14 +115,13 @@ describe("SettingsPanel crop actions", () => {
     );
 
     expect(html).toContain("Detect album pages");
-    expect(html).toContain("2. Page layout");
-    expect(html).toContain("Runs locally.");
-    expect(html).toContain("Switch to Individual photos");
+    expect(html).toContain("Page layout");
+    expect(html).toContain("Album pages are detected locally.");
     expect(html).toContain('<option value="single">One physical page</option>');
     expect(html).toContain('<option value="spread" selected="">Two-page spread · split into pages</option>');
     expect(html).toContain("Crop Current (2 pages)");
     expect(html).not.toContain("Edge cleanup");
-    expect(html).not.toContain("2. Detection method");
+    expect(html).not.toContain("Photo detection method");
   });
 
   it("makes cloud processing and automatic uploads explicit", () => {
@@ -144,11 +143,9 @@ describe("SettingsPanel crop actions", () => {
       />
     );
 
-    expect(html).toContain("OpenRouter vision model");
-    expect(html).toContain("Switch to On this device");
     expect(html).toContain("complete scan is sent to OpenRouter");
     expect(html).toContain("Send new uploads to Cloud AI automatically");
     expect(html).toContain("Detect photos with Cloud AI");
-    expect(html).not.toContain("Local detector</span>");
+    expect(html).not.toContain("Algorithm version</span>");
   });
 });

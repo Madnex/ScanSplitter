@@ -32,47 +32,25 @@ interface SettingsPanelProps {
 function ModeChoice({
   active,
   title,
-  description,
   onClick,
 }: {
   active: boolean;
   title: string;
-  description: string;
   onClick: () => void;
 }) {
-  if (!active) {
-    return (
-      <button
-        type="button"
-        role="radio"
-        aria-checked="false"
-        onClick={onClick}
-        className="group flex min-h-8 items-center gap-1.5 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">→</span>
-        Switch to {title}
-      </button>
-    );
-  }
-
   return (
     <button
       type="button"
       role="radio"
-      aria-checked="true"
+      aria-checked={active}
       onClick={onClick}
-      className="min-h-16 rounded-lg border border-foreground/70 bg-foreground/[0.06] px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      className={`h-8 rounded-md px-2 text-xs font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${
+        active
+          ? "bg-background text-foreground shadow-sm"
+          : "text-muted-foreground hover:bg-background/50 hover:text-foreground"
+      }`}
     >
-      <span className="flex items-center gap-2 text-sm font-semibold">
-        <span
-          aria-hidden="true"
-          className="h-2 w-2 shrink-0 rounded-sm border border-foreground bg-foreground"
-        />
-        {title}
-      </span>
-      <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
-        {description}
-      </span>
+      {title}
     </button>
   );
 }
@@ -114,52 +92,45 @@ export function SettingsPanel({
 
   return (
     <Card>
-      <CardHeader className="pb-3">
+      <CardHeader className="pb-2">
         <CardTitle className="text-base">Split settings</CardTitle>
-        <p className="text-xs leading-relaxed text-muted-foreground">
-          Choose what the resulting crops should contain.
-        </p>
       </CardHeader>
-      <CardContent className="space-y-4">
-        <fieldset className="space-y-2">
-          <legend className="text-sm font-medium">1. Output</legend>
-          <div className="grid gap-2" role="radiogroup" aria-label="Split output">
+      <CardContent className="space-y-3">
+        <fieldset className="space-y-1.5">
+          <legend className="text-xs font-medium">Output</legend>
+          <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1" role="radiogroup" aria-label="Split output">
             <ModeChoice
               active={!isAlbumMode}
-              title="Individual photos"
-              description="One crop for every mounted print"
+              title="Photos"
               onClick={selectPhotoOutput}
             />
             <ModeChoice
               active={isAlbumMode}
-              title="Whole album pages"
-              description="Keep handwriting, layout, and page context"
+              title="Album pages"
               onClick={() => onSettingsChange({ ...settings, detectionMode: "album-splitter" })}
             />
           </div>
         </fieldset>
 
         {!isAlbumMode && (
-          <fieldset className="space-y-2 border-t pt-4">
-            <legend className="text-sm font-medium">2. Detection method</legend>
-            <div className="grid gap-2" role="radiogroup" aria-label="Photo detection method">
+          <fieldset className="space-y-2 border-t pt-3">
+            <legend className="text-xs font-medium">Detection</legend>
+            <div className="grid grid-cols-2 gap-1 rounded-lg bg-muted/60 p-1" role="radiogroup" aria-label="Photo detection method">
               <ModeChoice
                 active={!isCloudMode}
-                title="On this device"
-                description="Fast and private; no scan upload"
+                title="Local"
                 onClick={selectLocalDetector}
               />
               <ModeChoice
                 active={isCloudMode}
                 title="Cloud AI"
-                description="Best benchmark result; uploads the scan"
                 onClick={() => onSettingsChange({ ...settings, detectionMode: "openrouter" })}
               />
             </div>
 
             {!isCloudMode ? (
-              <label className="block space-y-1.5 pt-1 text-sm" htmlFor="local-detector-version">
-                <span>Local detector</span>
+              <label className="block space-y-1 text-xs" htmlFor="local-detector-version">
+                <span>Algorithm version</span>
                 <select
                   id="local-detector-version"
                   value={settings.detectionMode}
@@ -173,31 +144,20 @@ export function SettingsPanel({
                   <option value="scansplitterv4">ScanSplitter v4 · Previous</option>
                   <option value="scansplitterv3">ScanSplitter v3 · Classic</option>
                 </select>
-                <span className="block text-xs leading-relaxed text-muted-foreground">
-                  {settings.detectionMode === "scansplitterv5"
-                    ? "Combines MobileSAM with texture and frame detection."
-                    : settings.detectionMode === "scansplitterv4"
-                    ? "Earlier MobileSAM border refinement, kept for comparison."
-                    : "Model-free OpenCV detection for simpler scans."}
-                </span>
               </label>
             ) : (
-              <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.07] px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
-                <span className="block font-medium text-foreground">OpenRouter vision model</span>
-                The complete scan is sent to OpenRouter and the configured model provider.
-              </div>
+              <p className="border-l-2 border-amber-500/50 pl-2 text-xs leading-relaxed text-muted-foreground">
+                The complete scan is sent to OpenRouter and its model provider.
+              </p>
             )}
           </fieldset>
         )}
 
         {isAlbumMode && (
-          <div className="space-y-3 border-t pt-4">
-            <div className="rounded-md bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
-              <span className="font-medium text-foreground">Runs locally.</span>{" "}
-              Album Splitter returns physical pages instead of separating their photos.
-            </div>
-            <label className="block space-y-1.5 text-sm" htmlFor="album-layout">
-              <span>2. Page layout</span>
+          <div className="space-y-2 border-t pt-3">
+            <p className="text-xs text-muted-foreground">Album pages are detected locally.</p>
+            <label className="block space-y-1 text-xs" htmlFor="album-layout">
+              <span>Page layout</span>
               <select
                 id="album-layout"
                 className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
@@ -218,8 +178,8 @@ export function SettingsPanel({
           </div>
         )}
 
-        <div className="space-y-3 border-t pt-4">
-          <p className="text-sm font-medium">Processing</p>
+        <div className="space-y-2.5 border-t pt-3">
+          <p className="text-xs font-medium">Processing</p>
 
           <div className="flex items-center gap-2">
             <input
