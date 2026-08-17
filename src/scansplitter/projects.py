@@ -41,6 +41,11 @@ from .detector import (
 )
 from .edge_cleanup import cleanup_photo_edges
 from .jobs import submit_job
+from .llm_detector import (
+    OpenRouterConfigurationError,
+    OpenRouterDetectionError,
+    detect_photos_openrouter,
+)
 from .metadata import (
     create_metadata_exif,
     create_xmp_packet,
@@ -88,6 +93,7 @@ DETECTION_MODES = {
     "scansplitterv3",
     "scansplitterv4",
     "scansplitterv5",
+    "openrouter",
     "album-splitter",
 }
 
@@ -386,7 +392,8 @@ class ProjectStore:
                                 status_code=400,
                                 detail=(
                                     "detection_mode must be one of: scansplitterv5, "
-                                    "scansplitterv4, scansplitterv3, album-splitter"
+                                    "scansplitterv4, scansplitterv3, openrouter, "
+                                    "album-splitter"
                                 ),
                             )
                         merged[key] = value
@@ -697,7 +704,16 @@ class ProjectStore:
         progress(10, "loading scan")
         try:
             image = Image.open(stored).convert("RGB")
-            regions = _detect(image, settings)
+            if settings.get("detection_mode") == "openrouter":
+                progress(25, "sending scan to OpenRouter")
+            else:
+                progress(25, "detecting photo regions")
+            try:
+                regions = _detect(image, settings)
+            except OpenRouterConfigurationError as exc:
+                raise HTTPException(status_code=503, detail=str(exc)) from exc
+            except OpenRouterDetectionError as exc:
+                raise HTTPException(status_code=502, detail=str(exc)) from exc
             boxes = [_region_to_box(r) for r in regions]
             progress(70, "scoring confidence")
             flags = _run_confidence(boxes, image.width, image.height)
@@ -1105,6 +1121,12 @@ def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
         return detect_photos_v4(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     if mode == "scansplitterv5":
         return detect_photos_v5(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
+    if mode == "openrouter":
+        return detect_photos_openrouter(
+            image,
+            min_area_ratio=min_ratio,
+            max_area_ratio=max_ratio,
+        )
     raise ValueError(f"Unsupported detection mode: {mode}")
 
 

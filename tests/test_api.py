@@ -534,6 +534,19 @@ def test_detect_can_use_openrouter_mode_without_exposing_key(monkeypatch):
     assert received == {"min_area_ratio": 0.03, "max_area_ratio": 0.7}
 
 
+def test_detect_openrouter_without_server_key_returns_service_unavailable(monkeypatch):
+    data = _upload()
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+
+    response = client.post(
+        "/api/detect",
+        json={"session_id": data["session_id"], "detection_mode": "openrouter"},
+    )
+
+    assert response.status_code == 503
+    assert response.json()["detail"] == "OPENROUTER_API_KEY is not configured"
+
+
 def test_album_detector_receives_page_layout(monkeypatch):
     data = _upload()
     received_layout = None

@@ -35,7 +35,11 @@ from .detector import (
 from .edge_cleanup import cleanup_photo_edges
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
 from .jobs import JobCancelled, registry, submit_job
-from .llm_detector import OpenRouterDetectionError, detect_photos_openrouter
+from .llm_detector import (
+    OpenRouterConfigurationError,
+    OpenRouterDetectionError,
+    detect_photos_openrouter,
+)
 from .models import get_model_statuses, start_model_download
 from .pdf_handler import extract_pdf_page, get_pdf_page_count
 from .projects import MANIFEST_FORMATS, MASTER_FORMATS, get_project_store
@@ -762,7 +766,7 @@ def run_detect(
                 max_area_ratio=request.max_area / 100,
             )
         except OpenRouterDetectionError as exc:
-            status = 503 if "not configured" in str(exc) else 502
+            status = 503 if isinstance(exc, OpenRouterConfigurationError) else 502
             raise HTTPException(status_code=status, detail=str(exc)) from exc
         progress_cb(75, "converting LLM photo corners")
     else:

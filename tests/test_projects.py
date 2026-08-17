@@ -1,10 +1,11 @@
 """Tests for the persistent-projects backend.
 
-Detection runs in-process using local ScanSplitter detection modes
-(never a model-backed detector, so no network / model download). Confidence evaluation is
-provided by a spec-faithful in-test placeholder injected into ``sys.modules``
-so the review-status logic is exercised deterministically and independently of
-the parallel ``confidence`` module.
+Detection runs in-process. Remote detector calls are replaced with test doubles
+or exercised only through their missing-configuration path, so this suite never
+uses the network. Confidence evaluation is provided by a spec-faithful in-test
+placeholder injected into ``sys.modules`` so the review-status logic is
+exercised deterministically and independently of the parallel ``confidence``
+module.
 """
 
 import io
@@ -154,6 +155,27 @@ def test_project_album_detection_uses_saved_layout(monkeypatch):
     )
 
 
+def test_project_openrouter_detection_uses_saved_area_limits(monkeypatch):
+    received = None
+
+    def fake_detect(_image, **kwargs):
+        nonlocal received
+        received = kwargs
+        return []
+
+    monkeypatch.setattr(projects, "detect_photos_openrouter", fake_detect)
+    projects._detect(
+        Image.new("RGB", (80, 60)),
+        {
+            "detection_mode": "openrouter",
+            "min_area_ratio": 3.0,
+            "max_area_ratio": 70.0,
+        },
+    )
+
+    assert received == {"min_area_ratio": 0.03, "max_area_ratio": 0.7}
+
+
 # --- CRUD -------------------------------------------------------------------
 
 
@@ -203,6 +225,13 @@ def test_project_crud():
         json={"settings": {"detection_mode": "scansplitterv2"}},
     )
     assert retired_detector.status_code == 400
+
+    cloud_detector = client.patch(
+        f"/api/projects/{pid}",
+        json={"settings": {"detection_mode": "openrouter"}},
+    )
+    assert cloud_detector.status_code == 200
+    assert cloud_detector.json()["settings"]["detection_mode"] == "openrouter"
 
     # Delete
     assert client.delete(f"/api/projects/{pid}").json() == {"status": "deleted"}
@@ -383,6 +412,65 @@ def test_detect_job_flags_route_to_needs_review(monkeypatch):
     assert scan["status"] == "needs_review"
     assert any(f["code"] == "no_boxes" for f in scan["flags"])
     assert scan["detected_count"] == 0
+
+
+def test_project_openrouter_missing_key_preserves_structured_job_error(monkeypatch):
+    _install_confidence(monkeypatch, _spec_evaluate)
+    monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    pid = _create_project(detection_mode="openrouter")["id"]
+    upload = client.post(
+        f"/api/projects/{pid}/scans?detect=false",
+        files=[("files", ("photo.png", _photo_png(), "image/png"))],
+    )
+    sid = upload.json()["scans"][0]["id"]
+
+    submitted = client.post(f"/api/projects/{pid}/scans/{sid}/detect")
+    assert submitted.status_code == 202, submitted.text
+    job = _wait_for_job(submitted.json()["job_id"])
+
+    assert job["status"] == "failed"
+    assert job["error_status"] == 503
+    assert job["error_detail"] == "OPENROUTER_API_KEY is not configured"
+    scan = client.get(f"/api/projects/{pid}").json()["scans"][0]
+    assert scan["status"] == "failed"
+
+
+def test_project_upload_runs_saved_openrouter_detector_and_persists_boxes(monkeypatch):
+    _install_confidence(monkeypatch, _spec_evaluate)
+    calls = 0
+
+    def fake_detect(_image, **kwargs):
+        nonlocal calls
+        calls += 1
+        assert kwargs == {"min_area_ratio": 0.02, "max_area_ratio": 0.8}
+        return [
+            projects.DetectedRegion(
+                center=(400.0, 300.0),
+                size=(300.0, 200.0),
+                angle=0.0,
+                area=60_000.0,
+                area_ratio=0.125,
+                x=250,
+                y=200,
+                width=300,
+                height=200,
+            )
+        ]
+
+    monkeypatch.setattr(projects, "detect_photos_openrouter", fake_detect)
+    pid = _create_project(detection_mode="openrouter")["id"]
+    upload = client.post(
+        f"/api/projects/{pid}/scans",
+        files=[("files", ("photo.png", _photo_png(), "image/png"))],
+    )
+    job = _wait_for_job(upload.json()["jobs"][0]["job_id"])
+
+    assert job["status"] == "succeeded", job
+    assert calls == 1
+    scan = client.get(f"/api/projects/{pid}").json()["scans"][0]
+    assert scan["status"] == "auto_approved"
+    assert scan["detected_count"] == 1
+    assert len(scan["boxes"]) == 1
 
 
 def test_detect_pending_retries_needs_review_scan_without_boxes(monkeypatch):

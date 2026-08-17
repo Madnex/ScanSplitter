@@ -1,6 +1,7 @@
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import {
+  ProjectCloudDisclosure,
   ProjectDetectionControls,
   ProjectDetectorSelect,
 } from "@/components/projects/ProjectOverview";
@@ -14,8 +15,19 @@ describe("ProjectDetectorSelect", () => {
     expect(html).toContain('aria-label="Detection mode"');
     expect(html).toContain('<option value="scansplitterv5">ScanSplitterv5</option>');
     expect(html).toContain('<option value="scansplitterv4">ScanSplitterv4</option>');
+    expect(html).toContain('<option value="openrouter">Cloud AI · OpenRouter</option>');
     expect(html).toContain('<option value="album-splitter">Album Splitter</option>');
     expect(html).toContain('<option value="scansplitterv3" selected="">ScanSplitterv3</option>');
+  });
+});
+
+describe("ProjectCloudDisclosure", () => {
+  it("discloses the remote upload and local response cache", () => {
+    const html = renderToStaticMarkup(<ProjectCloudDisclosure />);
+
+    expect(html).toContain('role="note"');
+    expect(html).toContain("sends each complete scan to OpenRouter");
+    expect(html).toContain("cached locally to avoid repeat charges");
   });
 });
 

@@ -56,7 +56,7 @@ uvx scansplitter api --port 8001
 - **ScanSplitterv5 (default)**: Combines conservative v3/MobileSAM anchors with color-independent texture and frame passes. Agreeing texture rectangles tighten crops, multiple texture islands split merged page proposals, closed frames recover pale photographs, and tightly prompted segmentation verifies candidates near scan edges. Conflicting evidence falls back to the conservative anchor.
 - **ScanSplitterv4**: The previous tightly prompted MobileSAM detector, retained for comparisons and existing saved projects.
 - **ScanSplitterv3**: A model-free, background-aware OpenCV detector for album pages and low-contrast scans. It models paper/platen colors in Lab space, finds dense non-background regions, separates touching prints at narrow gutters, and snaps boxes to long physical edges.
-- **OpenRouter LLM (experimental)**: Sends a resized copy of the complete scan to a configurable OpenRouter vision model and asks for four corners around every inner photographic image. Select it in the Quick-mode detection menu. This mode is not local: the scan is uploaded to OpenRouter and the selected model provider.
+- **OpenRouter LLM (experimental)**: Sends a resized copy of the complete scan to a configurable OpenRouter vision model and asks for four corners around every inner photographic image. Select it in the Quick or Project detection menu. This mode is not local: the scan is uploaded to OpenRouter and the selected model provider.
 
 To enable the experimental detector, copy the example environment file and add
 your key:
@@ -67,10 +67,16 @@ cp .env.example .env
 ./scripts/openrouter.py serve
 ```
 
-`OPENROUTER_MODEL` is optional and defaults to `google/gemini-2.5-flash`.
+`OPENROUTER_MODEL` is optional and defaults to `google/gemini-3.7-flash`.
 The `.env` file is ignored by git, and the key is never sent to or stored by
-the frontend. Run `./scripts/openrouter.py report` to evaluate the OpenRouter
-model against all ten ScanSplitter benchmark fixtures.
+the frontend. Successful responses are cached under
+`~/.scansplitter/llm-cache/` (or `SCANSPLITTER_DATA_DIR`) so re-detecting the
+same scan with the same model does not incur another request. The cache stores
+only model JSON coordinates, not scan images or API keys. Set
+`SCANSPLITTER_LLM_CACHE=0` to force fresh requests, or
+`SCANSPLITTER_LLM_CACHE_DIR` to choose another cache directory. Run
+`./scripts/openrouter.py report` to evaluate the OpenRouter model against all
+ten ScanSplitter benchmark fixtures.
 
 ### Whole album pages
 
@@ -234,13 +240,13 @@ uv run scansplitter process scan.jpg \
 | `--no-rotate` | Disable auto-rotation |
 | `--min-area` | Minimum photo size as % of scan (default: 2) |
 | `--max-area` | Maximum photo size as % of scan (default: 80) |
-| `--detection-mode` | `scansplitterv5` (default), `scansplitterv4`, `album-splitter`, or `scansplitterv3` |
+| `--detection-mode` | `scansplitterv5` (default), `scansplitterv4`, `album-splitter`, or `scansplitterv3` (Cloud AI is available in Quick, Projects, and the API, but not this batch command) |
 | `--album-layout` | Album mode: `auto` (default), `single`, or `spread` |
 | `--format` | Output format: `png` or `jpg` (default: png) |
 
 ## How It Works
 
-1. **Photo detection** - Runs the selected detection mode (ScanSplitterv3/v4 or Album Splitter) to produce rotatable bounding boxes.
+1. **Photo detection** - Runs the selected local, album-page, or optional OpenRouter detector to produce rotatable bounding boxes.
 2. **Interactive adjustment** - You can refine boxes in the web UI before cropping.
 3. **Cropping** - Extracts rotated regions using the adjusted boxes.
 4. **Auto-rotation (optional)** - Uses the orientation model (with fallbacks) to fix 90°/180°/270° rotations.

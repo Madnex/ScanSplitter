@@ -43,10 +43,12 @@ For a machine-readable/Markdown OpenRouter-only score instead of the browser:
 ./scripts/openrouter.py report
 ```
 
-This makes ten paid external API calls per complete benchmark run and uploads
-the ten ScanSplitter fixtures to OpenRouter/model providers. The Album Splitter
-rows remain local. Without `OPENROUTER_API_KEY`, the benchmark continues to show
-only the local detector versions.
+The first run makes ten paid external API calls and uploads the ten ScanSplitter
+fixtures to OpenRouter/model providers. Identical later runs use the local LLM
+response cache; set `SCANSPLITTER_LLM_CACHE=0` when a genuinely fresh benchmark
+is required. The Album Splitter rows remain local. Without
+`OPENROUTER_API_KEY`, the benchmark continues to show only the local detector
+versions.
 
 Every fixture row shows the original, ground truth, and applicable live
 detectors side by side (ScanSplitter v3/v4/v5/OpenRouter or Album Splitter). Without the

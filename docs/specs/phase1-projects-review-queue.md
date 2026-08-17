@@ -149,6 +149,13 @@ box within its scan; cross-scan stem collisions get `_2`/`_3` suffixes.
 PDF-page scans share the PDF filename as `original_name` (all pages same
 stem) and rely on collision-suffixing to disambiguate.
 
+`detection_mode` accepts `scansplitterv3`, `scansplitterv4`,
+`scansplitterv5`, `openrouter`, and `album-splitter`. The `openrouter` mode has
+the same remote-upload disclosure, retry/cache behavior, and configuration
+errors specified in [openrouter-detector.md](openrouter-detector.md). Detection
+modes and settings must maintain Quick/Project parity unless a binding spec
+explicitly records an exception.
+
 ## Frontend
 
 Top-level mode switch (header): **Quick** (existing UI, unchanged) and

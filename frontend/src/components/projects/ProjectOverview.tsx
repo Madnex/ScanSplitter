@@ -49,10 +49,19 @@ export function ProjectDetectorSelect({ value, disabled, onChange }: ProjectDete
       >
         <option value="scansplitterv5">ScanSplitterv5</option>
         <option value="scansplitterv4">ScanSplitterv4</option>
+        <option value="openrouter">Cloud AI · OpenRouter</option>
         <option value="album-splitter">Album Splitter</option>
         <option value="scansplitterv3">ScanSplitterv3</option>
       </select>
     </label>
+  );
+}
+
+export function ProjectCloudDisclosure() {
+  return (
+    <p role="note" className="mb-4 border-l-2 border-amber-500/50 pl-3 text-xs leading-relaxed text-muted-foreground">
+      Cloud AI sends each complete scan to OpenRouter and its model provider. Successful coordinate responses are cached locally to avoid repeat charges.
+    </p>
   );
 }
 
@@ -347,6 +356,8 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
         </Button>
         <Button size="sm" variant="outline" onClick={() => setShowDelivery(true)} disabled={exportableCount === 0}><Send className="mr-1 h-4 w-4" />Deliver</Button>
       </div>
+
+      {project.settings.detection_mode === "openrouter" && <ProjectCloudDisclosure />}
 
       {showRestoration && (
         <section className="mb-4 rounded-lg bg-muted/45 px-4 py-3" aria-labelledby="restoration-heading">

@@ -68,6 +68,11 @@ ScanSplitter detects and extracts multiple photos from scanned images using Open
 **Conventions:**
 - Endpoints are sync `def` (FastAPI threadpool) because the work is
   CPU-bound OpenCV/ONNX; never introduce blocking work in an `async def`
+- Interactive feature parity is binding: detection modes, detection settings,
+  re-detection behavior, and upload-time detection must be supported in both
+  Quick and persistent Projects in the same change. Any deliberate exception
+  must be stated in the relevant binding spec, and each workflow needs backend
+  and frontend regression coverage.
 - Every client-controlled name goes through `sanitize_name()`; local writes
   are contained with `resolve().is_relative_to(base)`
 - GPS EXIF is stripped on export unless the request sets `include_gps`
