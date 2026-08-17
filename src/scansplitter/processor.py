@@ -6,6 +6,7 @@ from typing import Literal
 
 from PIL import Image
 
+from .album_detector import AlbumLayout, detect_album_pages
 from .detector import (
     crop_regions,
     detect_photos_u2net,
@@ -60,8 +61,14 @@ def process_image(
     border_mode: Literal["minAreaRect", "convexHull"] = "minAreaRect",
     # Detection algorithms
     detection_mode: Literal[
-        "scansplitterv1", "scansplitterv2", "scansplitterv3", "scansplitterv4", "u2net"
+        "scansplitterv1",
+        "scansplitterv2",
+        "scansplitterv3",
+        "scansplitterv4",
+        "album-splitter",
+        "u2net",
     ] = "scansplitterv4",
+    album_layout: AlbumLayout = "auto",
     u2net_lite: bool = True,
 ) -> list[ProcessedImage]:
     """
@@ -84,7 +91,9 @@ def process_image(
         List of ProcessedImage objects
     """
     # Detect photos based on selected mode (accept older aliases for compatibility)
-    if detection_mode in ("u2net",):
+    if detection_mode == "album-splitter":
+        regions = detect_album_pages(image, layout=album_layout)
+    elif detection_mode in ("u2net",):
         regions = detect_photos_u2net(
             image,
             min_area_ratio=min_area_ratio,
@@ -139,7 +148,8 @@ def process_image(
     for idx, cropped in enumerate(cropped_images):
         rotation = 0
 
-        cropped, _ = cleanup_photo_edges(cropped, edge_cleanup_mode)
+        effective_cleanup = "off" if detection_mode == "album-splitter" else edge_cleanup_mode
+        cropped, _ = cleanup_photo_edges(cropped, effective_cleanup)
 
         if auto_rotate_enabled:
             cropped, rotation = auto_rotate(cropped)
@@ -169,8 +179,14 @@ def process_file(
     border_mode: Literal["minAreaRect", "convexHull"] = "minAreaRect",
     # Detection algorithms
     detection_mode: Literal[
-        "scansplitterv1", "scansplitterv2", "scansplitterv3", "scansplitterv4", "u2net"
+        "scansplitterv1",
+        "scansplitterv2",
+        "scansplitterv3",
+        "scansplitterv4",
+        "album-splitter",
+        "u2net",
     ] = "scansplitterv4",
+    album_layout: AlbumLayout = "auto",
     u2net_lite: bool = True,
 ) -> list[ProcessedImage]:
     """
@@ -211,6 +227,7 @@ def process_file(
                 enhance_contrast=enhance_contrast,
                 border_mode=border_mode,
                 detection_mode=detection_mode,
+                album_layout=album_layout,
                 u2net_lite=u2net_lite,
             )
             results.extend(page_results)
@@ -227,6 +244,7 @@ def process_file(
             enhance_contrast=enhance_contrast,
             border_mode=border_mode,
             detection_mode=detection_mode,
+            album_layout=album_layout,
             u2net_lite=u2net_lite,
         )
 

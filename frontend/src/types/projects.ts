@@ -2,7 +2,7 @@
 // queue). Mirrors the JSON contract in docs/specs/phase1-projects-review-queue.md
 // exactly - keep in sync with that spec, not with the Quick-mode types in
 // `@/types` (which describe the older single-session flow).
-import type { DetectionMode, EdgeCleanupMode } from "@/types";
+import type { AlbumLayout, DetectionMode, EdgeCleanupMode } from "@/types";
 
 /**
  * A box as stored in `project.json` / returned by the projects API.
@@ -77,6 +77,7 @@ export interface ProjectMetadata {
 
 export interface ProjectSettings {
   detection_mode: DetectionMode;
+  album_layout: AlbumLayout;
   min_area_ratio: number;
   max_area_ratio: number;
   auto_rotate: boolean;

@@ -131,6 +131,29 @@ def _create_project(name="Shoebox 1975", detection_mode="scansplitterv3") -> dic
     return project
 
 
+def test_project_album_detection_uses_saved_layout(monkeypatch):
+    received_layout = None
+
+    def fake_detect(_image, layout):
+        nonlocal received_layout
+        received_layout = layout
+        return []
+
+    monkeypatch.setattr(projects, "detect_album_pages", fake_detect)
+    projects._detect(
+        Image.new("RGB", (80, 60)),
+        {"detection_mode": "album-splitter", "album_layout": "spread"},
+    )
+
+    assert received_layout == "spread"
+    assert (
+        projects._effective_edge_cleanup_mode(
+            {"detection_mode": "album-splitter"}, {"edge_cleanup_mode": "tight"}
+        )
+        == "off"
+    )
+
+
 # --- CRUD -------------------------------------------------------------------
 
 
@@ -140,6 +163,7 @@ def test_project_crud():
     assert created["version"] == 1
     assert created["name"] == "My Project"
     assert created["settings"]["detection_mode"] == "scansplitterv4"
+    assert created["settings"]["album_layout"] == "auto"
     assert created["settings"]["edge_cleanup_mode"] == "tight"
     assert created["scans"] == []
 

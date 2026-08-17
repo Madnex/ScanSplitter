@@ -70,6 +70,7 @@ function App() {
     edgeCleanupMode: "tight",
     autoDetect: true,
     detectionMode: "scansplitterv4",
+    albumLayout: "auto",
     u2netLite: true,
   });
 
@@ -331,6 +332,7 @@ function App() {
         settings.minArea,
         settings.maxArea,
         settings.detectionMode,
+        settings.albumLayout,
         settings.u2netLite,
         controller.signal,
         options.silent ? undefined : (progress, stage) => setDetectProgress({ progress, stage })
@@ -387,7 +389,7 @@ function App() {
         }
       }
     }
-  }, [settings.minArea, settings.maxArea, settings.detectionMode, settings.u2netLite, ensureModelReady, showToast]);
+  }, [settings.minArea, settings.maxArea, settings.detectionMode, settings.albumLayout, settings.u2netLite, ensureModelReady, showToast]);
 
   // Handle file upload (multiple files)
   const handleUpload = useCallback(async (filesToUpload: File[]) => {
@@ -695,7 +697,7 @@ function App() {
         activeFile.currentPage,
         activeFile.boxes,
         settings.autoRotate,
-        settings.edgeCleanupMode,
+        settings.detectionMode === "album-splitter" ? "off" : settings.edgeCleanupMode,
         controller.signal,
         (progress, stage) => setCropProgress({ progress, stage })
       );
@@ -714,7 +716,7 @@ function App() {
         // Add source tracking, names, and date to new images
         const imagesWithSource = result.map((img, idx) => ({
           ...img,
-          name: `photo_${nextIndex + idx}`,
+          name: `${settings.detectionMode === "album-splitter" ? "page" : "photo"}_${nextIndex + idx}`,
           dateTaken: null as string | null,
           source: {
             fileIndex: activeFileIndex,
@@ -742,7 +744,7 @@ function App() {
         setCropProgress(null);
       }
     }
-  }, [activeFile, activeFileIndex, settings.autoRotate, settings.edgeCleanupMode, ensureModelReady, namingPattern, showToast]);
+  }, [activeFile, activeFileIndex, settings.autoRotate, settings.edgeCleanupMode, settings.detectionMode, ensureModelReady, namingPattern, showToast]);
 
   // Crop every scan with detected boxes, one at a time. Crop jobs are
   // deliberately serialized because OpenCV/orientation inference is
@@ -768,7 +770,7 @@ function App() {
           target.file.currentPage,
           target.file.boxes,
           settings.autoRotate,
-          settings.edgeCleanupMode,
+          settings.detectionMode === "album-splitter" ? "off" : settings.edgeCleanupMode,
           controller.signal,
           (progress, stage) => {
             const overall = Math.round(
@@ -794,7 +796,7 @@ function App() {
         const added = batches.flatMap((batch) =>
           batch.images.map((image, index) => ({
             ...image,
-            name: `photo_${retained.length + index + 1}`,
+            name: `${settings.detectionMode === "album-splitter" ? "page" : "photo"}_${retained.length + index + 1}`,
             dateTaken: null as string | null,
             source: {
               fileIndex: batch.fileIndex,
@@ -812,9 +814,10 @@ function App() {
         );
       });
       setResultsViewMode("all");
-      const photoCount = batches.reduce((total, batch) => total + batch.images.length, 0);
+      const itemCount = batches.reduce((total, batch) => total + batch.images.length, 0);
+      const itemLabel = settings.detectionMode === "album-splitter" ? "page" : "photo";
       showToast(
-        `Cropped ${photoCount} photo${photoCount !== 1 ? "s" : ""} from ${batches.length} scan${batches.length !== 1 ? "s" : ""}`,
+        `Cropped ${itemCount} ${itemLabel}${itemCount !== 1 ? "s" : ""} from ${batches.length} scan${batches.length !== 1 ? "s" : ""}`,
         "success"
       );
     } catch (error) {
@@ -828,7 +831,7 @@ function App() {
         setCropProgress(null);
       }
     }
-  }, [batchCropTargets, files, settings.autoRotate, settings.edgeCleanupMode, ensureModelReady, namingPattern, showToast]);
+  }, [batchCropTargets, files, settings.autoRotate, settings.edgeCleanupMode, settings.detectionMode, ensureModelReady, namingPattern, showToast]);
 
   // Handle export
   const handleExport = useCallback(async () => {
@@ -976,7 +979,7 @@ function App() {
                 <span className="text-muted-foreground">Splitter</span>
               </h1>
               <p className="text-xs text-muted-foreground">
-                Detect, adjust, and extract photos from scanned images
+                Preserve photos or complete album pages from scanned images
               </p>
             </div>
           </div>

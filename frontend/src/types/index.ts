@@ -49,7 +49,10 @@ export type DetectionMode =
   | "scansplitterv2"
   | "scansplitterv3"
   | "scansplitterv4"
+  | "album-splitter"
   | "u2net";
+
+export type AlbumLayout = "auto" | "single" | "spread";
 
 export type EdgeCleanupMode = "off" | "conservative" | "tight";
 
@@ -61,6 +64,7 @@ export interface DetectionSettings {
   edgeCleanupMode: EdgeCleanupMode;
   autoDetect: boolean; // auto-detect on upload
   detectionMode: DetectionMode;
+  albumLayout: AlbumLayout;
   u2netLite: boolean; // use lite model (5MB, faster) vs full (176MB, more accurate)
 }
 
