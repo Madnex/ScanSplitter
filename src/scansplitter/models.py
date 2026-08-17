@@ -29,7 +29,7 @@ ORIENTATION_MODEL_URLS = [
 ]
 ORIENTATION_MODEL_FILENAME = "orientation_model_v2.onnx"
 
-# MobileSAM promptable segmentation models used by ScanSplitterv4. These ONNX
+# MobileSAM promptable segmentation models used by ScanSplitterv4/v5. These ONNX
 # exports combine MobileSAM's TinyViT encoder with SAM's mask decoder. The
 # revision and SHA-256 hashes are pinned; together they are ~43MB.
 _MOBILESAM_REVISION = "0d3b403339b4674a82493d5e97964dd78089ddc8"

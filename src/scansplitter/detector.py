@@ -623,6 +623,7 @@ def _v4_mask_rect(
 def _v4_refine_rectangles(
     rgb: np.ndarray,
     proposals: list[RotatedRect],
+    prompt_margin_ratio: float = 0.04,
 ) -> list[RotatedRect]:
     """Refine v3 proposals with box-prompted MobileSAM masks."""
     if not proposals:
@@ -646,7 +647,7 @@ def _v4_refine_rectangles(
             points = cv2.boxPoints(proposal)
             x1, y1 = np.min(points, axis=0)
             x2, y2 = np.max(points, axis=0)
-            margin = 0.04 * min(x2 - x1, y2 - y1)
+            margin = prompt_margin_ratio * min(x2 - x1, y2 - y1)
             prompt = np.array(
                 [
                     [
@@ -694,20 +695,14 @@ def _v4_refine_rectangles(
     return refined
 
 
-def detect_photos_v4(
+def _detect_photos_with_sam(
     image: Image.Image,
-    min_area_ratio: float = 0.02,
-    max_area_ratio: float = 0.80,
-    padding: int = 0,
-    inset: int = 10,
+    min_area_ratio: float,
+    max_area_ratio: float,
+    padding: int,
+    inset: int,
+    prompt_margin_ratio: float,
 ) -> list[DetectedRegion]:
-    """Detect photos with v3 proposals and MobileSAM border refinement.
-
-    V3 provides stable multi-photo count and separation. A compact promptable
-    segmentation model then traces the physical print selected by each box.
-    Conservative geometry checks retain the v3 proposal when MobileSAM returns
-    a non-rectangular object or an implausibly different region.
-    """
     proposals = detect_photos_v3(
         image,
         min_area_ratio=min_area_ratio,
@@ -721,7 +716,11 @@ def detect_photos_v4(
     rgb = np.asarray(image.convert("RGB"))
     original_height, original_width = rgb.shape[:2]
     original_area = original_height * original_width
-    refined_rects = _v4_refine_rectangles(rgb, proposal_rects)
+    refined_rects = _v4_refine_rectangles(
+        rgb,
+        proposal_rects,
+        prompt_margin_ratio=prompt_margin_ratio,
+    )
 
     regions: list[DetectedRegion] = []
     net_adjust = padding - inset
@@ -772,8 +771,276 @@ def detect_photos_v4(
     return regions
 
 
+def detect_photos_v4(
+    image: Image.Image,
+    min_area_ratio: float = 0.02,
+    max_area_ratio: float = 0.80,
+    padding: int = 0,
+    inset: int = 10,
+) -> list[DetectedRegion]:
+    """Detect photos with v3 proposals and tightly prompted MobileSAM masks.
+
+    This preserves the v4 behavior for existing projects and comparisons.
+    V4 uses a small segmentation prompt margin and a final 10-pixel inset.
+    """
+    return _detect_photos_with_sam(
+        image,
+        min_area_ratio=min_area_ratio,
+        max_area_ratio=max_area_ratio,
+        padding=padding,
+        inset=inset,
+        prompt_margin_ratio=0.04,
+    )
+
+
+def _v5_texture_rectangles(
+    rgb: np.ndarray,
+    min_area_ratio: float,
+    max_area_ratio: float,
+    detection_max_dimension: int = 1800,
+) -> list[tuple[RotatedRect, bool]]:
+    """Find photo-shaped regions from sustained local image detail.
+
+    Album paper can be white, yellow, or nearly black, so color-background
+    modeling alone occasionally absorbs a whole page. Photographic content is
+    different from paper in another useful way: it contains dense edges over a
+    rectangular area. The fairly high density threshold intentionally ignores
+    handwriting, foxing, binding edges, and isolated page texture.
+
+    The boolean accompanying each rectangle records whether it approaches the
+    scan boundary. Such rectangles can corroborate an existing proposal but
+    are not allowed to introduce a new region by themselves; page/table edges
+    otherwise make convincing false rectangles in handheld album captures.
+    """
+    original_height, original_width = rgb.shape[:2]
+    scale = min(
+        1.0,
+        detection_max_dimension / max(original_height, original_width),
+    )
+    width = max(1, round(original_width * scale))
+    height = max(1, round(original_height * scale))
+    small = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(gray, 25, 80)
+
+    density_window = max(7, round(min(height, width) * 0.035)) | 1
+    density = cv2.boxFilter(
+        (edges > 0).astype(np.float32),
+        cv2.CV_32F,
+        (density_window, density_window),
+    )
+    mask = (density > 0.20).astype(np.uint8) * 255
+    open_size = max(3, round(min(height, width) * 0.004)) | 1
+    close_size = max(3, round(min(height, width) * 0.012)) | 1
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_OPEN,
+        cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (open_size, open_size)),
+    )
+    mask = cv2.morphologyEx(
+        mask,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (close_size, close_size)),
+        iterations=2,
+    )
+
+    total_area = height * width
+    minimum_area = min_area_ratio * total_area
+    maximum_area = max_area_ratio * total_area
+    contours, _ = cv2.findContours(
+        mask, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE
+    )
+    rectangles: list[tuple[RotatedRect, bool]] = []
+    for contour in contours:
+        rect = cv2.minAreaRect(contour)
+        rect_width, rect_height = rect[1]
+        rect_area = rect_width * rect_height
+        if not minimum_area <= rect_area <= maximum_area:
+            continue
+        x, y, box_width, box_height = cv2.boundingRect(contour)
+        fill = cv2.contourArea(contour) / max(1, box_width * box_height)
+        aspect = max(rect_width, rect_height) / max(
+            1.0, min(rect_width, rect_height)
+        )
+        # Consumer photo formats rarely exceed 2.5:1. Wider detailed strips
+        # are commonly album bindings, table edges, or exposed page margins.
+        if fill < 0.25 or aspect > 2.5:
+            continue
+
+        original_rect: RotatedRect = (
+            (rect[0][0] / scale, rect[0][1] / scale),
+            (rect_width / scale, rect_height / scale),
+            float(rect[2]),
+        )
+        points = cv2.boxPoints(original_rect)
+        edge_margin = 0.01
+        touches_edge = bool(
+            np.min(points[:, 0]) < original_width * edge_margin
+            or np.max(points[:, 0]) > original_width * (1 - edge_margin)
+            or np.min(points[:, 1]) < original_height * edge_margin
+            or np.max(points[:, 1]) > original_height * (1 - edge_margin)
+        )
+        rectangles.append((original_rect, touches_edge))
+    return rectangles
+
+
+def _v5_angle_difference(first: float, second: float) -> float:
+    """Return rectangle angle difference, accounting for 90-degree symmetry."""
+    return abs(((first - second + 45.0) % 90.0) - 45.0)
+
+
+def _v5_combine_rectangles(
+    base_rectangles: list[RotatedRect],
+    texture_rectangles: list[tuple[RotatedRect, bool]],
+) -> list[RotatedRect]:
+    """Reconcile conservative SAM regions with texture-derived rectangles."""
+    assignments: dict[int, list[tuple[int, RotatedRect, bool]]] = {
+        index: [] for index in range(len(base_rectangles))
+    }
+    unmatched: list[tuple[int, RotatedRect, bool]] = []
+    for texture_index, (texture, touches_edge) in enumerate(texture_rectangles):
+        overlaps = [
+            _v3_overlap_fraction(texture, base) for base in base_rectangles
+        ]
+        base_index = int(np.argmax(overlaps)) if overlaps else -1
+        if base_index >= 0 and overlaps[base_index] >= 0.60:
+            assignments[base_index].append(
+                (texture_index, texture, touches_edge)
+            )
+        else:
+            unmatched.append((texture_index, texture, touches_edge))
+
+    combined: list[RotatedRect] = []
+    for base_index, base in enumerate(base_rectangles):
+        matches = assignments[base_index]
+        non_edge_matches = [texture for _, texture, edge in matches if not edge]
+        if len(non_edge_matches) >= 2:
+            # A single color-based proposal spanning several detailed islands
+            # is a merged album-page region. Split it at those islands.
+            combined.extend(non_edge_matches)
+            continue
+        if len(matches) == 1:
+            _, texture, touches_edge = matches[0]
+            base_area = base[1][0] * base[1][1]
+            texture_area = texture[1][0] * texture[1][1]
+            area_ratio = texture_area / max(1.0, base_area)
+            if (
+                not touches_edge
+                and 0.25 <= area_ratio <= 1.30
+                and _v5_angle_difference(texture[2], base[2]) <= 3.0
+            ):
+                combined.append(texture)
+                continue
+        combined.append(base)
+
+    for _, texture, touches_edge in unmatched:
+        if touches_edge:
+            continue
+        if any(
+            _v3_overlap_fraction(texture, existing) > 0.65
+            for existing in combined
+        ):
+            continue
+        combined.append(texture)
+    return combined
+
+
+def _v5_regions_from_rectangles(
+    rectangles: list[RotatedRect],
+    image_size: tuple[int, int],
+    min_area_ratio: float,
+    max_area_ratio: float,
+    net_adjust: int,
+) -> list[DetectedRegion]:
+    """Convert v5 rectangles to public regions and apply caller padding."""
+    image_width, image_height = image_size
+    image_area = image_width * image_height
+    regions: list[DetectedRegion] = []
+    for rectangle in rectangles:
+        center, (rect_width, rect_height), angle = rectangle
+        area = rect_width * rect_height
+        area_ratio = area / image_area
+        if not min_area_ratio <= area_ratio <= max_area_ratio:
+            continue
+        points = cv2.boxPoints(rectangle)
+        x, y, box_width, box_height = cv2.boundingRect(points)
+        x_adjusted = max(0, x - net_adjust)
+        y_adjusted = max(0, y - net_adjust)
+        width_adjusted = max(
+            1,
+            min(image_width - x_adjusted, box_width + 2 * net_adjust),
+        )
+        height_adjusted = max(
+            1,
+            min(image_height - y_adjusted, box_height + 2 * net_adjust),
+        )
+        adjusted_width = max(1, rect_width + 2 * net_adjust)
+        adjusted_height = max(1, rect_height + 2 * net_adjust)
+        if rect_width < rect_height:
+            adjusted_width, adjusted_height = adjusted_height, adjusted_width
+            angle += 90
+        regions.append(
+            DetectedRegion(
+                center=center,
+                size=(adjusted_width, adjusted_height),
+                angle=angle,
+                area=area,
+                area_ratio=area_ratio,
+                x=x_adjusted,
+                y=y_adjusted,
+                width=width_adjusted,
+                height=height_adjusted,
+            )
+        )
+    regions.sort(key=lambda region: (region.y // 100, region.x))
+    return regions
+
+
+def detect_photos_v5(
+    image: Image.Image,
+    min_area_ratio: float = 0.02,
+    max_area_ratio: float = 0.80,
+    padding: int = 0,
+    inset: int = 0,
+) -> list[DetectedRegion]:
+    """Detect photographic content with complementary shape and texture cues.
+
+    A conservative v3/MobileSAM pass anchors the result on real page geometry.
+    A second pass finds rectangular islands of sustained local edge density,
+    which is largely independent of whether the album page is light or dark.
+    Texture rectangles can tighten an agreeing SAM rectangle, split one broad
+    page-colored proposal into several photos, or recover a missed photo away
+    from the scan boundary. Disagreement falls back to the conservative pass.
+    """
+    base_regions = _detect_photos_with_sam(
+        image,
+        min_area_ratio=min_area_ratio,
+        max_area_ratio=max_area_ratio,
+        padding=0,
+        inset=20,
+        prompt_margin_ratio=0.08,
+    )
+    base_rectangles = [
+        (region.center, region.size, region.angle) for region in base_regions
+    ]
+    rgb = np.asarray(image.convert("RGB"))
+    texture_rectangles = _v5_texture_rectangles(
+        rgb,
+        min_area_ratio=min_area_ratio,
+        max_area_ratio=max_area_ratio,
+    )
+    rectangles = _v5_combine_rectangles(base_rectangles, texture_rectangles)
+    return _v5_regions_from_rectangles(
+        rectangles,
+        image_size=image.size,
+        min_area_ratio=min_area_ratio,
+        max_area_ratio=max_area_ratio,
+        net_adjust=padding - inset,
+    )
+
+
 # Public convenience API follows the current default detector.
-detect_photos = detect_photos_v4
+detect_photos = detect_photos_v5
 
 def crop_rotated_region(cv_image: np.ndarray, region: DetectedRegion) -> np.ndarray:
     """

@@ -11,6 +11,7 @@ from .detector import (
     crop_regions,
     detect_photos_v3,
     detect_photos_v4,
+    detect_photos_v5,
 )
 from .edge_cleanup import EdgeCleanupMode, cleanup_photo_edges
 from .pdf_handler import extract_images_from_pdf, is_pdf
@@ -57,8 +58,9 @@ def process_image(
     detection_mode: Literal[
         "scansplitterv3",
         "scansplitterv4",
+        "scansplitterv5",
         "album-splitter",
-    ] = "scansplitterv4",
+    ] = "scansplitterv5",
     album_layout: AlbumLayout = "auto",
 ) -> list[ProcessedImage]:
     """
@@ -72,7 +74,7 @@ def process_image(
         edge_cleanup_mode: Off, conservative scan-background trim, or tight margin trim
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
-        detection_mode: "scansplitterv4" (default), "scansplitterv3", or "album-splitter"
+        detection_mode: "scansplitterv5" (default), v4, v3, or "album-splitter"
 
     Returns:
         List of ProcessedImage objects
@@ -80,6 +82,12 @@ def process_image(
     # Detect photos based on selected mode.
     if detection_mode == "album-splitter":
         regions = detect_album_pages(image, layout=album_layout)
+    elif detection_mode == "scansplitterv5":
+        regions = detect_photos_v5(
+            image,
+            min_area_ratio=min_area_ratio,
+            max_area_ratio=max_area_ratio,
+        )
     elif detection_mode == "scansplitterv4":
         regions = detect_photos_v4(
             image,
@@ -135,8 +143,9 @@ def process_file(
     detection_mode: Literal[
         "scansplitterv3",
         "scansplitterv4",
+        "scansplitterv5",
         "album-splitter",
-    ] = "scansplitterv4",
+    ] = "scansplitterv5",
     album_layout: AlbumLayout = "auto",
 ) -> list[ProcessedImage]:
     """
@@ -149,7 +158,7 @@ def process_file(
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
         pdf_dpi: DPI for PDF rendering
-        detection_mode: "scansplitterv4" (default), "scansplitterv3", or "album-splitter"
+        detection_mode: "scansplitterv5" (default), v4, v3, or "album-splitter"
 
     Returns:
         List of ProcessedImage objects

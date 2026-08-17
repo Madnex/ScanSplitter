@@ -40,7 +40,7 @@ untouched; Projects is an additional top-level mode.
   "created_at": "2026-07-11T10:00:00Z",
   "updated_at": "...",
   "settings": {
-    "detection_mode": "scansplitterv4",
+    "detection_mode": "scansplitterv5",
     "album_layout": "auto",
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,

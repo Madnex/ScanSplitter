@@ -491,7 +491,7 @@ def test_detect_rejects_retired_modes(detection_mode):
     assert "detection_mode must be one of" in response.json()["detail"]
 
 
-def test_detect_request_defaults_to_v4(monkeypatch):
+def test_detect_request_defaults_to_v5(monkeypatch):
     data = _upload()
     called = False
 
@@ -500,7 +500,7 @@ def test_detect_request_defaults_to_v4(monkeypatch):
         called = True
         return []
 
-    monkeypatch.setattr(api_module, "detect_photos_v4", fake_detect)
+    monkeypatch.setattr(api_module, "detect_photos_v5", fake_detect)
     response = client.post(
         "/api/detect",
         json={"session_id": data["session_id"], "page": 1},

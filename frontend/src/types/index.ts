@@ -47,6 +47,7 @@ export interface CroppedImage {
 export type DetectionMode =
   | "scansplitterv3"
   | "scansplitterv4"
+  | "scansplitterv5"
   | "album-splitter";
 
 export type AlbumLayout = "auto" | "single" | "spread";

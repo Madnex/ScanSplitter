@@ -53,14 +53,15 @@ uvx scansplitter api --port 8001
 
 ### Photo detection (splitter)
 
-- **ScanSplitterv4 (default)**: Uses v3 for reliable multi-photo proposals, then a checksum-pinned MobileSAM ONNX pair to trace each physical print border. Implausible or non-rectangular masks fall back to the v3 box. The models total about 43MB, run locally with ONNX Runtime, and download only when v4 is first used.
+- **ScanSplitterv5 (default)**: Combines conservative v3/MobileSAM anchors with a color-independent local edge-density pass. Agreeing texture rectangles tighten crops to the photographic image, multiple texture islands split a merged page proposal, and credible non-edge regions recover photos missed on dark or irregular album pages. Conflicting evidence falls back to the conservative anchor.
+- **ScanSplitterv4**: The previous tightly prompted MobileSAM detector, retained for comparisons and existing saved projects.
 - **ScanSplitterv3**: A model-free, background-aware OpenCV detector for album pages and low-contrast scans. It models paper/platen colors in Lab space, finds dense non-background regions, separates touching prints at narrow gutters, and snaps boxes to long physical edges.
 
 ### Whole album pages
 
 - **Album Splitter**: Detects the physical page instead of its mounted photos, preserving handwriting, tape, patina, spacing, and page context while cropping away the surface around the album. It distinguishes the content-bearing leaf from a facing page or translucent interleaf. Choose **Auto**, **One physical page**, or **Two-page spread / split in half**. It runs locally without a model download and disables photo-oriented edge cleanup so page margins are not lost.
 
-ScanSplitterv4 uses the MIT-licensed [MobileSAM](https://github.com/ChaoningZhang/MobileSAM) architecture and checksum-pinned ONNX exports from [Acly/MobileSAM](https://huggingface.co/Acly/MobileSAM). Images and model inference stay on the local machine.
+ScanSplitterv4/v5 use the MIT-licensed [MobileSAM](https://github.com/ChaoningZhang/MobileSAM) architecture and checksum-pinned ONNX exports from [Acly/MobileSAM](https://huggingface.co/Acly/MobileSAM). The models total about 43MB, download on first use, and run locally with ONNX Runtime; images stay on the local machine.
 
 ### Auto-rotation model
 
@@ -205,7 +206,7 @@ uv run scansplitter process scan.jpg \
   --no-rotate \
   --min-area 5 \
   --max-area 70 \
-  --detection-mode scansplitterv4 \
+  --detection-mode scansplitterv5 \
   --format jpg \
   -o ./output/
 ```
@@ -218,7 +219,7 @@ uv run scansplitter process scan.jpg \
 | `--no-rotate` | Disable auto-rotation |
 | `--min-area` | Minimum photo size as % of scan (default: 2) |
 | `--max-area` | Maximum photo size as % of scan (default: 80) |
-| `--detection-mode` | `scansplitterv4` (default), `album-splitter`, or `scansplitterv3` |
+| `--detection-mode` | `scansplitterv5` (default), `scansplitterv4`, `album-splitter`, or `scansplitterv3` |
 | `--album-layout` | Album mode: `auto` (default), `single`, or `spread` |
 | `--format` | Output format: `png` or `jpg` (default: png) |
 

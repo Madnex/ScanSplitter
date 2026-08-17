@@ -69,7 +69,7 @@ function App() {
     autoRotate: true,
     edgeCleanupMode: "tight",
     autoDetect: true,
-    detectionMode: "scansplitterv4",
+    detectionMode: "scansplitterv5",
     albumLayout: "auto",
   });
 
@@ -197,6 +197,7 @@ function App() {
 
   useEffect(() => {
     const modelKeys: ModelKey[] =
+      settings.detectionMode === "scansplitterv5" ||
       settings.detectionMode === "scansplitterv4"
         ? MOBILE_SAM_MODEL_KEYS
         : [];
@@ -313,7 +314,10 @@ function App() {
     }
 
     try {
-      if (settings.detectionMode === "scansplitterv4") {
+      if (
+        settings.detectionMode === "scansplitterv5" ||
+        settings.detectionMode === "scansplitterv4"
+      ) {
         await Promise.all(MOBILE_SAM_MODEL_KEYS.map(ensureModelReady));
       }
       // The model-download wait above has no abort support; re-check before

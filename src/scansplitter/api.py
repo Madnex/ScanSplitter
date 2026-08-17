@@ -15,14 +15,14 @@ from typing import Literal
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import Response
+from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
 from pydantic import BaseModel
 
 import scansplitter
 
-from . import credentials
+from . import benchmarking, credentials
 from .album_detector import AlbumLayout, detect_album_pages
 from .delivery import DELIVERY_REQUIRED_FIELDS
 from .detector import (
@@ -30,6 +30,7 @@ from .detector import (
     crop_rotated_region,
     detect_photos_v3,
     detect_photos_v4,
+    detect_photos_v5,
 )
 from .edge_cleanup import cleanup_photo_edges
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
@@ -140,7 +141,7 @@ class DetectRequest(BaseModel):
     min_area: float = 2.0  # percentage
     max_area: float = 80.0  # percentage
     # Detection algorithms
-    detection_mode: str = "scansplitterv4"
+    detection_mode: str = "scansplitterv5"
     album_layout: AlbumLayout = "auto"
 
 
@@ -526,6 +527,51 @@ async def health_check():
     return {"status": "ok"}
 
 
+def _require_benchmark() -> None:
+    if not benchmarking.is_enabled():
+        raise HTTPException(status_code=404, detail="Benchmark UI is disabled")
+
+
+@app.get("/api/benchmark")
+def benchmark_index():
+    """List fixed benchmark fixtures when the opt-in developer flag is set."""
+    _require_benchmark()
+    try:
+        return benchmarking.list_cases()
+    except (FileNotFoundError, OSError, ValueError) as error:
+        raise HTTPException(status_code=404, detail="Benchmark dataset is unavailable") from error
+
+
+@app.get("/api/benchmark/{case_id}/image")
+def benchmark_image(case_id: str):
+    """Serve a manifest-owned benchmark image; arbitrary paths are never accepted."""
+    _require_benchmark()
+    try:
+        return FileResponse(benchmarking.fixture_path(case_id), media_type="image/jpeg")
+    except (KeyError, FileNotFoundError):
+        raise HTTPException(status_code=404, detail="Unknown benchmark case") from None
+
+
+@app.get("/api/benchmark/{case_id}/detections")
+def benchmark_detections(case_id: str):
+    """Run all detector versions applicable to one benchmark case."""
+    _require_benchmark()
+    try:
+        return benchmarking.run_case(case_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="Unknown benchmark case") from None
+
+
+@app.get("/benchmark", include_in_schema=False)
+def benchmark_page():
+    """Serve the benchmark SPA entry point only when explicitly enabled."""
+    _require_benchmark()
+    index = STATIC_DIR / "index.html"
+    if not index.is_file():
+        raise HTTPException(status_code=404, detail="Frontend build is unavailable")
+    return FileResponse(index)
+
+
 @app.post("/api/upload", response_model=UploadResponse)
 def upload_file(file: UploadFile = File(...)):
     """Upload a file and create a session.
@@ -669,7 +715,9 @@ def run_detect(
     _check_cancelled(is_cancelled)
 
     detection_mode = request.detection_mode
-    if detection_mode in ("ScanSplitterv4", "v4"):
+    if detection_mode in ("ScanSplitterv5", "v5"):
+        detection_mode = "scansplitterv5"
+    elif detection_mode in ("ScanSplitterv4", "v4"):
         detection_mode = "scansplitterv4"
     elif detection_mode in ("ScanSplitterv3", "v3"):
         detection_mode = "scansplitterv3"
@@ -679,6 +727,14 @@ def run_detect(
         progress_cb(35, "finding album page")
         regions = detect_album_pages(image, layout=request.album_layout)
         progress_cb(75, "refining page edges")
+    elif detection_mode == "scansplitterv5":
+        progress_cb(35, "finding photo candidates")
+        regions = detect_photos_v5(
+            image,
+            min_area_ratio=request.min_area / 100,
+            max_area_ratio=request.max_area / 100,
+        )
+        progress_cb(75, "refining complete photo borders")
     elif detection_mode == "scansplitterv4":
         progress_cb(35, "finding photo candidates")
         regions = detect_photos_v4(
@@ -698,8 +754,8 @@ def run_detect(
         raise HTTPException(
             status_code=400,
             detail=(
-                "detection_mode must be one of: scansplitterv4, "
-                "scansplitterv3, album-splitter"
+                "detection_mode must be one of: scansplitterv5, "
+                "scansplitterv4, scansplitterv3, album-splitter"
             ),
         )
 

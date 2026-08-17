@@ -248,7 +248,7 @@ export async function detectBoxes(
   page: number,
   minArea: number,
   maxArea: number,
-  detectionMode: DetectionMode = "scansplitterv4",
+  detectionMode: DetectionMode = "scansplitterv5",
   albumLayout: AlbumLayout = "auto",
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string | null) => void

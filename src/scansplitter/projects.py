@@ -37,6 +37,7 @@ from .detector import (
     crop_rotated_region,
     detect_photos_v3,
     detect_photos_v4,
+    detect_photos_v5,
 )
 from .edge_cleanup import cleanup_photo_edges
 from .jobs import submit_job
@@ -83,10 +84,15 @@ PROJECT_STATUSES = (
 _EXPORTABLE_STATUSES = {"approved", "auto_approved"}
 MASTER_FORMATS = {"png", "tiff"}
 MANIFEST_FORMATS = {"json", "csv", "both"}
-DETECTION_MODES = {"scansplitterv3", "scansplitterv4", "album-splitter"}
+DETECTION_MODES = {
+    "scansplitterv3",
+    "scansplitterv4",
+    "scansplitterv5",
+    "album-splitter",
+}
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "detection_mode": "scansplitterv4",
+    "detection_mode": "scansplitterv5",
     "album_layout": "auto",
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
@@ -379,8 +385,8 @@ class ProjectStore:
                             raise HTTPException(
                                 status_code=400,
                                 detail=(
-                                    "detection_mode must be one of: scansplitterv4, "
-                                    "scansplitterv3, album-splitter"
+                                    "detection_mode must be one of: scansplitterv5, "
+                                    "scansplitterv4, scansplitterv3, album-splitter"
                                 ),
                             )
                         merged[key] = value
@@ -1088,7 +1094,7 @@ def _box_geometry(box: dict) -> tuple:
 
 
 def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
-    mode = settings.get("detection_mode", "scansplitterv4")
+    mode = settings.get("detection_mode", "scansplitterv5")
     min_ratio = float(settings.get("min_area_ratio", 2.0)) / 100
     max_ratio = float(settings.get("max_area_ratio", 80.0)) / 100
     if mode == "album-splitter":
@@ -1097,6 +1103,8 @@ def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
         return detect_photos_v3(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     if mode == "scansplitterv4":
         return detect_photos_v4(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
+    if mode == "scansplitterv5":
+        return detect_photos_v5(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     raise ValueError(f"Unsupported detection mode: {mode}")
 
 

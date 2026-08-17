@@ -37,6 +37,7 @@ describe("SettingsPanel crop actions", () => {
     expect(html).toContain("Crop All (7 photos)");
     expect(html).toContain("2 of 3 scans have photos ready");
     expect(html).toContain("Edge cleanup");
+    expect(html).toContain('<option value="scansplitterv5">ScanSplitterv5</option>');
     expect(html).toContain('<option value="conservative" selected="">Conservative</option>');
     expect(html).toContain('<option value="tight">Tight</option>');
   });

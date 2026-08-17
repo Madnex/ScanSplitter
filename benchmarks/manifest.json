@@ -1,0 +1,649 @@
+{
+  "version": 2,
+  "image_size": [
+    1400,
+    1000
+  ],
+  "rectangle_format": [
+    "center_x",
+    "center_y",
+    "width",
+    "height",
+    "angle_degrees"
+  ],
+  "cases": [
+    {
+      "id": "scansplitter-01-aged-album-spread",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-01-aged-album-spread.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          270,
+          215,
+          310,
+          205,
+          -2
+        ],
+        [
+          565,
+          225,
+          220,
+          300,
+          2
+        ],
+        [
+          905,
+          215,
+          300,
+          205,
+          -1
+        ],
+        [
+          1190,
+          225,
+          210,
+          300,
+          2
+        ],
+        [
+          345,
+          650,
+          400,
+          255,
+          1
+        ],
+        [
+          1015,
+          650,
+          430,
+          265,
+          -2
+        ]
+      ]
+    },
+    {
+      "id": "scansplitter-02-wide-paper-margins",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-02-wide-paper-margins.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          285,
+          260,
+          360,
+          230,
+          -4
+        ],
+        [
+          730,
+          235,
+          300,
+          215,
+          2
+        ],
+        [
+          1135,
+          275,
+          255,
+          350,
+          4
+        ],
+        [
+          410,
+          700,
+          380,
+          245,
+          3
+        ],
+        [
+          960,
+          700,
+          390,
+          250,
+          -3
+        ]
+      ]
+    },
+    {
+      "id": "scansplitter-03-tape-and-photo-corners",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-03-tape-and-photo-corners.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          285,
+          245,
+          365,
+          240,
+          -5
+        ],
+        [
+          760,
+          240,
+          360,
+          235,
+          3
+        ],
+        [
+          1160,
+          280,
+          230,
+          335,
+          5
+        ],
+        [
+          380,
+          700,
+          410,
+          260,
+          2
+        ],
+        [
+          980,
+          700,
+          420,
+          265,
+          -2
+        ]
+      ]
+    },
+    {
+      "id": "scansplitter-04-scalloped-low-contrast",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-04-scalloped-low-contrast.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          305,
+          285,
+          390,
+          250,
+          -3
+        ],
+        [
+          825,
+          255,
+          390,
+          245,
+          2
+        ],
+        [
+          1180,
+          295,
+          220,
+          330,
+          4
+        ],
+        [
+          500,
+          715,
+          440,
+          265,
+          1
+        ],
+        [
+          1050,
+          720,
+          390,
+          255,
+          -2
+        ]
+      ]
+    },
+    {
+      "id": "scansplitter-05-narrow-mounted-gutters",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-05-narrow-mounted-gutters.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          315,
+          255,
+          340,
+          220,
+          -1
+        ],
+        [
+          735,
+          255,
+          340,
+          220,
+          1
+        ],
+        [
+          1148,
+          255,
+          330,
+          220,
+          -1
+        ],
+        [
+          315,
+          665,
+          340,
+          230,
+          1
+        ],
+        [
+          735,
+          665,
+          340,
+          230,
+          -1
+        ],
+        [
+          1148,
+          665,
+          330,
+          230,
+          1
+        ]
+      ]
+    },
+    {
+      "id": "scansplitter-06-dark-scrapbook-page",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-06-dark-scrapbook-page.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          285,
+          270,
+          360,
+          235,
+          -4
+        ],
+        [
+          755,
+          255,
+          350,
+          230,
+          3
+        ],
+        [
+          1145,
+          285,
+          250,
+          345,
+          5
+        ],
+        [
+          405,
+          710,
+          430,
+          270,
+          2
+        ],
+        [
+          1010,
+          710,
+          425,
+          265,
+          -2
+        ]
+      ]
+    },
+    {
+      "id": "scansplitter-07-mixed-print-formats",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-07-mixed-print-formats.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          210,
+          280,
+          220,
+          335,
+          -4
+        ],
+        [
+          525,
+          245,
+          255,
+          255,
+          3
+        ],
+        [
+          890,
+          270,
+          350,
+          225,
+          -2
+        ],
+        [
+          1220,
+          300,
+          205,
+          320,
+          5
+        ],
+        [
+          345,
+          735,
+          420,
+          250,
+          2
+        ],
+        [
+          950,
+          720,
+          430,
+          270,
+          -2
+        ]
+      ]
+    },
+    {
+      "id": "scansplitter-08-page-edge-and-binding",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-08-page-edge-and-binding.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          190,
+          250,
+          310,
+          215,
+          -5
+        ],
+        [
+          575,
+          265,
+          300,
+          220,
+          3
+        ],
+        [
+          945,
+          245,
+          315,
+          220,
+          -2
+        ],
+        [
+          1245,
+          270,
+          210,
+          330,
+          4
+        ],
+        [
+          300,
+          720,
+          390,
+          255,
+          2
+        ],
+        [
+          930,
+          715,
+          470,
+          275,
+          -2
+        ]
+      ]
+    },
+    {
+      "id": "scansplitter-09-faded-glossy-protection",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-09-faded-glossy-protection.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          300,
+          280,
+          390,
+          250,
+          -3
+        ],
+        [
+          810,
+          265,
+          390,
+          250,
+          2
+        ],
+        [
+          1180,
+          300,
+          225,
+          340,
+          4
+        ],
+        [
+          470,
+          730,
+          440,
+          265,
+          1
+        ],
+        [
+          1050,
+          720,
+          390,
+          255,
+          -2
+        ]
+      ]
+    },
+    {
+      "id": "scansplitter-10-irregular-real-world-layout",
+      "suite": "scansplitter",
+      "image": "fixtures/scansplitter-10-irregular-real-world-layout.jpg",
+      "target": "photographic_content",
+      "rectangles": [
+        [
+          250,
+          235,
+          340,
+          225,
+          -6
+        ],
+        [
+          730,
+          255,
+          390,
+          245,
+          3
+        ],
+        [
+          1160,
+          265,
+          235,
+          340,
+          5
+        ],
+        [
+          365,
+          700,
+          420,
+          270,
+          2
+        ],
+        [
+          980,
+          690,
+          450,
+          275,
+          -3
+        ]
+      ]
+    },
+    {
+      "id": "album-01-cream-single",
+      "suite": "album",
+      "layout": "single",
+      "image": "fixtures/album-01-cream-single.jpg",
+      "rectangles": [
+        [
+          700,
+          500,
+          1040,
+          760,
+          -3
+        ]
+      ]
+    },
+    {
+      "id": "album-02-black-single",
+      "suite": "album",
+      "layout": "single",
+      "image": "fixtures/album-02-black-single.jpg",
+      "rectangles": [
+        [
+          700,
+          500,
+          1000,
+          740,
+          4
+        ]
+      ]
+    },
+    {
+      "id": "album-03-wide-auto-spread",
+      "suite": "album",
+      "layout": "auto",
+      "image": "fixtures/album-03-wide-auto-spread.jpg",
+      "rectangles": [
+        [
+          415,
+          500,
+          570,
+          620,
+          0
+        ],
+        [
+          985,
+          500,
+          570,
+          620,
+          0
+        ]
+      ]
+    },
+    {
+      "id": "album-04-forced-spread",
+      "suite": "album",
+      "layout": "spread",
+      "image": "fixtures/album-04-forced-spread.jpg",
+      "rectangles": [
+        [
+          420,
+          500,
+          500,
+          720,
+          -2
+        ],
+        [
+          920,
+          500,
+          500,
+          720,
+          -2
+        ]
+      ]
+    },
+    {
+      "id": "album-05-portrait-page",
+      "suite": "album",
+      "layout": "single",
+      "image": "fixtures/album-05-portrait-page.jpg",
+      "rectangles": [
+        [
+          700,
+          500,
+          650,
+          840,
+          5
+        ]
+      ]
+    },
+    {
+      "id": "album-06-ivory-single",
+      "suite": "album",
+      "layout": "auto",
+      "image": "fixtures/album-06-ivory-single.jpg",
+      "rectangles": [
+        [
+          700,
+          500,
+          980,
+          720,
+          -6
+        ]
+      ]
+    },
+    {
+      "id": "album-07-burgundy-page",
+      "suite": "album",
+      "layout": "single",
+      "image": "fixtures/album-07-burgundy-page.jpg",
+      "rectangles": [
+        [
+          700,
+          500,
+          970,
+          720,
+          2
+        ]
+      ]
+    },
+    {
+      "id": "album-08-small-page",
+      "suite": "album",
+      "layout": "single",
+      "image": "fixtures/album-08-small-page.jpg",
+      "rectangles": [
+        [
+          700,
+          500,
+          720,
+          560,
+          -4
+        ]
+      ]
+    },
+    {
+      "id": "album-09-landscape-single",
+      "suite": "album",
+      "layout": "auto",
+      "image": "fixtures/album-09-landscape-single.jpg",
+      "rectangles": [
+        [
+          700,
+          500,
+          1050,
+          690,
+          3
+        ]
+      ]
+    },
+    {
+      "id": "album-10-rose-auto-spread",
+      "suite": "album",
+      "layout": "auto",
+      "image": "fixtures/album-10-rose-auto-spread.jpg",
+      "rectangles": [
+        [
+          415,
+          500,
+          570,
+          620,
+          -1
+        ],
+        [
+          985,
+          500,
+          570,
+          620,
+          -1
+        ]
+      ]
+    }
+  ],
+  "target_definition": {
+    "scansplitter": "inner photographic image area; exclude paper borders, tape, corners, shadows, and album page",
+    "album": "complete album page or leaf"
+  }
+}

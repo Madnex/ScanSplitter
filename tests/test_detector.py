@@ -6,10 +6,14 @@ import cv2
 import numpy as np
 from PIL import Image
 
+import scansplitter.detector as detector_module
 from scansplitter.detector import (
+    DetectedRegion,
     _refine_rect_to_edges,
     _v4_mask_rect,
+    _v5_combine_rectangles,
     detect_photos_v3,
+    detect_photos_v5,
 )
 
 
@@ -130,3 +134,68 @@ def test_v4_rejects_nonrectangular_object_mask_inside_photo():
     cv2.rectangle(mask, (90, 125), (155, 155), 1, -1)
 
     assert _v4_mask_rect(mask, proposal, predicted_iou=0.95) is None
+
+
+def test_v5_uses_conservative_sam_anchor_and_preserves_it_without_texture(
+    monkeypatch,
+):
+    proposal = DetectedRegion(
+        center=(100.0, 100.0),
+        size=(100.0, 80.0),
+        angle=0.0,
+        area=8_000.0,
+        area_ratio=0.2,
+        x=50,
+        y=60,
+        width=100,
+        height=80,
+    )
+    received = None
+
+    def fake_detect(_image, **kwargs):
+        nonlocal received
+        received = kwargs
+        return [proposal]
+
+    monkeypatch.setattr(detector_module, "_detect_photos_with_sam", fake_detect)
+    monkeypatch.setattr(detector_module, "_v5_texture_rectangles", lambda *_args, **_kwargs: [])
+
+    regions = detect_photos_v5(Image.new("RGB", (200, 200), "white"))
+
+    assert received == {
+        "min_area_ratio": 0.02,
+        "max_area_ratio": 0.8,
+        "padding": 0,
+        "inset": 20,
+        "prompt_margin_ratio": 0.08,
+    }
+    assert len(regions) == 1
+    assert regions[0].size == (100.0, 80.0)
+
+
+def test_v5_splits_one_broad_anchor_into_multiple_texture_rectangles():
+    base = [((100.0, 100.0), (180.0, 80.0), 0.0)]
+    left = ((60.0, 100.0), (70.0, 70.0), 0.5)
+    right = ((140.0, 100.0), (70.0, 70.0), -0.5)
+
+    combined = _v5_combine_rectangles(base, [(left, False), (right, False)])
+
+    assert combined == [left, right]
+
+
+def test_v5_does_not_add_unmatched_texture_region_at_scan_edge():
+    base = [((60.0, 60.0), (60.0, 50.0), 0.0)]
+    edge_false_positive = ((180.0, 100.0), (30.0, 150.0), 0.0)
+
+    combined = _v5_combine_rectangles(base, [(edge_false_positive, True)])
+
+    assert combined == base
+
+
+def test_v5_keeps_anchor_when_texture_angle_disagrees():
+    base = [((100.0, 100.0), (100.0, 80.0), 0.0)]
+    skewed_texture = ((100.0, 100.0), (95.0, 75.0), 8.0)
+
+    combined = _v5_combine_rectangles(base, [(skewed_texture, False)])
+
+    assert combined == base
