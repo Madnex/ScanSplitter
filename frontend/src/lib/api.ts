@@ -250,7 +250,6 @@ export async function detectBoxes(
   maxArea: number,
   detectionMode: DetectionMode = "scansplitterv4",
   albumLayout: AlbumLayout = "auto",
-  u2netLite: boolean = true,
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string | null) => void
 ): Promise<{ boxes: BoundingBox[] }> {
@@ -263,7 +262,6 @@ export async function detectBoxes(
       max_area: maxArea,
       detection_mode: detectionMode,
       album_layout: albumLayout,
-      u2net_lite: u2netLite,
     },
     { signal, onProgress }
   );

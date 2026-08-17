@@ -9,9 +9,6 @@ from PIL import Image
 from .album_detector import AlbumLayout, detect_album_pages
 from .detector import (
     crop_regions,
-    detect_photos_u2net,
-    detect_photos_v1,
-    detect_photos_v2,
     detect_photos_v3,
     detect_photos_v4,
 )
@@ -56,20 +53,13 @@ def process_image(
     edge_cleanup_mode: EdgeCleanupMode = "tight",
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
-    # Phase 1 improvements
-    enhance_contrast: bool = True,
-    border_mode: Literal["minAreaRect", "convexHull"] = "minAreaRect",
     # Detection algorithms
     detection_mode: Literal[
-        "scansplitterv1",
-        "scansplitterv2",
         "scansplitterv3",
         "scansplitterv4",
         "album-splitter",
-        "u2net",
     ] = "scansplitterv4",
     album_layout: AlbumLayout = "auto",
-    u2net_lite: bool = True,
 ) -> list[ProcessedImage]:
     """
     Process a single image: detect photos and optionally auto-rotate.
@@ -82,61 +72,28 @@ def process_image(
         edge_cleanup_mode: Off, conservative scan-background trim, or tight margin trim
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
-        enhance_contrast: Apply CLAHE for better low-contrast detection
-        border_mode: "minAreaRect" (tight) or "convexHull" (preserves irregular borders)
-        detection_mode: "scansplitterv4" (default), an older ScanSplitter detector, or "u2net"
-        u2net_lite: Use lightweight U2-Net model (faster) vs full (more accurate)
+        detection_mode: "scansplitterv4" (default), "scansplitterv3", or "album-splitter"
 
     Returns:
         List of ProcessedImage objects
     """
-    # Detect photos based on selected mode (accept older aliases for compatibility)
+    # Detect photos based on selected mode.
     if detection_mode == "album-splitter":
         regions = detect_album_pages(image, layout=album_layout)
-    elif detection_mode in ("u2net",):
-        regions = detect_photos_u2net(
+    elif detection_mode == "scansplitterv4":
+        regions = detect_photos_v4(
             image,
             min_area_ratio=min_area_ratio,
             max_area_ratio=max_area_ratio,
-            lite=u2net_lite,
+        )
+    elif detection_mode == "scansplitterv3":
+        regions = detect_photos_v3(
+            image,
+            min_area_ratio=min_area_ratio,
+            max_area_ratio=max_area_ratio,
         )
     else:
-        normalized_mode = detection_mode
-        if normalized_mode in ("ScanSplitterv4", "v4"):  # type: ignore[comparison-overlap]
-            normalized_mode = "scansplitterv4"  # type: ignore[assignment]
-        if normalized_mode in ("ScanSplitterv3", "v3"):  # type: ignore[comparison-overlap]
-            normalized_mode = "scansplitterv3"  # type: ignore[assignment]
-        if normalized_mode in ("classic", "ScanSplitterv2", "v2"):  # type: ignore[comparison-overlap]
-            normalized_mode = "scansplitterv2"  # type: ignore[assignment]
-        if normalized_mode in ("ScanSplitterv1", "v1", "legacy"):  # type: ignore[comparison-overlap]
-            normalized_mode = "scansplitterv1"  # type: ignore[assignment]
-
-        if normalized_mode == "scansplitterv4":
-            regions = detect_photos_v4(
-                image,
-                min_area_ratio=min_area_ratio,
-                max_area_ratio=max_area_ratio,
-            )
-        elif normalized_mode == "scansplitterv3":
-            regions = detect_photos_v3(
-                image,
-                min_area_ratio=min_area_ratio,
-                max_area_ratio=max_area_ratio,
-            )
-        elif normalized_mode == "scansplitterv1":
-            regions = detect_photos_v1(
-                image,
-                min_area_ratio=min_area_ratio,
-                max_area_ratio=max_area_ratio,
-            )
-        else:
-            regions = detect_photos_v2(
-                image,
-                min_area_ratio=min_area_ratio,
-                max_area_ratio=max_area_ratio,
-                enhance_contrast=enhance_contrast,
-                border_mode=border_mode,
-            )
+        raise ValueError(f"Unsupported detection mode: {detection_mode}")
 
     # If no regions detected, return the original image
     if not regions:
@@ -174,20 +131,13 @@ def process_file(
     min_area_ratio: float = 0.02,
     max_area_ratio: float = 0.80,
     pdf_dpi: int = 300,
-    # Phase 1 improvements
-    enhance_contrast: bool = True,
-    border_mode: Literal["minAreaRect", "convexHull"] = "minAreaRect",
     # Detection algorithms
     detection_mode: Literal[
-        "scansplitterv1",
-        "scansplitterv2",
         "scansplitterv3",
         "scansplitterv4",
         "album-splitter",
-        "u2net",
     ] = "scansplitterv4",
     album_layout: AlbumLayout = "auto",
-    u2net_lite: bool = True,
 ) -> list[ProcessedImage]:
     """
     Process a single file (image or PDF).
@@ -199,10 +149,7 @@ def process_file(
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
         pdf_dpi: DPI for PDF rendering
-        enhance_contrast: Apply CLAHE for better low-contrast detection
-        border_mode: "minAreaRect" (tight) or "convexHull" (preserves irregular borders)
-        detection_mode: "scansplitterv4" (default), an older ScanSplitter detector, or "u2net"
-        u2net_lite: Use lightweight U2-Net model (faster) vs full (more accurate)
+        detection_mode: "scansplitterv4" (default), "scansplitterv3", or "album-splitter"
 
     Returns:
         List of ProcessedImage objects
@@ -224,11 +171,8 @@ def process_file(
                 edge_cleanup_mode=edge_cleanup_mode,
                 min_area_ratio=min_area_ratio,
                 max_area_ratio=max_area_ratio,
-                enhance_contrast=enhance_contrast,
-                border_mode=border_mode,
                 detection_mode=detection_mode,
                 album_layout=album_layout,
-                u2net_lite=u2net_lite,
             )
             results.extend(page_results)
     else:
@@ -241,11 +185,8 @@ def process_file(
             edge_cleanup_mode=edge_cleanup_mode,
             min_area_ratio=min_area_ratio,
             max_area_ratio=max_area_ratio,
-            enhance_contrast=enhance_contrast,
-            border_mode=border_mode,
             detection_mode=detection_mode,
             album_layout=album_layout,
-            u2net_lite=u2net_lite,
         )
 
     return results

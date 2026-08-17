@@ -35,9 +35,6 @@ from .album_detector import detect_album_pages
 from .detector import (
     DetectedRegion,
     crop_rotated_region,
-    detect_photos_u2net,
-    detect_photos_v1,
-    detect_photos_v2,
     detect_photos_v3,
     detect_photos_v4,
 )
@@ -86,6 +83,7 @@ PROJECT_STATUSES = (
 _EXPORTABLE_STATUSES = {"approved", "auto_approved"}
 MASTER_FORMATS = {"png", "tiff"}
 MANIFEST_FORMATS = {"json", "csv", "both"}
+DETECTION_MODES = {"scansplitterv3", "scansplitterv4", "album-splitter"}
 
 DEFAULT_SETTINGS: dict[str, Any] = {
     "detection_mode": "scansplitterv4",
@@ -238,6 +236,8 @@ class ProjectStore:
                 "conservative" if stored_settings["edge_cleanup"] else "off"
             )
         stored_settings.pop("edge_cleanup", None)
+        if stored_settings.get("detection_mode") not in DETECTION_MODES:
+            stored_settings["detection_mode"] = DEFAULT_SETTINGS["detection_mode"]
         data["settings"] = {**DEFAULT_SETTINGS, **stored_settings}
         data["settings"].pop("remove_dust", None)
         for scan in data.get("scans", []):
@@ -374,6 +374,14 @@ class ProjectStore:
                             raise HTTPException(
                                 status_code=400,
                                 detail="album_layout must be one of: auto, single, spread",
+                            )
+                        if key == "detection_mode" and value not in DETECTION_MODES:
+                            raise HTTPException(
+                                status_code=400,
+                                detail=(
+                                    "detection_mode must be one of: scansplitterv4, "
+                                    "scansplitterv3, album-splitter"
+                                ),
                             )
                         merged[key] = value
                 data["settings"] = merged
@@ -1085,15 +1093,11 @@ def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
     max_ratio = float(settings.get("max_area_ratio", 80.0)) / 100
     if mode == "album-splitter":
         return detect_album_pages(image, layout=settings.get("album_layout", "auto"))
-    if mode == "u2net":
-        return detect_photos_u2net(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
-    if mode == "scansplitterv1":
-        return detect_photos_v1(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     if mode == "scansplitterv3":
         return detect_photos_v3(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
     if mode == "scansplitterv4":
         return detect_photos_v4(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
-    return detect_photos_v2(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
+    raise ValueError(f"Unsupported detection mode: {mode}")
 
 
 def _effective_edge_cleanup_mode(settings: dict, effective_settings: dict) -> str:

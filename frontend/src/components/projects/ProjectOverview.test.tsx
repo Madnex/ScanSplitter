@@ -8,16 +8,13 @@ import {
 describe("ProjectDetectorSelect", () => {
   it("offers every project detector and reflects the saved selection", () => {
     const html = renderToStaticMarkup(
-      <ProjectDetectorSelect value="scansplitterv1" disabled={false} onChange={() => undefined} />
+      <ProjectDetectorSelect value="scansplitterv3" disabled={false} onChange={() => undefined} />
     );
 
     expect(html).toContain('aria-label="Detection mode"');
     expect(html).toContain('<option value="scansplitterv4">ScanSplitterv4</option>');
     expect(html).toContain('<option value="album-splitter">Album Splitter</option>');
-    expect(html).toContain('<option value="scansplitterv3">ScanSplitterv3</option>');
-    expect(html).toContain('<option value="scansplitterv2">ScanSplitterv2</option>');
-    expect(html).toContain('<option value="scansplitterv1" selected="">ScanSplitterv1</option>');
-    expect(html).toContain('<option value="u2net">AI (U2-Net)</option>');
+    expect(html).toContain('<option value="scansplitterv3" selected="">ScanSplitterv3</option>');
   });
 });
 

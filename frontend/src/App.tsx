@@ -71,10 +71,9 @@ function App() {
     autoDetect: true,
     detectionMode: "scansplitterv4",
     albumLayout: "auto",
-    u2netLite: true,
   });
 
-  // Model download status (orientation + U2-Net)
+  // Model download status (orientation + MobileSAM)
   const [modelStatuses, setModelStatuses] = useState<Record<ModelKey, ModelStatus> | null>(null);
 
   // Loading states
@@ -200,9 +199,7 @@ function App() {
     const modelKeys: ModelKey[] =
       settings.detectionMode === "scansplitterv4"
         ? MOBILE_SAM_MODEL_KEYS
-        : settings.detectionMode === "u2net"
-          ? [settings.u2netLite ? "u2net_lite" : "u2net_full"]
-          : [];
+        : [];
     if (modelKeys.length === 0) return;
 
     (async () => {
@@ -216,7 +213,7 @@ function App() {
       );
       await refreshModelStatuses();
     })();
-  }, [settings.detectionMode, settings.u2netLite, refreshModelStatuses]);
+  }, [settings.detectionMode, refreshModelStatuses]);
 
   // Persist output directory to localStorage
   useEffect(() => {
@@ -316,10 +313,7 @@ function App() {
     }
 
     try {
-      if (settings.detectionMode === "u2net") {
-        const modelKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
-        await ensureModelReady(modelKey);
-      } else if (settings.detectionMode === "scansplitterv4") {
+      if (settings.detectionMode === "scansplitterv4") {
         await Promise.all(MOBILE_SAM_MODEL_KEYS.map(ensureModelReady));
       }
       // The model-download wait above has no abort support; re-check before
@@ -333,7 +327,6 @@ function App() {
         settings.maxArea,
         settings.detectionMode,
         settings.albumLayout,
-        settings.u2netLite,
         controller.signal,
         options.silent ? undefined : (progress, stage) => setDetectProgress({ progress, stage })
       );
@@ -389,7 +382,7 @@ function App() {
         }
       }
     }
-  }, [settings.minArea, settings.maxArea, settings.detectionMode, settings.albumLayout, settings.u2netLite, ensureModelReady, showToast]);
+  }, [settings.minArea, settings.maxArea, settings.detectionMode, settings.albumLayout, ensureModelReady, showToast]);
 
   // Handle file upload (multiple files)
   const handleUpload = useCallback(async (filesToUpload: File[]) => {

@@ -1,7 +1,7 @@
 """Tests for the persistent-projects backend.
 
 Detection runs in-process using local ScanSplitter detection modes
-(never u2net, so no network / model download). Confidence evaluation is
+(never a model-backed detector, so no network / model download). Confidence evaluation is
 provided by a spec-faithful in-test placeholder injected into ``sys.modules``
 so the review-status logic is exercised deterministically and independently of
 the parallel ``confidence`` module.
@@ -198,6 +198,12 @@ def test_project_crud():
     )
     assert invalid.status_code == 400
 
+    retired_detector = client.patch(
+        f"/api/projects/{pid}",
+        json={"settings": {"detection_mode": "scansplitterv2"}},
+    )
+    assert retired_detector.status_code == 400
+
     # Delete
     assert client.delete(f"/api/projects/{pid}").json() == {"status": "deleted"}
     assert client.get(f"/api/projects/{pid}").status_code == 404
@@ -357,7 +363,7 @@ def test_detect_job_persists_boxes_and_auto_approves(monkeypatch):
     assert scan["status"] == "auto_approved"
     assert scan["flags"] == []
     assert scan["detected_count"] == len(scan["boxes"])
-    # The rectangle should be found by scansplitterv2.
+    # The rectangle should be found by the default detector.
     assert scan["detected_count"] >= 1
 
 

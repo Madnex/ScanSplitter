@@ -49,8 +49,6 @@ export function SettingsPanel({
 }: SettingsPanelProps) {
   const isAlbumMode = settings.detectionMode === "album-splitter";
   const itemLabel = isAlbumMode ? "page" : "photo";
-  const u2netKey: ModelKey = settings.u2netLite ? "u2net_lite" : "u2net_full";
-  const u2netStatus = modelStatuses?.[u2netKey] ?? null;
   const mobileSamStatuses = [
     modelStatuses?.["mobilesam_encoder"] ?? null,
     modelStatuses?.["mobilesam_decoder"] ?? null,
@@ -178,9 +176,6 @@ export function SettingsPanel({
             <option value="scansplitterv4">ScanSplitterv4</option>
             <option value="album-splitter">Album Splitter (whole pages)</option>
             <option value="scansplitterv3">ScanSplitterv3</option>
-            <option value="scansplitterv2">ScanSplitterv2</option>
-            <option value="scansplitterv1">ScanSplitterv1</option>
-            <option value="u2net">AI (U2-Net)</option>
           </select>
           <p className="text-xs text-muted-foreground">
             {settings.detectionMode === "album-splitter"
@@ -189,11 +184,7 @@ export function SettingsPanel({
               ? "V3 proposals plus MobileSAM border refinement — highest accuracy (~43MB)"
               : settings.detectionMode === "scansplitterv3"
               ? "Background-aware detector — robust for albums and low-contrast scans"
-              : settings.detectionMode === "u2net"
-              ? "Deep learning model - best for difficult scans"
-              : settings.detectionMode === "scansplitterv1"
-                ? "Legacy contour detector from main"
-                : "Contour detector — fast on high-contrast scans"}
+              : ""}
           </p>
         </div>
 
@@ -242,44 +233,6 @@ export function SettingsPanel({
                 ))}
             </div>
           )}
-
-        {settings.detectionMode === "u2net" && (
-          <div className="flex items-center gap-2">
-            <input
-              type="checkbox"
-              id="u2net-lite"
-              checked={settings.u2netLite}
-              onChange={(e) =>
-                onSettingsChange({ ...settings, u2netLite: e.target.checked })
-              }
-              className="rounded"
-            />
-            <label htmlFor="u2net-lite" className="text-sm">
-              Use lite model (faster)
-            </label>
-            <p className="text-xs text-muted-foreground ml-auto">
-              {settings.u2netLite ? "5MB" : "176MB"}
-            </p>
-          </div>
-        )}
-        {settings.detectionMode === "u2net" && u2netStatus && u2netStatus.status !== "ready" && (
-          <div className="text-xs text-muted-foreground flex items-center gap-2">
-            {u2netStatus.status === "downloading" ? (
-              <>
-                <Loader2 className="w-3 h-3 animate-spin" />
-                <span>
-                  Downloading {u2netStatus.label} ({u2netStatus.size_desc}) {u2netStatus.progress}%
-                </span>
-              </>
-            ) : u2netStatus.status === "error" ? (
-              <span>{u2netStatus.error || "Model download failed"}</span>
-            ) : (
-              <span>
-                {u2netStatus.label} not downloaded yet ({u2netStatus.size_desc})
-              </span>
-            )}
-          </div>
-        )}
 
         <div className="space-y-2 pt-2">
           <Button

@@ -55,9 +55,6 @@ uvx scansplitter api --port 8001
 
 - **ScanSplitterv4 (default)**: Uses v3 for reliable multi-photo proposals, then a checksum-pinned MobileSAM ONNX pair to trace each physical print border. Implausible or non-rectangular masks fall back to the v3 box. The models total about 43MB, run locally with ONNX Runtime, and download only when v4 is first used.
 - **ScanSplitterv3**: A model-free, background-aware OpenCV detector for album pages and low-contrast scans. It models paper/platen colors in Lab space, finds dense non-background regions, separates touching prints at narrow gutters, and snaps boxes to long physical edges.
-- **ScanSplitterv2**: An improved contour-based detector. It applies contrast enhancement (CLAHE), adaptive thresholding, adaptive morphology (kernel scales with resolution), contour quality filtering (solidity/aspect/extent), and a guarded edge-refinement pass that keeps high-resolution crops aligned with the physical photo border. It can also use convex-hull borders for irregular edges.
-- **ScanSplitterv1**: The first contour-based detector used with adaptive threshold + fixed morphology + `minAreaRect` filtering. It’s simpler and can be useful as a fallback if v2 behaves unexpectedly on a specific scan.
-- **AI (U2-Net)**: A deep-learning salient-object model (ONNX) that produces a mask; ScanSplitter then extracts regions from that mask. It’s best for difficult scans (busy backgrounds, low contrast), but requires downloading a model on first use. Might be less accurate for multiple photos at once.
 
 ### Whole album pages
 
@@ -71,7 +68,7 @@ ScanSplitterv4 uses the MIT-licensed [MobileSAM](https://github.com/ChaoningZhan
 
 ### Model downloads
 
-Some modes require downloading models on first use (U2-Net (5Mb / 176MB) and the orientation model (80MB)). The web UI shows download progress while this is happening.
+Model-backed features download their weights on first use (MobileSAM totals about 43MB and the orientation model is about 80MB). The web UI shows download progress while this is happening.
 
 ## Installation Options
 
@@ -221,14 +218,13 @@ uv run scansplitter process scan.jpg \
 | `--no-rotate` | Disable auto-rotation |
 | `--min-area` | Minimum photo size as % of scan (default: 2) |
 | `--max-area` | Maximum photo size as % of scan (default: 80) |
-| `--detection-mode` | `scansplitterv4` (default), `album-splitter`, `scansplitterv3`, `scansplitterv2`, `scansplitterv1` (legacy), or `u2net`; `classic` aliases `scansplitterv2` |
+| `--detection-mode` | `scansplitterv4` (default), `album-splitter`, or `scansplitterv3` |
 | `--album-layout` | Album mode: `auto` (default), `single`, or `spread` |
-| `--u2net-full` | Use full U2-Net model instead of lite (slower, more accurate) |
 | `--format` | Output format: `png` or `jpg` (default: png) |
 
 ## How It Works
 
-1. **Photo detection** - Runs the selected detection mode (ScanSplitterv1/v2/v3/v4 or AI (U2-Net)) to produce rotatable bounding boxes.
+1. **Photo detection** - Runs the selected detection mode (ScanSplitterv3/v4 or Album Splitter) to produce rotatable bounding boxes.
 2. **Interactive adjustment** - You can refine boxes in the web UI before cropping.
 3. **Cropping** - Extracts rotated regions using the adjusted boxes.
 4. **Auto-rotation (optional)** - Uses the orientation model (with fallbacks) to fix 90°/180°/270° rotations.
@@ -237,8 +233,6 @@ uv run scansplitter process scan.jpg \
 
 ScanSplitter depends on excellent open models and upstream work:
 
-- **U²-Net (salient object detection)** by Xuebin Qin et al. — paper: https://arxiv.org/abs/2005.09007, code: https://github.com/xuebinqin/U-2-Net
-- **U2-Net ONNX weights** are downloaded from `rembg` releases by Daniel Gatis (with a ScanSplitter backup mirror) — https://github.com/danielgatis/rembg
 - **Orientation model (EfficientNetV2)** is downloaded from Duarte Barbosa’s deep image orientation detection project (with a ScanSplitter backup mirror) — https://github.com/duartebarbosadev/deep-image-orientation-detection
 
 ## Development

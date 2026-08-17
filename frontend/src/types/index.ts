@@ -45,12 +45,9 @@ export interface CroppedImage {
 
 // Detection mode
 export type DetectionMode =
-  | "scansplitterv1"
-  | "scansplitterv2"
   | "scansplitterv3"
   | "scansplitterv4"
-  | "album-splitter"
-  | "u2net";
+  | "album-splitter";
 
 export type AlbumLayout = "auto" | "single" | "spread";
 
@@ -65,7 +62,6 @@ export interface DetectionSettings {
   autoDetect: boolean; // auto-detect on upload
   detectionMode: DetectionMode;
   albumLayout: AlbumLayout;
-  u2netLite: boolean; // use lite model (5MB, faster) vs full (176MB, more accurate)
 }
 
 // Naming pattern for batch export
@@ -109,8 +105,6 @@ export interface CropResponse {
 // Downloadable model keys (backend `/api/models/*`)
 export type ModelKey =
   | "orientation"
-  | "u2net_lite"
-  | "u2net_full"
   | "mobilesam_encoder"
   | "mobilesam_decoder";
 

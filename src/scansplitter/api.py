@@ -28,9 +28,6 @@ from .delivery import DELIVERY_REQUIRED_FIELDS
 from .detector import (
     DetectedRegion,
     crop_rotated_region,
-    detect_photos_u2net,
-    detect_photos_v1,
-    detect_photos_v2,
     detect_photos_v3,
     detect_photos_v4,
 )
@@ -142,18 +139,9 @@ class DetectRequest(BaseModel):
     page: int = 1
     min_area: float = 2.0  # percentage
     max_area: float = 80.0  # percentage
-    # Phase 1: Enhanced detection options
-    enhance_contrast: bool = True
-    adaptive_morphology: bool = True
-    min_solidity: float = 0.7
-    max_aspect_ratio: float = 5.0
-    min_extent: float = 0.4
-    border_mode: str = "minAreaRect"  # "minAreaRect" or "convexHull"
-    border_padding: float = 0.02
     # Detection algorithms
     detection_mode: str = "scansplitterv4"
     album_layout: AlbumLayout = "auto"
-    u2net_lite: bool = True  # Use lightweight model (faster) vs full (more accurate)
 
 
 class DetectResponse(BaseModel):
@@ -260,7 +248,7 @@ class UpdateExifRequest(BaseModel):
 class ModelDownloadRequest(BaseModel):
     """Request to download an ML model in the background."""
 
-    model: str  # "orientation", "u2net_lite", or "u2net_full"
+    model: str
 
 
 class ProjectCreateRequest(BaseModel):
@@ -685,25 +673,12 @@ def run_detect(
         detection_mode = "scansplitterv4"
     elif detection_mode in ("ScanSplitterv3", "v3"):
         detection_mode = "scansplitterv3"
-    elif detection_mode in ("classic", "ScanSplitterv2", "v2"):
-        detection_mode = "scansplitterv2"
-    elif detection_mode in ("ScanSplitterv1", "v1", "legacy"):
-        detection_mode = "scansplitterv1"
 
     # Run detection based on mode
     if detection_mode in ("album", "album_splitter", "album-splitter"):
         progress_cb(35, "finding album page")
         regions = detect_album_pages(image, layout=request.album_layout)
         progress_cb(75, "refining page edges")
-    elif detection_mode == "u2net":
-        # Use U2-Net deep learning detection
-        progress_cb(35, "running model")
-        regions = detect_photos_u2net(
-            image,
-            min_area_ratio=request.min_area / 100,
-            max_area_ratio=request.max_area / 100,
-            lite=request.u2net_lite,
-        )
     elif detection_mode == "scansplitterv4":
         progress_cb(35, "finding photo candidates")
         regions = detect_photos_v4(
@@ -719,27 +694,13 @@ def run_detect(
             min_area_ratio=request.min_area / 100,
             max_area_ratio=request.max_area / 100,
         )
-    elif detection_mode == "scansplitterv1":
-        progress_cb(45, "detecting")
-        regions = detect_photos_v1(
-            image,
-            min_area_ratio=request.min_area / 100,
-            max_area_ratio=request.max_area / 100,
-        )
     else:
-        # Use ScanSplitterv2 contour-based detection with enhancements
-        progress_cb(45, "detecting")
-        regions = detect_photos_v2(
-            image,
-            min_area_ratio=request.min_area / 100,
-            max_area_ratio=request.max_area / 100,
-            enhance_contrast=request.enhance_contrast,
-            adaptive_morphology=request.adaptive_morphology,
-            min_solidity=request.min_solidity,
-            max_aspect_ratio=request.max_aspect_ratio,
-            min_extent=request.min_extent,
-            border_mode=request.border_mode,  # type: ignore
-            border_padding=request.border_padding,
+        raise HTTPException(
+            status_code=400,
+            detail=(
+                "detection_mode must be one of: scansplitterv4, "
+                "scansplitterv3, album-splitter"
+            ),
         )
 
     _check_cancelled(is_cancelled)

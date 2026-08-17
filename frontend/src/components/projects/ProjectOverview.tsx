@@ -50,9 +50,6 @@ export function ProjectDetectorSelect({ value, disabled, onChange }: ProjectDete
         <option value="scansplitterv4">ScanSplitterv4</option>
         <option value="album-splitter">Album Splitter</option>
         <option value="scansplitterv3">ScanSplitterv3</option>
-        <option value="scansplitterv2">ScanSplitterv2</option>
-        <option value="scansplitterv1">ScanSplitterv1</option>
-        <option value="u2net">AI (U2-Net)</option>
       </select>
     </label>
   );

@@ -11,7 +11,6 @@ const settings: DetectionSettings = {
   autoDetect: true,
   detectionMode: "scansplitterv4",
   albumLayout: "auto",
-  u2netLite: true,
 };
 
 describe("SettingsPanel crop actions", () => {

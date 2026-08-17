@@ -463,7 +463,7 @@ def test_detect_job_matches_synchronous_result():
     request = {
         "session_id": data["session_id"],
         "page": 1,
-        "detection_mode": "scansplitterv1",
+        "detection_mode": "scansplitterv3",
     }
     synchronous = client.post("/api/detect", json=request)
     assert synchronous.status_code == 200, synchronous.text
@@ -474,6 +474,21 @@ def test_detect_job_matches_synchronous_result():
 
     assert job["status"] == "succeeded", job
     assert job["result"]["boxes"] == synchronous.json()["boxes"]
+
+
+@pytest.mark.parametrize(
+    "detection_mode",
+    ["scansplitterv1", "scansplitterv2", "classic", "u2net"],
+)
+def test_detect_rejects_retired_modes(detection_mode):
+    data = _upload()
+    response = client.post(
+        "/api/detect",
+        json={"session_id": data["session_id"], "detection_mode": detection_mode},
+    )
+
+    assert response.status_code == 400
+    assert "detection_mode must be one of" in response.json()["detail"]
 
 
 def test_detect_request_defaults_to_v4(monkeypatch):

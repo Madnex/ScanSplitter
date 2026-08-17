@@ -126,35 +126,17 @@ def main():
         default="png",
         help="Output format (default: png)",
     )
-    # Phase 1: Enhanced detection options
-    process_parser.add_argument(
-        "--no-enhance",
-        action="store_true",
-        help="Disable contrast enhancement (CLAHE)",
-    )
-    process_parser.add_argument(
-        "--border-mode",
-        choices=["minAreaRect", "convexHull"],
-        default="minAreaRect",
-        help="Border detection mode (default: minAreaRect; convexHull preserves irregular borders)",
-    )
-    # Phase 2: U2-Net detection mode
     process_parser.add_argument(
         "--detection-mode",
-        choices=["scansplitterv4", "scansplitterv3", "scansplitterv2", "scansplitterv1", "album-splitter", "u2net", "classic"],
+        choices=["scansplitterv4", "scansplitterv3", "album-splitter"],
         default="scansplitterv4",
-        help="Detection mode: scansplitterv4 (default), older ScanSplitter detectors, or u2net; 'classic' aliases scansplitterv2",
+        help="Detection mode: scansplitterv4 (default), scansplitterv3, or album-splitter",
     )
     process_parser.add_argument(
         "--album-layout",
         choices=["auto", "single", "spread"],
         default="auto",
         help="Album Splitter layout: auto, one physical page, or split spread",
-    )
-    process_parser.add_argument(
-        "--u2net-full",
-        action="store_true",
-        help="Use full U2-Net model instead of lite (slower but more accurate)",
     )
 
     args = parser.parse_args()
@@ -232,11 +214,8 @@ def process_files_cli(args):
             edge_cleanup_mode=args.edge_cleanup_mode,
             min_area_ratio=args.min_area / 100,
             max_area_ratio=args.max_area / 100,
-            enhance_contrast=not args.no_enhance,
-            border_mode=args.border_mode,
-            detection_mode="scansplitterv2" if args.detection_mode == "classic" else args.detection_mode,
+            detection_mode=args.detection_mode,
             album_layout=args.album_layout,
-            u2net_lite=not args.u2net_full,
         )
 
         print(f"  Found {len(results)} {item_label}(s)")

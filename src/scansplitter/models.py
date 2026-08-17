@@ -29,20 +29,6 @@ ORIENTATION_MODEL_URLS = [
 ]
 ORIENTATION_MODEL_FILENAME = "orientation_model_v2.onnx"
 
-# U2-Net salient object detection models (ONNX)
-# u2netp is the lightweight version (~4.7MB), u2net is the full version (~176MB)
-U2NETP_MODEL_URLS = [
-    "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2netp.onnx",
-    "https://github.com/Madnex/ScanSplitter/releases/download/models-v1/u2netp.onnx",
-]
-U2NETP_MODEL_FILENAME = "u2netp.onnx"
-
-U2NET_MODEL_URLS = [
-    "https://github.com/danielgatis/rembg/releases/download/v0.0.0/u2net.onnx",
-    "https://github.com/Madnex/ScanSplitter/releases/download/models-v1/u2net.onnx",
-]
-U2NET_MODEL_FILENAME = "u2net.onnx"
-
 # MobileSAM promptable segmentation models used by ScanSplitterv4. These ONNX
 # exports combine MobileSAM's TinyViT encoder with SAM's mask decoder. The
 # revision and SHA-256 hashes are pinned; together they are ~43MB.
@@ -67,20 +53,6 @@ _MODEL_SPECS: dict[str, dict[str, Any]] = {
         "size_desc": "~80MB",
         "label": "Orientation model",
         "sha256": "cffe911c1dff47fbfbbd90110aaab9c07134645c460d35b3ae8832079bea91ba",
-    },
-    "u2net_lite": {
-        "filename": U2NETP_MODEL_FILENAME,
-        "urls": U2NETP_MODEL_URLS,
-        "size_desc": "~5MB",
-        "label": "U2-Net lite model",
-        "sha256": "309c8469258dda742793dce0ebea8e6dd393174f89934733ecc8b14c76f4ddd8",
-    },
-    "u2net_full": {
-        "filename": U2NET_MODEL_FILENAME,
-        "urls": U2NET_MODEL_URLS,
-        "size_desc": "~176MB",
-        "label": "U2-Net full model",
-        "sha256": "8d10d2f3bb75ae3b6d527c77944fc5e7dcd94b29809d47a739a7a728a912b491",
     },
     "mobilesam_encoder": {
         "filename": MOBILESAM_ENCODER_FILENAME,
@@ -304,20 +276,6 @@ def get_orientation_model_path() -> Path:
         Path to the ONNX model file
     """
     return _download_model_blocking("orientation")
-
-
-def get_u2net_model_path(lite: bool = True) -> Path:
-    """Get path to the U2-Net salient object detection ONNX model.
-
-    Downloads the model on first use if not already cached.
-
-    Args:
-        lite: If True, use u2netp (4.7MB, faster). If False, use u2net (176MB, more accurate).
-
-    Returns:
-        Path to the ONNX model file
-    """
-    return _download_model_blocking("u2net_lite" if lite else "u2net_full")
 
 
 def get_mobilesam_model_paths() -> tuple[Path, Path]:
