@@ -12,6 +12,7 @@ from scansplitter.detector import (
     _refine_rect_to_edges,
     _v4_mask_rect,
     _v5_combine_rectangles,
+    _v5_expand_stacked_sleeve_rectangles,
     _v5_frame_rectangles,
     _v5_recover_boundary_rectangles,
     detect_photos_v3,
@@ -211,6 +212,23 @@ def test_v5_frame_pass_finds_low_texture_photo_outline():
 
     expected = ((200.0, 150.0), (200.0, 140.0), 0.0)
     assert max(_rotated_iou(rectangle, expected) for rectangle in rectangles) > 0.90
+
+
+def test_v5_large_sleeve_expands_aligned_anchors_but_not_empty_sleeve():
+    top = ((105.0, 70.0), (55.0, 80.0), 0.0)
+    bottom = ((95.0, 230.0), (90.0, 80.0), 0.0)
+    sleeve = ((100.0, 150.0), (140.0, 280.0), 0.0)
+
+    expanded = _v5_expand_stacked_sleeve_rectangles(
+        [top, bottom], [(sleeve, True)], (400, 400)
+    )
+    empty = _v5_expand_stacked_sleeve_rectangles(
+        [], [(sleeve, False)], (400, 400)
+    )
+
+    assert len(expanded) == 2
+    assert all(rectangle[1][0] > 125 for rectangle in expanded)
+    assert empty == []
 
 
 def test_v5_boundary_recovery_requires_a_materially_refined_interior(monkeypatch):

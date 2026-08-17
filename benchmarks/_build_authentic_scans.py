@@ -139,14 +139,14 @@ CASES = (
     Case(
         "faded-glossy-protection",
         (
-            Print((300, 280, 390, 250, -3), 4, (31, 34, 29, 44), "pale", "plain"),
-            Print((810, 265, 390, 250, 2), 5, (28, 31, 32, 42), "faded", "tape"),
-            Print((1180, 300, 225, 340, 4), 6, (24, 27, 25, 36), "pale", "corners"),
-            Print((470, 730, 440, 265, 1), 7, (31, 33, 34, 45), "faded", "scalloped"),
-            Print((1050, 720, 390, 255, -2), 8, (26, 30, 29, 39), "pale", "plain"),
+            Print((360, 270, 330, 260, 0), 4, (31, 34, 29, 44), "pale", "plain"),
+            Print((850, 265, 350, 250, 2), 5, (28, 31, 32, 42), "faded", "tape"),
+            Print((1220, 290, 225, 340, 4), 6, (24, 27, 25, 36), "pale", "corners"),
+            Print((365, 720, 340, 270, 0), 7, (31, 33, 34, 45), "faded", "plain"),
+            Print((950, 720, 390, 255, -2), 8, (26, 30, 29, 39), "pale", "plain"),
         ),
         page_treatment="faded",
-        glare=True,
+        glare=False,
     ),
     Case(
         "irregular-real-world-layout",
@@ -303,6 +303,32 @@ def add_page_artifacts(canvas: Image.Image, case: Case, index: int) -> Image.Ima
     if case.glare:
         draw.polygon(((120, 0), (310, 0), (1040, HEIGHT), (830, HEIGHT)), fill=(255, 255, 250, 22))
         draw.polygon(((970, 0), (1060, 0), (1390, 680), (1310, 700)), fill=(255, 255, 255, 28))
+    if case.name == "faded-glossy-protection":
+        # Reproduce the embossed translucent sleeves found in mid-century
+        # albums. The repeating plastic texture deliberately bridges the two
+        # prints into one detail island while their image areas remain visible.
+        sleeve_x, sleeve_y = 145, 70
+        plastic = Image.new("RGBA", (433, 860), (0, 0, 0, 0))
+        plastic_draw = ImageDraw.Draw(plastic, "RGBA")
+        plastic_draw.rounded_rectangle(
+            (0, 0, plastic.width - 1, plastic.height - 1),
+            radius=7,
+            fill=(242, 239, 222, 46),
+            outline=(102, 94, 78, 72),
+            width=3,
+        )
+        for x in range(-430, plastic.width + 430, 18):
+            plastic_draw.line(
+                ((x, 0), (x + 430, plastic.height)),
+                fill=(255, 255, 250, 68),
+                width=2,
+            )
+            plastic_draw.line(
+                ((x + 430, 0), (x, plastic.height)),
+                fill=(92, 87, 74, 48),
+                width=2,
+            )
+        overlay.alpha_composite(plastic, (sleeve_x, sleeve_y))
     canvas = Image.alpha_composite(canvas.convert("RGBA"), overlay).convert("RGB")
 
     # Mild sensor noise, illumination falloff, and JPEG-like softness.
@@ -348,7 +374,7 @@ def main() -> None:
 
     manifest.update(
         {
-            "version": 2,
+            "version": 3,
             "image_size": [WIDTH, HEIGHT],
             "target_definition": {
                 "scansplitter": "inner photographic image area; exclude paper borders, tape, corners, shadows, and album page",

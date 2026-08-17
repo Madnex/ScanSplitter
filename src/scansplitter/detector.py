@@ -969,6 +969,118 @@ def _v5_frame_rectangles(
     return rectangles
 
 
+def _v5_expand_stacked_sleeve_rectangles(
+    rectangles: list[RotatedRect],
+    texture_rectangles: list[tuple[RotatedRect, bool]],
+    image_size: tuple[int, int],
+) -> list[RotatedRect]:
+    """Recover print edges hidden by a textured protective album sleeve.
+
+    Embossed plastic can turn several vertically stacked prints into one large
+    texture island.  The conservative detector still tends to find some
+    photographic content inside each print, but those regions are too tight.
+    A large texture island may therefore expand existing aligned anchors; it
+    may never introduce photos on its own.  This distinction also prevents an
+    empty protective sleeve from becoming a false photo.
+    """
+    image_area = image_size[0] * image_size[1]
+    result = list(rectangles)
+    for sleeve, _touches_edge in texture_rectangles:
+        sleeve_width, sleeve_height = sleeve[1]
+        sleeve_area = sleeve_width * sleeve_height
+        long_size = max(sleeve_width, sleeve_height)
+        short_size = min(sleeve_width, sleeve_height)
+        if (
+            sleeve_area < image_area * 0.14
+            or long_size / max(1.0, short_size) < 1.5
+        ):
+            continue
+
+        angle_radians = np.deg2rad(sleeve[2])
+        width_axis = np.array(
+            [np.cos(angle_radians), np.sin(angle_radians)], dtype=np.float32
+        )
+        height_axis = np.array(
+            [-np.sin(angle_radians), np.cos(angle_radians)], dtype=np.float32
+        )
+        long_axis = width_axis if sleeve_width >= sleeve_height else height_axis
+        short_axis = height_axis if sleeve_width >= sleeve_height else width_axis
+        sleeve_center = np.asarray(sleeve[0], dtype=np.float32)
+        sleeve_polygon = cv2.boxPoints(sleeve)
+
+        anchors: list[tuple[int, float, float]] = []
+        for index, rectangle in enumerate(result):
+            if cv2.pointPolygonTest(sleeve_polygon, rectangle[0], False) < 0:
+                continue
+            if rectangle[1][0] * rectangle[1][1] > sleeve_area * 0.40:
+                continue
+            if _v5_angle_difference(rectangle[2], sleeve[2]) > 12.0:
+                continue
+            offset = np.asarray(rectangle[0], dtype=np.float32) - sleeve_center
+            anchors.append(
+                (index, float(offset @ long_axis), float(offset @ short_axis))
+            )
+
+        anchors.sort(key=lambda item: item[1])
+        if len(anchors) < 2:
+            continue
+        if max(item[2] for item in anchors) - min(
+            item[2] for item in anchors
+        ) > short_size * 0.35:
+            continue
+        if any(
+            right[1] - left[1] < short_size * 0.45
+            for left, right in zip(anchors, anchors[1:])
+        ):
+            continue
+
+        replacement_indices = {item[0] for item in anchors}
+        anchor_lengths: list[float] = []
+        for index, _, _ in anchors:
+            anchor_points = cv2.boxPoints(result[index])
+            projected = (anchor_points - sleeve_center) @ long_axis
+            anchor_lengths.append(float(np.max(projected) - np.min(projected)))
+        common_length = max(anchor_lengths)
+        use_common_rows = min(anchor_lengths) >= common_length * 0.55
+        if use_common_rows:
+            first_center = -long_size / 2 + common_length / 2
+            last_center = long_size / 2 - common_length / 2
+            inferred_offsets = np.linspace(
+                first_center, last_center, num=len(anchors)
+            )
+        else:
+            inferred_offsets = np.asarray([item[1] for item in anchors])
+
+        replacements: list[RotatedRect] = []
+        for (index, _, _), anchor_length, long_offset in zip(
+            anchors, anchor_lengths, inferred_offsets, strict=True
+        ):
+            segment_length = common_length if use_common_rows else anchor_length
+            # The sleeve gives us the obscured left/right print edges. Keep
+            # each anchor's own extent along the stack so captions and the
+            # gaps between prints are not included in the crop.
+            segment_center = sleeve_center + long_axis * long_offset
+            if sleeve_width >= sleeve_height:
+                size = (segment_length, short_size * 0.92)
+            else:
+                size = (short_size * 0.92, segment_length)
+            replacements.append(
+                (
+                    (float(segment_center[0]), float(segment_center[1])),
+                    size,
+                    sleeve[2],
+                )
+            )
+
+        result = [
+            rectangle
+            for index, rectangle in enumerate(result)
+            if index not in replacement_indices
+        ]
+        result.extend(replacements)
+    return result
+
+
 def _v5_recover_boundary_rectangles(
     rgb: np.ndarray,
     texture_rectangles: list[tuple[RotatedRect, bool]],
@@ -1160,11 +1272,21 @@ def detect_photos_v5(
         max_area_ratio=max_area_ratio,
     )
     rectangles = _v5_combine_rectangles(base_rectangles, texture_rectangles)
+    rectangles = _v5_expand_stacked_sleeve_rectangles(
+        rectangles,
+        texture_rectangles,
+        image.size,
+    )
     for frame in _v5_frame_rectangles(
         rgb,
         min_area_ratio=min_area_ratio,
         max_area_ratio=max_area_ratio,
     ):
+        # Album-sized closed contours are commonly the outline of an empty
+        # protective sleeve. Large real photos should already have supplied a
+        # texture or SAM anchor, so do not create a standalone region here.
+        if frame[1][0] * frame[1][1] > image.size[0] * image.size[1] * 0.18:
+            continue
         if not any(
             _v3_overlap_fraction(frame, existing) > 0.65
             for existing in rectangles
