@@ -872,16 +872,145 @@ def _v5_texture_rectangles(
             (rect_width / scale, rect_height / scale),
             float(rect[2]),
         )
-        points = cv2.boxPoints(original_rect)
-        edge_margin = 0.01
-        touches_edge = bool(
-            np.min(points[:, 0]) < original_width * edge_margin
-            or np.max(points[:, 0]) > original_width * (1 - edge_margin)
-            or np.min(points[:, 1]) < original_height * edge_margin
-            or np.max(points[:, 1]) > original_height * (1 - edge_margin)
+        touches_edge = _v5_touches_image_edge(
+            original_rect,
+            original_width,
+            original_height,
         )
         rectangles.append((original_rect, touches_edge))
     return rectangles
+
+
+def _v5_touches_image_edge(
+    rectangle: RotatedRect,
+    image_width: int,
+    image_height: int,
+    margin_ratio: float = 0.01,
+) -> bool:
+    """Return whether a rectangle approaches the scan boundary."""
+    points = cv2.boxPoints(rectangle)
+    return bool(
+        np.min(points[:, 0]) < image_width * margin_ratio
+        or np.max(points[:, 0]) > image_width * (1 - margin_ratio)
+        or np.min(points[:, 1]) < image_height * margin_ratio
+        or np.max(points[:, 1]) > image_height * (1 - margin_ratio)
+    )
+
+
+def _v5_frame_rectangles(
+    rgb: np.ndarray,
+    min_area_ratio: float,
+    max_area_ratio: float,
+    detection_max_dimension: int = 1800,
+) -> list[RotatedRect]:
+    """Find strong rectangular photo frames even when their interiors are pale.
+
+    This pass complements texture density for snow scenes, faded prints, and
+    other photos with large nearly blank areas. It requires a closed contour
+    to fill at least 82% of its minimum-area rectangle, which rejects isolated
+    handwriting and most scene edges while tolerating tape over a corner.
+    """
+    original_height, original_width = rgb.shape[:2]
+    scale = min(
+        1.0,
+        detection_max_dimension / max(original_height, original_width),
+    )
+    width = max(1, round(original_width * scale))
+    height = max(1, round(original_height * scale))
+    small = cv2.resize(rgb, (width, height), interpolation=cv2.INTER_AREA)
+    gray = cv2.cvtColor(small, cv2.COLOR_RGB2GRAY)
+    edges = cv2.Canny(cv2.GaussianBlur(gray, (3, 3), 0), 15, 50)
+    edges = cv2.morphologyEx(
+        edges,
+        cv2.MORPH_CLOSE,
+        cv2.getStructuringElement(cv2.MORPH_RECT, (3, 3)),
+    )
+    contours, _ = cv2.findContours(
+        edges, cv2.RETR_LIST, cv2.CHAIN_APPROX_SIMPLE
+    )
+    total_area = height * width
+    candidates: list[tuple[float, RotatedRect]] = []
+    for contour in contours:
+        contour_area = cv2.contourArea(contour)
+        if not min_area_ratio * total_area <= contour_area <= min(
+            max_area_ratio, 0.30
+        ) * total_area:
+            continue
+        rect = cv2.minAreaRect(contour)
+        rect_width, rect_height = rect[1]
+        rect_area = rect_width * rect_height
+        if rect_area <= 0:
+            continue
+        rectangularity = contour_area / rect_area
+        aspect = max(rect_width, rect_height) / max(
+            1.0, min(rect_width, rect_height)
+        )
+        if rectangularity < 0.82 or aspect > 2.5:
+            continue
+        original_rect: RotatedRect = (
+            (rect[0][0] / scale, rect[0][1] / scale),
+            (rect_width / scale, rect_height / scale),
+            float(rect[2]),
+        )
+        candidates.append((rectangularity, original_rect))
+
+    rectangles: list[RotatedRect] = []
+    for _, rectangle in sorted(candidates, key=lambda item: item[0], reverse=True):
+        if any(
+            _v3_iou(rectangle, existing) > 0.75
+            or (
+                abs(rectangle[0][0] - existing[0][0]) < 15 / scale
+                and abs(rectangle[0][1] - existing[0][1]) < 15 / scale
+            )
+            for existing in rectangles
+        ):
+            continue
+        rectangles.append(rectangle)
+    return rectangles
+
+
+def _v5_recover_boundary_rectangles(
+    rgb: np.ndarray,
+    texture_rectangles: list[tuple[RotatedRect, bool]],
+    existing: list[RotatedRect],
+    min_area_ratio: float,
+    max_area_ratio: float,
+) -> list[RotatedRect]:
+    """Use tightly prompted SAM to verify texture touching the scan edge."""
+    boundary_proposals = [
+        rectangle for rectangle, touches_edge in texture_rectangles if touches_edge
+    ]
+    if not boundary_proposals:
+        return []
+    refined = _v4_refine_rectangles(
+        rgb,
+        boundary_proposals,
+        prompt_margin_ratio=0.0,
+    )
+    height, width = rgb.shape[:2]
+    image_area = height * width
+    recovered: list[RotatedRect] = []
+    for proposal, rectangle in zip(boundary_proposals, refined, strict=True):
+        rect_width, rect_height = rectangle[1]
+        area = rect_width * rect_height
+        aspect = max(rect_width, rect_height) / max(
+            1.0, min(rect_width, rect_height)
+        )
+        # An unchanged mask means SAM could not separate the page edge from a
+        # photo. A materially different, interior rectangle is corroboration.
+        if _v3_iou(proposal, rectangle) >= 0.90:
+            continue
+        if not min_area_ratio * image_area <= area <= max_area_ratio * image_area:
+            continue
+        if aspect > 2.5 or _v5_touches_image_edge(rectangle, width, height):
+            continue
+        if any(
+            _v3_overlap_fraction(rectangle, other) > 0.65
+            for other in (*existing, *recovered)
+        ):
+            continue
+        recovered.append(rectangle)
+    return recovered
 
 
 def _v5_angle_difference(first: float, second: float) -> float:
@@ -1008,9 +1137,10 @@ def detect_photos_v5(
     A conservative v3/MobileSAM pass anchors the result on real page geometry.
     A second pass finds rectangular islands of sustained local edge density,
     which is largely independent of whether the album page is light or dark.
-    Texture rectangles can tighten an agreeing SAM rectangle, split one broad
-    page-colored proposal into several photos, or recover a missed photo away
-    from the scan boundary. Disagreement falls back to the conservative pass.
+    Strong closed frames recover pale low-texture photos, while tightly
+    prompted SAM verifies ambiguous candidates at a scan boundary. Together
+    these cues can tighten, split, or recover proposals; disagreement falls
+    back to the conservative pass.
     """
     base_regions = _detect_photos_with_sam(
         image,
@@ -1030,6 +1160,25 @@ def detect_photos_v5(
         max_area_ratio=max_area_ratio,
     )
     rectangles = _v5_combine_rectangles(base_rectangles, texture_rectangles)
+    for frame in _v5_frame_rectangles(
+        rgb,
+        min_area_ratio=min_area_ratio,
+        max_area_ratio=max_area_ratio,
+    ):
+        if not any(
+            _v3_overlap_fraction(frame, existing) > 0.65
+            for existing in rectangles
+        ):
+            rectangles.append(frame)
+    rectangles.extend(
+        _v5_recover_boundary_rectangles(
+            rgb,
+            texture_rectangles,
+            rectangles,
+            min_area_ratio=min_area_ratio,
+            max_area_ratio=max_area_ratio,
+        )
+    )
     return _v5_regions_from_rectangles(
         rectangles,
         image_size=image.size,

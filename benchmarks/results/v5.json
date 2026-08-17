@@ -7,25 +7,25 @@
     "scansplitter": {
       "cases": 10,
       "expected_regions": 54,
-      "detected_regions": 51,
-      "true_positive": 51,
+      "detected_regions": 54,
+      "true_positive": 54,
       "false_positive": 0,
-      "false_negative": 3,
+      "false_negative": 0,
       "precision": 1.0,
-      "recall": 0.9444444444444444,
-      "f1": 0.9714285714285714,
-      "strict_true_positive": 40,
-      "strict_false_positive": 11,
-      "strict_false_negative": 14,
-      "strict_precision": 0.7843137254901961,
-      "strict_recall": 0.7407407407407407,
-      "strict_f1": 0.7619047619047618,
-      "box_quality": 0.8791371648068572,
-      "content_coverage": 0.8969485666017214,
-      "crop_tightness": 0.9563696195310878,
-      "mean_iou": 0.904994140242353,
-      "count_accuracy": 0.8,
-      "runtime_seconds": 3.963892416912131
+      "recall": 1.0,
+      "f1": 1.0,
+      "strict_true_positive": 42,
+      "strict_false_positive": 12,
+      "strict_false_negative": 12,
+      "strict_precision": 0.7777777777777778,
+      "strict_recall": 0.7777777777777778,
+      "strict_f1": 0.7777777777777778,
+      "box_quality": 0.9030133306022138,
+      "content_coverage": 0.9351836070788837,
+      "crop_tightness": 0.9566857365265863,
+      "mean_iou": 0.9030133306022138,
+      "count_accuracy": 1.0,
+      "runtime_seconds": 4.252096413867548
     }
   },
   "cases": [
@@ -67,7 +67,7 @@
       "count_correct": true,
       "id": "scansplitter-01-aged-album-spread",
       "suite": "scansplitter",
-      "runtime_seconds": 0.6922997499350458
+      "runtime_seconds": 0.6773569580400363
     },
     {
       "expected": 5,
@@ -106,7 +106,7 @@
       "count_correct": true,
       "id": "scansplitter-02-wide-paper-margins",
       "suite": "scansplitter",
-      "runtime_seconds": 0.41463316697627306
+      "runtime_seconds": 0.42756145796738565
     },
     {
       "expected": 5,
@@ -145,7 +145,7 @@
       "count_correct": true,
       "id": "scansplitter-03-tape-and-photo-corners",
       "suite": "scansplitter",
-      "runtime_seconds": 0.4540252920705825
+      "runtime_seconds": 0.45348233298864216
     },
     {
       "expected": 5,
@@ -184,7 +184,7 @@
       "count_correct": true,
       "id": "scansplitter-04-scalloped-low-contrast",
       "suite": "scansplitter",
-      "runtime_seconds": 0.46194129192736
+      "runtime_seconds": 0.45426849997602403
     },
     {
       "expected": 6,
@@ -224,7 +224,7 @@
       "count_correct": true,
       "id": "scansplitter-05-narrow-mounted-gutters",
       "suite": "scansplitter",
-      "runtime_seconds": 0.4823907079407945
+      "runtime_seconds": 0.47519970790017396
     },
     {
       "expected": 5,
@@ -263,84 +263,87 @@
       "count_correct": true,
       "id": "scansplitter-06-dark-scrapbook-page",
       "suite": "scansplitter",
-      "runtime_seconds": 0.06163391703739762
+      "runtime_seconds": 0.06635541596915573
     },
     {
       "expected": 6,
-      "detected": 5,
-      "true_positive": 5,
+      "detected": 6,
+      "true_positive": 6,
       "false_positive": 0,
-      "false_negative": 1,
+      "false_negative": 0,
       "precision": 1.0,
-      "recall": 0.8333333333333334,
-      "f1": 0.9090909090909091,
+      "recall": 1.0,
+      "f1": 1.0,
       "strict_true_positive": 4,
-      "strict_false_positive": 1,
+      "strict_false_positive": 2,
       "strict_false_negative": 2,
-      "strict_precision": 0.8,
+      "strict_precision": 0.6666666666666666,
       "strict_recall": 0.6666666666666666,
-      "strict_f1": 0.7272727272727272,
+      "strict_f1": 0.6666666666666666,
       "detection_threshold": 0.5,
       "strict_threshold": 0.85,
-      "box_quality": 0.8142744633879364,
-      "iou_sum": 4.47850954863365,
-      "intersection_area_sum": 426445.3552115727,
+      "box_quality": 0.8635433129598787,
+      "iou_sum": 5.181259877759272,
+      "intersection_area_sum": 472545.7835867759,
       "expected_area_sum": 504175.0,
-      "actual_area_sum": 477091.36656230874,
-      "content_coverage": 0.845828046237066,
-      "crop_tightness": 0.8938442090963271,
-      "assigned_count": 5,
-      "mean_iou": 0.89570190972673,
-      "worst_iou": 0.0,
+      "actual_area_sum": 523191.8045918117,
+      "content_coverage": 0.937265401074579,
+      "crop_tightness": 0.9031979848297714,
+      "assigned_count": 6,
+      "mean_iou": 0.8635433129598787,
+      "worst_iou": 0.7027503291256217,
       "assigned_ious": [
         0.912353,
         0.912145,
         0.964192,
-        0.727045,
-        0.962774
+        0.70275,
+        0.962774,
+        0.727045
       ],
-      "count_correct": false,
+      "count_correct": true,
       "id": "scansplitter-07-mixed-print-formats",
       "suite": "scansplitter",
-      "runtime_seconds": 0.07352087495382875
+      "runtime_seconds": 0.08348199992906302
     },
     {
       "expected": 6,
-      "detected": 4,
-      "true_positive": 4,
+      "detected": 6,
+      "true_positive": 6,
       "false_positive": 0,
-      "false_negative": 2,
+      "false_negative": 0,
       "precision": 1.0,
-      "recall": 0.6666666666666666,
-      "f1": 0.8,
-      "strict_true_positive": 2,
+      "recall": 1.0,
+      "f1": 1.0,
+      "strict_true_positive": 4,
       "strict_false_positive": 2,
-      "strict_false_negative": 4,
-      "strict_precision": 0.5,
-      "strict_recall": 0.3333333333333333,
-      "strict_f1": 0.4,
+      "strict_false_negative": 2,
+      "strict_precision": 0.6666666666666666,
+      "strict_recall": 0.6666666666666666,
+      "strict_f1": 0.6666666666666666,
       "detection_threshold": 0.5,
       "strict_threshold": 0.85,
-      "box_quality": 0.6974482462891072,
-      "iou_sum": 3.4872412314455357,
-      "intersection_area_sum": 325779.5619754195,
+      "box_quality": 0.8987516004132424,
+      "iou_sum": 5.392509602479454,
+      "intersection_area_sum": 461729.543576153,
       "expected_area_sum": 499950.0,
-      "actual_area_sum": 326438.9736182132,
-      "content_coverage": 0.651624286379477,
-      "crop_tightness": 0.9979799849402636,
-      "assigned_count": 4,
-      "mean_iou": 0.8718103078613839,
-      "worst_iou": 0.0,
+      "actual_area_sum": 469155.80007184553,
+      "content_coverage": 0.9235514422965356,
+      "crop_tightness": 0.9841710227294317,
+      "assigned_count": 6,
+      "mean_iou": 0.8987516004132424,
+      "worst_iou": 0.7432604967262658,
       "assigned_ious": [
+        0.931832,
         0.818253,
         0.74326,
+        0.973437,
         0.981891,
         0.943836
       ],
-      "count_correct": false,
+      "count_correct": true,
       "id": "scansplitter-08-page-edge-and-binding",
       "suite": "scansplitter",
-      "runtime_seconds": 0.4064871659502387
+      "runtime_seconds": 0.7158389170654118
     },
     {
       "expected": 5,
@@ -379,7 +382,7 @@
       "count_correct": true,
       "id": "scansplitter-09-faded-glossy-protection",
       "suite": "scansplitter",
-      "runtime_seconds": 0.4641977500868961
+      "runtime_seconds": 0.45452533301431686
     },
     {
       "expected": 5,
@@ -418,7 +421,7 @@
       "count_correct": true,
       "id": "scansplitter-10-irregular-real-world-layout",
       "suite": "scansplitter",
-      "runtime_seconds": 0.4527625000337139
+      "runtime_seconds": 0.44402579101733863
     }
   ]
 }

@@ -53,7 +53,7 @@ uvx scansplitter api --port 8001
 
 ### Photo detection (splitter)
 
-- **ScanSplitterv5 (default)**: Combines conservative v3/MobileSAM anchors with a color-independent local edge-density pass. Agreeing texture rectangles tighten crops to the photographic image, multiple texture islands split a merged page proposal, and credible non-edge regions recover photos missed on dark or irregular album pages. Conflicting evidence falls back to the conservative anchor.
+- **ScanSplitterv5 (default)**: Combines conservative v3/MobileSAM anchors with color-independent texture and frame passes. Agreeing texture rectangles tighten crops, multiple texture islands split merged page proposals, closed frames recover pale photographs, and tightly prompted segmentation verifies candidates near scan edges. Conflicting evidence falls back to the conservative anchor.
 - **ScanSplitterv4**: The previous tightly prompted MobileSAM detector, retained for comparisons and existing saved projects.
 - **ScanSplitterv3**: A model-free, background-aware OpenCV detector for album pages and low-contrast scans. It models paper/platen colors in Lab space, finds dense non-background regions, separates touching prints at narrow gutters, and snaps boxes to long physical edges.
 

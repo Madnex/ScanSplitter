@@ -12,6 +12,8 @@ from scansplitter.detector import (
     _refine_rect_to_edges,
     _v4_mask_rect,
     _v5_combine_rectangles,
+    _v5_frame_rectangles,
+    _v5_recover_boundary_rectangles,
     detect_photos_v3,
     detect_photos_v5,
 )
@@ -199,3 +201,34 @@ def test_v5_keeps_anchor_when_texture_angle_disagrees():
     combined = _v5_combine_rectangles(base, [(skewed_texture, False)])
 
     assert combined == base
+
+
+def test_v5_frame_pass_finds_low_texture_photo_outline():
+    rgb = np.full((300, 400, 3), 235, dtype=np.uint8)
+    cv2.rectangle(rgb, (100, 80), (300, 220), (40, 40, 40), 3)
+
+    rectangles = _v5_frame_rectangles(rgb, 0.02, 0.8)
+
+    expected = ((200.0, 150.0), (200.0, 140.0), 0.0)
+    assert max(_rotated_iou(rectangle, expected) for rectangle in rectangles) > 0.90
+
+
+def test_v5_boundary_recovery_requires_a_materially_refined_interior(monkeypatch):
+    proposal = ((25.0, 100.0), (80.0, 140.0), 0.0)
+    refined = ((55.0, 100.0), (70.0, 120.0), 0.0)
+    rgb = np.zeros((200, 200, 3), dtype=np.uint8)
+    monkeypatch.setattr(
+        detector_module,
+        "_v4_refine_rectangles",
+        lambda *_args, **_kwargs: [refined],
+    )
+
+    recovered = _v5_recover_boundary_rectangles(
+        rgb,
+        [(proposal, True)],
+        [],
+        min_area_ratio=0.02,
+        max_area_ratio=0.8,
+    )
+
+    assert recovered == [refined]
