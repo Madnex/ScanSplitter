@@ -38,10 +38,10 @@ describe("SettingsPanel crop actions", () => {
     expect(html).toContain("2 of 3 scans have photos ready");
     expect(html).toContain("1. Output");
     expect(html).toContain("Individual photos");
-    expect(html).toContain("Whole album pages");
+    expect(html).toContain("Switch to Whole album pages");
     expect(html).toContain("2. Detection method");
     expect(html).toContain("On this device");
-    expect(html).toContain("Cloud AI");
+    expect(html).toContain("Switch to Cloud AI");
     expect(html).toContain("Advanced photo settings");
     expect(html).toContain("Edge cleanup");
     expect(html).toContain('<option value="scansplitterv5">ScanSplitter v5 · Recommended</option>');
@@ -117,6 +117,7 @@ describe("SettingsPanel crop actions", () => {
     expect(html).toContain("Detect album pages");
     expect(html).toContain("2. Page layout");
     expect(html).toContain("Runs locally.");
+    expect(html).toContain("Switch to Individual photos");
     expect(html).toContain('<option value="single">One physical page</option>');
     expect(html).toContain('<option value="spread" selected="">Two-page spread · split into pages</option>');
     expect(html).toContain("Crop Current (2 pages)");
@@ -144,6 +145,7 @@ describe("SettingsPanel crop actions", () => {
     );
 
     expect(html).toContain("OpenRouter vision model");
+    expect(html).toContain("Switch to On this device");
     expect(html).toContain("complete scan is sent to OpenRouter");
     expect(html).toContain("Send new uploads to Cloud AI automatically");
     expect(html).toContain("Detect photos with Cloud AI");

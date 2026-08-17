@@ -3,7 +3,6 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ui/progress";
 import { Loader2 } from "lucide-react";
-import { cn } from "@/lib/utils";
 import type { DetectionMode, DetectionSettings, ModelKey, ModelStatus } from "@/types";
 
 interface JobProgress {
@@ -41,26 +40,33 @@ function ModeChoice({
   description: string;
   onClick: () => void;
 }) {
+  if (!active) {
+    return (
+      <button
+        type="button"
+        role="radio"
+        aria-checked="false"
+        onClick={onClick}
+        className="group flex min-h-8 items-center gap-1.5 rounded-md px-1.5 text-left text-xs font-medium text-muted-foreground transition-colors hover:bg-muted/50 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <span aria-hidden="true" className="transition-transform group-hover:translate-x-0.5">→</span>
+        Switch to {title}
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"
       role="radio"
-      aria-checked={active}
+      aria-checked="true"
       onClick={onClick}
-      className={cn(
-        "min-h-16 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
-        active
-          ? "border-foreground/70 bg-foreground/[0.06]"
-          : "border-border bg-background hover:bg-muted/60"
-      )}
+      className="min-h-16 rounded-lg border border-foreground/70 bg-foreground/[0.06] px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
       <span className="flex items-center gap-2 text-sm font-semibold">
         <span
           aria-hidden="true"
-          className={cn(
-            "h-2 w-2 shrink-0 rounded-sm border",
-            active ? "border-foreground bg-foreground" : "border-muted-foreground"
-          )}
+          className="h-2 w-2 shrink-0 rounded-sm border border-foreground bg-foreground"
         />
         {title}
       </span>
