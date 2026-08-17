@@ -70,6 +70,21 @@ def test_directional_crop_metrics_distinguish_overshoot_from_lost_content():
     assert clipped["crop_tightness"] == pytest.approx(1.0)
 
 
+def test_markdown_report_records_exact_detector_model():
+    report = {
+        "scan_detector": "openrouter",
+        "scan_detector_model": "google/gemini-3.7-flash",
+        "iou_threshold": 0.5,
+        "strict_iou_threshold": 0.85,
+        "summary": {},
+        "cases": [],
+    }
+
+    markdown = EVALUATE.markdown_report(report)
+
+    assert "`openrouter` using `google/gemini-3.7-flash`" in markdown
+
+
 def test_benchmark_api_is_disabled_by_default(monkeypatch):
     monkeypatch.delenv("SCANSPLITTER_BENCHMARK", raising=False)
 
