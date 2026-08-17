@@ -29,21 +29,18 @@ developer flag and open `/benchmark`:
 SCANSPLITTER_BENCHMARK=1 uv run scansplitter api
 ```
 
-To add an OpenRouter vision-model column to every ScanSplitter row:
+To add an OpenRouter vision-model column to every ScanSplitter row, copy
+`.env.example` to `.env`, add the key, and use the helper:
 
 ```bash
-SCANSPLITTER_BENCHMARK=1 \
-OPENROUTER_API_KEY="..." \
-OPENROUTER_MODEL="google/gemini-2.5-flash" \
-uv run scansplitter api
+cp .env.example .env
+./scripts/openrouter.py serve
 ```
 
 For a machine-readable/Markdown OpenRouter-only score instead of the browser:
 
 ```bash
-OPENROUTER_API_KEY="..." uv run benchmarks/evaluate.py \
-  --suite scansplitter --scan-detector openrouter \
-  --output benchmarks/results/openrouter.md
+./scripts/openrouter.py report
 ```
 
 This makes ten paid external API calls per complete benchmark run and uploads
