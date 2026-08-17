@@ -3,6 +3,7 @@ import { Slider } from "@/components/ui/slider";
 import { Button } from "@/components/ui/button";
 import { ProgressBar } from "@/components/ui/progress";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import type { DetectionMode, DetectionSettings, ModelKey, ModelStatus } from "@/types";
 
 interface JobProgress {
@@ -29,6 +30,47 @@ interface SettingsPanelProps {
   modelStatuses?: Record<ModelKey, ModelStatus> | null;
 }
 
+function ModeChoice({
+  active,
+  title,
+  description,
+  onClick,
+}: {
+  active: boolean;
+  title: string;
+  description: string;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      role="radio"
+      aria-checked={active}
+      onClick={onClick}
+      className={cn(
+        "min-h-16 rounded-lg border px-3 py-2.5 text-left transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+        active
+          ? "border-foreground/70 bg-foreground/[0.06]"
+          : "border-border bg-background hover:bg-muted/60"
+      )}
+    >
+      <span className="flex items-center gap-2 text-sm font-semibold">
+        <span
+          aria-hidden="true"
+          className={cn(
+            "h-2 w-2 shrink-0 rounded-sm border",
+            active ? "border-foreground bg-foreground" : "border-muted-foreground"
+          )}
+        />
+        {title}
+      </span>
+      <span className="mt-1 block text-xs leading-relaxed text-muted-foreground">
+        {description}
+      </span>
+    </button>
+  );
+}
+
 export function SettingsPanel({
   settings,
   onSettingsChange,
@@ -48,172 +90,232 @@ export function SettingsPanel({
   modelStatuses = null,
 }: SettingsPanelProps) {
   const isAlbumMode = settings.detectionMode === "album-splitter";
+  const isCloudMode = settings.detectionMode === "openrouter";
   const itemLabel = isAlbumMode ? "page" : "photo";
   const mobileSamStatuses = [
     modelStatuses?.["mobilesam_encoder"] ?? null,
     modelStatuses?.["mobilesam_decoder"] ?? null,
   ].filter((status): status is ModelStatus => status !== null);
   const orientationStatus = modelStatuses?.["orientation"] ?? null;
+  const selectPhotoOutput = () => onSettingsChange({
+    ...settings,
+    detectionMode: isAlbumMode ? "scansplitterv5" : settings.detectionMode,
+  });
+  const selectLocalDetector = () => onSettingsChange({
+    ...settings,
+    detectionMode: isCloudMode ? "scansplitterv5" : settings.detectionMode,
+  });
 
   return (
     <Card>
       <CardHeader className="pb-3">
-        <CardTitle className="text-base">Settings</CardTitle>
+        <CardTitle className="text-base">Split settings</CardTitle>
+        <p className="text-xs leading-relaxed text-muted-foreground">
+          Choose what the resulting crops should contain.
+        </p>
       </CardHeader>
       <CardContent className="space-y-4">
-        {!isAlbumMode && <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Min Area</span>
-            <span className="text-muted-foreground">{settings.minArea}%</span>
+        <fieldset className="space-y-2">
+          <legend className="text-sm font-medium">1. Output</legend>
+          <div className="grid gap-2" role="radiogroup" aria-label="Split output">
+            <ModeChoice
+              active={!isAlbumMode}
+              title="Individual photos"
+              description="One crop for every mounted print"
+              onClick={selectPhotoOutput}
+            />
+            <ModeChoice
+              active={isAlbumMode}
+              title="Whole album pages"
+              description="Keep handwriting, layout, and page context"
+              onClick={() => onSettingsChange({ ...settings, detectionMode: "album-splitter" })}
+            />
           </div>
-          <Slider
-            value={settings.minArea}
-            onChange={(value) =>
-              onSettingsChange({ ...settings, minArea: value })
-            }
-            min={1}
-            max={50}
-            step={1}
-          />
-        </div>}
+        </fieldset>
 
-        {!isAlbumMode && <div className="space-y-2">
-          <div className="flex justify-between text-sm">
-            <span>Max Area</span>
-            <span className="text-muted-foreground">{settings.maxArea}%</span>
-          </div>
-          <Slider
-            value={settings.maxArea}
-            onChange={(value) =>
-              onSettingsChange({ ...settings, maxArea: value })
-            }
-            min={50}
-            max={100}
-            step={1}
-          />
-        </div>}
+        {!isAlbumMode && (
+          <fieldset className="space-y-2 border-t pt-4">
+            <legend className="text-sm font-medium">2. Detection method</legend>
+            <div className="grid gap-2" role="radiogroup" aria-label="Photo detection method">
+              <ModeChoice
+                active={!isCloudMode}
+                title="On this device"
+                description="Fast and private; no scan upload"
+                onClick={selectLocalDetector}
+              />
+              <ModeChoice
+                active={isCloudMode}
+                title="Cloud AI"
+                description="Best benchmark result; uploads the scan"
+                onClick={() => onSettingsChange({ ...settings, detectionMode: "openrouter" })}
+              />
+            </div>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="auto-rotate"
-            checked={settings.autoRotate}
-            onChange={(e) =>
-              onSettingsChange({ ...settings, autoRotate: e.target.checked })
-            }
-            className="rounded"
-          />
-          <label htmlFor="auto-rotate" className="text-sm">
-            Auto-rotate {isAlbumMode ? "pages" : "photos"}
-          </label>
-        </div>
-        {settings.autoRotate && orientationStatus && (orientationStatus.status === "downloading" || orientationStatus.status === "error") && (
-          <div className="text-xs text-muted-foreground flex items-center gap-2">
-            {orientationStatus.status === "downloading" ? (
-              <>
-                <Loader2 className="w-3 h-3 animate-spin" />
-                <span>
-                  Downloading {orientationStatus.label} ({orientationStatus.size_desc}){" "}
-                  {orientationStatus.progress}%
+            {!isCloudMode ? (
+              <label className="block space-y-1.5 pt-1 text-sm" htmlFor="local-detector-version">
+                <span>Local detector</span>
+                <select
+                  id="local-detector-version"
+                  value={settings.detectionMode}
+                  onChange={(event) => onSettingsChange({
+                    ...settings,
+                    detectionMode: event.target.value as DetectionMode,
+                  })}
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                >
+                  <option value="scansplitterv5">ScanSplitter v5 · Recommended</option>
+                  <option value="scansplitterv4">ScanSplitter v4 · Previous</option>
+                  <option value="scansplitterv3">ScanSplitter v3 · Classic</option>
+                </select>
+                <span className="block text-xs leading-relaxed text-muted-foreground">
+                  {settings.detectionMode === "scansplitterv5"
+                    ? "Combines MobileSAM with texture and frame detection."
+                    : settings.detectionMode === "scansplitterv4"
+                    ? "Earlier MobileSAM border refinement, kept for comparison."
+                    : "Model-free OpenCV detection for simpler scans."}
                 </span>
-              </>
-            ) : orientationStatus.status === "error" ? (
-              <span>{orientationStatus.error || "Rotation model download failed"}</span>
-            ) : null}
+              </label>
+            ) : (
+              <div className="rounded-md border border-amber-500/30 bg-amber-500/[0.07] px-3 py-2.5 text-xs leading-relaxed text-muted-foreground">
+                <span className="block font-medium text-foreground">OpenRouter vision model</span>
+                The complete scan is sent to OpenRouter and the configured model provider.
+              </div>
+            )}
+          </fieldset>
+        )}
+
+        {isAlbumMode && (
+          <div className="space-y-3 border-t pt-4">
+            <div className="rounded-md bg-muted/60 px-3 py-2 text-xs leading-relaxed text-muted-foreground">
+              <span className="font-medium text-foreground">Runs locally.</span>{" "}
+              Album Splitter returns physical pages instead of separating their photos.
+            </div>
+            <label className="block space-y-1.5 text-sm" htmlFor="album-layout">
+              <span>2. Page layout</span>
+              <select
+                id="album-layout"
+                className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                value={settings.albumLayout}
+                onChange={(event) => onSettingsChange({
+                  ...settings,
+                  albumLayout: event.target.value as DetectionSettings["albumLayout"],
+                })}
+              >
+                <option value="auto">Auto-detect page layout</option>
+                <option value="single">One physical page</option>
+                <option value="spread">Two-page spread · split into pages</option>
+              </select>
+              <span className="block text-xs leading-relaxed text-muted-foreground">
+                Auto splits only unusually wide two-page spreads.
+              </span>
+            </label>
           </div>
         )}
 
-        {!isAlbumMode && <label className="block space-y-1 text-sm" htmlFor="edge-cleanup-mode">
-          <span>Edge cleanup</span>
-          <select
-            id="edge-cleanup-mode"
-            className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-            value={settings.edgeCleanupMode}
-            onChange={(event) => onSettingsChange({
-              ...settings,
-              edgeCleanupMode: event.target.value as DetectionSettings["edgeCleanupMode"],
-            })}
-          >
-            <option value="off">Off</option>
-            <option value="conservative">Conservative</option>
-            <option value="tight">Tight</option>
-          </select>
-          <span className="block text-xs text-muted-foreground">
-            Tight also removes confident white print margins.
-          </span>
-        </label>}
+        <div className="space-y-3 border-t pt-4">
+          <p className="text-sm font-medium">Processing</p>
 
-        <div className="flex items-center gap-2">
-          <input
-            type="checkbox"
-            id="auto-detect"
-            checked={settings.autoDetect}
-            onChange={(e) =>
-              onSettingsChange({ ...settings, autoDetect: e.target.checked })
-            }
-            className="rounded"
-          />
-          <label htmlFor="auto-detect" className="text-sm">
-            Auto-detect on upload
-          </label>
+          <div className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              id="auto-rotate"
+              checked={settings.autoRotate}
+              onChange={(e) =>
+                onSettingsChange({ ...settings, autoRotate: e.target.checked })
+              }
+              className="rounded"
+            />
+            <label htmlFor="auto-rotate" className="text-sm">
+              Auto-rotate {isAlbumMode ? "pages" : "photos"}
+            </label>
+          </div>
+          {settings.autoRotate && orientationStatus && (orientationStatus.status === "downloading" || orientationStatus.status === "error") && (
+            <div className="flex items-center gap-2 text-xs text-muted-foreground">
+              {orientationStatus.status === "downloading" ? (
+                <>
+                  <Loader2 className="h-3 w-3 animate-spin" />
+                  <span>
+                    Downloading {orientationStatus.label} ({orientationStatus.size_desc}){" "}
+                    {orientationStatus.progress}%
+                  </span>
+                </>
+              ) : orientationStatus.status === "error" ? (
+                <span>{orientationStatus.error || "Rotation model download failed"}</span>
+              ) : null}
+            </div>
+          )}
+
+          <div className="flex items-start gap-2">
+            <input
+              type="checkbox"
+              id="auto-detect"
+              checked={settings.autoDetect}
+              onChange={(e) =>
+                onSettingsChange({ ...settings, autoDetect: e.target.checked })
+              }
+              className="mt-0.5 rounded"
+            />
+            <label htmlFor="auto-detect" className="text-sm leading-snug">
+              {isCloudMode ? "Send new uploads to Cloud AI automatically" : "Auto-detect on upload"}
+            </label>
+          </div>
         </div>
 
-        <div className="space-y-2">
-          <label htmlFor="detection-mode" className="text-sm">
-            Detection Mode
-          </label>
-          <select
-            id="detection-mode"
-            value={settings.detectionMode}
-            onChange={(e) =>
-              onSettingsChange({
-                ...settings,
-                detectionMode: e.target.value as DetectionMode,
-              })
-            }
-            className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-          >
-            <option value="scansplitterv5">ScanSplitterv5</option>
-            <option value="openrouter">OpenRouter LLM (uploads scan)</option>
-            <option value="scansplitterv4">ScanSplitterv4</option>
-            <option value="album-splitter">Album Splitter (whole pages)</option>
-            <option value="scansplitterv3">ScanSplitterv3</option>
-          </select>
-          <p className="text-xs text-muted-foreground">
-            {settings.detectionMode === "album-splitter"
-              ? "Preserves complete album pages, photos, and handwritten notes"
-              : settings.detectionMode === "scansplitterv5"
-              ? "Context-aware MobileSAM refinement that preserves complete print edges"
-              : settings.detectionMode === "openrouter"
-              ? "Experimental vision-model detection; sends the scan to the configured OpenRouter model"
-              : settings.detectionMode === "scansplitterv4"
-              ? "V3 proposals plus MobileSAM border refinement — highest accuracy (~43MB)"
-              : settings.detectionMode === "scansplitterv3"
-              ? "Background-aware detector — robust for albums and low-contrast scans"
-              : ""}
-          </p>
-        </div>
+        {!isAlbumMode && (
+          <details className="rounded-lg border bg-muted/20 px-3 py-2.5 text-sm">
+            <summary className="cursor-pointer font-medium focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring">
+              Advanced photo settings
+            </summary>
+            <div className="mt-4 space-y-4 border-t pt-4">
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Minimum photo area</span>
+                  <span className="tabular-nums text-muted-foreground">{settings.minArea}%</span>
+                </div>
+                <Slider
+                  value={settings.minArea}
+                  onChange={(value) => onSettingsChange({ ...settings, minArea: value })}
+                  min={1}
+                  max={50}
+                  step={1}
+                />
+              </div>
 
-        {isAlbumMode && (
-          <label className="block space-y-1 text-sm" htmlFor="album-layout">
-            <span>Pages in each photo</span>
-            <select
-              id="album-layout"
-              className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
-              value={settings.albumLayout}
-              onChange={(event) => onSettingsChange({
-                ...settings,
-                albumLayout: event.target.value as DetectionSettings["albumLayout"],
-              })}
-            >
-              <option value="auto">Auto</option>
-              <option value="single">One physical page</option>
-              <option value="spread">Two-page spread / split in half</option>
-            </select>
-            <span className="block text-xs text-muted-foreground">
-              Auto selects the strongest physical page, and splits only unusually wide spreads.
-            </span>
-          </label>
+              <div className="space-y-2">
+                <div className="flex justify-between text-sm">
+                  <span>Maximum photo area</span>
+                  <span className="tabular-nums text-muted-foreground">{settings.maxArea}%</span>
+                </div>
+                <Slider
+                  value={settings.maxArea}
+                  onChange={(value) => onSettingsChange({ ...settings, maxArea: value })}
+                  min={50}
+                  max={100}
+                  step={1}
+                />
+              </div>
+
+              <label className="block space-y-1.5" htmlFor="edge-cleanup-mode">
+                <span>Edge cleanup</span>
+                <select
+                  id="edge-cleanup-mode"
+                  className="h-9 w-full rounded-md border border-input bg-background px-3 text-sm"
+                  value={settings.edgeCleanupMode}
+                  onChange={(event) => onSettingsChange({
+                    ...settings,
+                    edgeCleanupMode: event.target.value as DetectionSettings["edgeCleanupMode"],
+                  })}
+                >
+                  <option value="off">Off</option>
+                  <option value="conservative">Conservative</option>
+                  <option value="tight">Tight</option>
+                </select>
+                <span className="block text-xs leading-relaxed text-muted-foreground">
+                  Tight also removes confident white print margins.
+                </span>
+              </label>
+            </div>
+          </details>
         )}
 
         {(settings.detectionMode === "scansplitterv5" ||
@@ -247,7 +349,13 @@ export function SettingsPanel({
             disabled={isDetecting}
             className="w-full"
           >
-            {isDetecting ? "Detecting..." : `Detect ${isAlbumMode ? "Album Pages" : "Photos"}`}
+            {isDetecting
+              ? "Detecting..."
+              : isAlbumMode
+              ? "Detect album pages"
+              : isCloudMode
+              ? "Detect photos with Cloud AI"
+              : "Detect photos locally"}
           </Button>
           {isDetecting && detectProgress && (
             <ProgressBar
