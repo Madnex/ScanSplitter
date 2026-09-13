@@ -1,0 +1,151 @@
+{
+  "dataset": "20 synthetic challenge scans; not representative of real collections",
+  "threshold": 0.85,
+  "cases": 20,
+  "old_rule_approvals": 20,
+  "old_rule_false_approvals": 9,
+  "old_rule_false_approval_rate": 0.45,
+  "policy": "Manual review required; no automatic approvals until representative validation exists",
+  "results": [
+    {
+      "id": "scansplitter-01-aged-album-spread",
+      "no_geometry_flags": true,
+      "strictly_correct": false,
+      "worst_iou": 0.6748654625711228,
+      "flag_codes": []
+    },
+    {
+      "id": "scansplitter-02-wide-paper-margins",
+      "no_geometry_flags": true,
+      "strictly_correct": false,
+      "worst_iou": 0.7859430860723041,
+      "flag_codes": []
+    },
+    {
+      "id": "scansplitter-03-tape-and-photo-corners",
+      "no_geometry_flags": true,
+      "strictly_correct": false,
+      "worst_iou": 0.6717997325407801,
+      "flag_codes": []
+    },
+    {
+      "id": "scansplitter-04-scalloped-low-contrast",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9092826300751755,
+      "flag_codes": []
+    },
+    {
+      "id": "scansplitter-05-narrow-mounted-gutters",
+      "no_geometry_flags": true,
+      "strictly_correct": false,
+      "worst_iou": 0.6814867665050587,
+      "flag_codes": []
+    },
+    {
+      "id": "scansplitter-06-dark-scrapbook-page",
+      "no_geometry_flags": true,
+      "strictly_correct": false,
+      "worst_iou": 0.8401735112975748,
+      "flag_codes": []
+    },
+    {
+      "id": "scansplitter-07-mixed-print-formats",
+      "no_geometry_flags": true,
+      "strictly_correct": false,
+      "worst_iou": 0.7027503291256217,
+      "flag_codes": []
+    },
+    {
+      "id": "scansplitter-08-page-edge-and-binding",
+      "no_geometry_flags": true,
+      "strictly_correct": false,
+      "worst_iou": 0.7432604967262658,
+      "flag_codes": []
+    },
+    {
+      "id": "scansplitter-09-faded-glossy-protection",
+      "no_geometry_flags": true,
+      "strictly_correct": false,
+      "worst_iou": 0.37306701012662163,
+      "flag_codes": []
+    },
+    {
+      "id": "scansplitter-10-irregular-real-world-layout",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9212721968329607,
+      "flag_codes": []
+    },
+    {
+      "id": "album-01-cream-single",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9964005977909334,
+      "flag_codes": []
+    },
+    {
+      "id": "album-02-black-single",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9963373242772487,
+      "flag_codes": []
+    },
+    {
+      "id": "album-03-wide-auto-spread",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9948929294755366,
+      "flag_codes": []
+    },
+    {
+      "id": "album-04-forced-spread",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9733840489250036,
+      "flag_codes": []
+    },
+    {
+      "id": "album-05-portrait-page",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9616920933115646,
+      "flag_codes": []
+    },
+    {
+      "id": "album-06-ivory-single",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9637120268328997,
+      "flag_codes": []
+    },
+    {
+      "id": "album-07-burgundy-page",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9962098963800811,
+      "flag_codes": []
+    },
+    {
+      "id": "album-08-small-page",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.995037818042458,
+      "flag_codes": []
+    },
+    {
+      "id": "album-09-landscape-single",
+      "no_geometry_flags": true,
+      "strictly_correct": false,
+      "worst_iou": 0.49231679624630503,
+      "flag_codes": []
+    },
+    {
+      "id": "album-10-rose-auto-spread",
+      "no_geometry_flags": true,
+      "strictly_correct": true,
+      "worst_iou": 0.9809429034207541,
+      "flag_codes": []
+    }
+  ]
+}

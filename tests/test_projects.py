@@ -182,7 +182,7 @@ def test_project_openrouter_detection_uses_saved_area_limits(monkeypatch):
 def test_project_crud():
     created = _create_project("My Project", detection_mode=None)
     pid = created["id"]
-    assert created["version"] == 1
+    assert created["version"] == 2
     assert created["name"] == "My Project"
     assert created["settings"]["detection_mode"] == "scansplitterv5"
     assert created["settings"]["album_layout"] == "auto"
@@ -205,7 +205,7 @@ def test_project_crud():
         f"/api/projects/{pid}",
         json={
             "name": "Renamed",
-            "settings": {"quality": 70, "edge_cleanup_mode": "tight", "bogus": "ignored"},
+            "settings": {"quality": 70, "edge_cleanup_mode": "tight"},
         },
     )
     assert patched.status_code == 200, patched.text
@@ -294,7 +294,7 @@ def test_old_count_mismatch_flag_is_discarded(data_dir):
 
     scan = client.get(f"/api/projects/{pid}").json()["scans"][0]
     assert scan["flags"] == []
-    assert scan["status"] == "auto_approved"
+    assert scan["status"] == "needs_review"
 
 
 def test_create_project_requires_name():
@@ -371,8 +371,8 @@ def test_upload_rejects_unsupported_extension():
 # --- Detection jobs ---------------------------------------------------------
 
 
-def test_detect_job_persists_boxes_and_auto_approves(monkeypatch):
-    # No flags -> auto_approved, regardless of how many boxes are detected.
+def test_detect_job_persists_boxes_and_requires_review(monkeypatch):
+    # No geometry flags is not proof of correct boundaries: manual review is required.
     _install_confidence(monkeypatch, lambda *a, **k: [])
     pid = _create_project()["id"]
 
@@ -389,7 +389,7 @@ def test_detect_job_persists_boxes_and_auto_approves(monkeypatch):
     assert job["status"] == "succeeded", job
 
     scan = client.get(f"/api/projects/{pid}").json()["scans"][0]
-    assert scan["status"] == "auto_approved"
+    assert scan["status"] == "needs_review"
     assert scan["flags"] == []
     assert scan["detected_count"] == len(scan["boxes"])
     # The rectangle should be found by the default detector.
@@ -468,7 +468,7 @@ def test_project_upload_runs_saved_openrouter_detector_and_persists_boxes(monkey
     assert job["status"] == "succeeded", job
     assert calls == 1
     scan = client.get(f"/api/projects/{pid}").json()["scans"][0]
-    assert scan["status"] == "auto_approved"
+    assert scan["status"] == "needs_review"
     assert scan["detected_count"] == 1
     assert len(scan["boxes"]) == 1
 
@@ -722,7 +722,7 @@ def test_export_job_produces_zip_with_expected_names(monkeypatch):
 
 def test_crop_preview_and_per_photo_names_and_captions(monkeypatch):
     _install_confidence(monkeypatch, lambda *a, **k: [])
-    monkeypatch.setattr("scansplitter.projects.auto_rotate", lambda image: (image, 0))
+    monkeypatch.setattr("scansplitter.rendering.auto_rotate", lambda image: (image, 0))
     pid = _create_project()["id"]
     upload = client.post(
         f"/api/projects/{pid}/scans?detect=false",
@@ -735,7 +735,10 @@ def test_crop_preview_and_per_photo_names_and_captions(monkeypatch):
             "filename": "Kirmes 1952.jpg", "caption": "Kirmes 1952",
             "restoration": {"edge_cleanup_mode": "off"},
         },
-        {"id": "b2", "x": 550, "y": 400, "width": 200, "height": 150, "angle": 0},
+        {
+            "id": "b2", "x": 400, "y": 300, "width": 600, "height": 500, "angle": 0,
+            "restoration": {"edge_cleanup_mode": "off"},
+        },
     ]
     updated = client.patch(
         f"/api/projects/{pid}/scans/{sid}", json={"boxes": boxes, "status": "approved"}
@@ -763,6 +766,27 @@ def test_crop_preview_and_per_photo_names_and_captions(monkeypatch):
     assert preview.headers["content-type"] == "image/jpeg"
     assert Image.open(io.BytesIO(preview.content)).size == (200, 150)
 
+    sidebar_preview = client.get(f"/api/projects/{pid}/scans/{sid}/crops/b2")
+    large_preview = client.get(f"/api/projects/{pid}/scans/{sid}/crops/b2?large=true")
+    assert max(Image.open(io.BytesIO(sidebar_preview.content)).size) == 480
+    assert Image.open(io.BytesIO(large_preview.content)).size == (600, 500)
+
+    rotated_boxes = detail_update.json()["boxes"]
+    rotated_boxes[0]["restoration"] = {
+        **rotated_boxes[0]["restoration"], "manual_rotation": 90,
+    }
+    rotated = client.patch(f"/api/projects/{pid}/scans/{sid}", json={"boxes": rotated_boxes})
+    assert rotated.status_code == 200
+    assert rotated.json()["status"] == "approved"
+    assert rotated.json()["boxes"][0]["restoration"]["manual_rotation"] == 90
+    rotated_preview = client.get(f"/api/projects/{pid}/scans/{sid}/crops/b1")
+    assert Image.open(io.BytesIO(rotated_preview.content)).size == (150, 200)
+
+    invalid_boxes = rotated.json()["boxes"]
+    invalid_boxes[0]["restoration"]["manual_rotation"] = 45
+    invalid = client.patch(f"/api/projects/{pid}/scans/{sid}", json={"boxes": invalid_boxes})
+    assert invalid.status_code == 400
+
     client.patch(f"/api/projects/{pid}/scans/{sid}", json={"status": "needs_review"})
     started = client.post(
         f"/api/projects/{pid}/scans/{sid}/export",
@@ -774,11 +798,13 @@ def test_crop_preview_and_per_photo_names_and_captions(monkeypatch):
     assert "Kirmes_1952.jpg" in archive.namelist()
     assert "Vacation_2.jpg" in archive.namelist()
     assert b"Kirmes 1952" in archive.read("Kirmes_1952.jpg")
+    assert Image.open(io.BytesIO(archive.read("Kirmes_1952.jpg"))).size == (150, 200)
     manifest = json.loads(archive.read("digitization-manifest.json"))
     first = next(record for record in manifest if record["box_id"] == "b1")
     second = next(record for record in manifest if record["box_id"] == "b2")
     assert first["metadata"]["caption"] == "Kirmes 1952"
     assert first["restoration"]["edge_cleanup_mode"] == "off"
+    assert first["restoration"]["manual_rotation"] == 90
     assert second["metadata"]["caption"] is None
 
 
@@ -889,9 +915,9 @@ def test_delivery_validation_and_overwrite(monkeypatch, tmp_path):
         f"/api/projects/{pid}/deliver",
         json={"target": "folder", "destination": str(destination)},
     )
-    failed = _wait_for_job(conflict.json()["job_id"])
-    assert failed["status"] == "failed"
-    assert failed["error_status"] == 409
+    resumed = _wait_for_job(conflict.json()["job_id"])
+    assert resumed["status"] == "succeeded"
+    assert resumed["result"]["resumed"] > 0
     overwrite = client.post(
         f"/api/projects/{pid}/deliver",
         json={"target": "folder", "destination": str(destination), "overwrite": True},

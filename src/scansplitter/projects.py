@@ -21,6 +21,7 @@ import json
 import os
 import re
 import shutil
+import tempfile
 import threading
 import uuid
 from collections.abc import Callable
@@ -40,7 +41,7 @@ from .detector import (
     detect_photos_v5,
 )
 from .edge_cleanup import cleanup_photo_edges
-from .jobs import submit_job
+from .jobs import JobCancelled, new_artifact, registry, submit_job
 from .llm_detector import (
     OpenRouterConfigurationError,
     OpenRouterDetectionError,
@@ -53,9 +54,11 @@ from .metadata import (
     metadata_defaults,
     normalize_metadata_patch,
 )
-from .pdf_handler import extract_pdf_page, get_pdf_page_count
+from .pdf_handler import get_pdf_page_count
 from .rotator import auto_rotate
 from .session import sanitize_name
+from .sources import load_source
+from .validation import validate_boxes, validate_settings
 
 ProgressCallback = Callable[[int, str], None]
 CancelCheck = Callable[[], bool]
@@ -213,6 +216,21 @@ class ProjectStore:
         self.root.mkdir(parents=True, exist_ok=True)
         self._locks_guard = threading.Lock()
         self._locks: dict[str, threading.Lock] = {}
+        self._active_detections: dict[tuple[str, str], str] = {}
+        # Never replay interrupted work: cloud detection can incur charges.
+        for manifest in self.root.glob("*/project.json"):
+            try:
+                data = json.loads(manifest.read_text())
+                changed = False
+                for scan in data.get("scans", []):
+                    if scan.get("status") == "detecting":
+                        scan.update(status="needs_review" if scan.get("boxes") else "pending",
+                                    interruption="Detection interrupted. Retry when ready.")
+                        changed = True
+                if changed:
+                    self._write(manifest.parent.name, data)
+            except (OSError, ValueError):
+                continue
 
     # --- Path helpers ---
 
@@ -262,7 +280,9 @@ class ProjectStore:
                 and scan.get("status") == "needs_review"
                 and scan.get("reviewed_at") is None
             ):
-                scan["status"] = "auto_approved"
+                scan["status"] = "needs_review"
+            scan.setdefault("revision", 0)
+            scan.setdefault("source_integrity", "legacy_derivative")
             scan.setdefault("metadata", metadata_defaults())
             scan.setdefault("back_of", None)
             scan.pop("ocr_text", None)
@@ -310,7 +330,7 @@ class ProjectStore:
 
         now = _now_iso()
         data = {
-            "version": 1,
+            "version": 2,
             "id": pid,
             "name": name,
             "created_at": now,
@@ -360,6 +380,9 @@ class ProjectStore:
                     raise HTTPException(status_code=400, detail="Project name is required")
                 data["name"] = clean
             if settings:
+                unknown = set(settings) - set(DEFAULT_SETTINGS)
+                if unknown:
+                    raise HTTPException(status_code=400, detail=f"Unknown settings: {sorted(unknown)}")
                 merged = dict(data["settings"])
                 for key, value in settings.items():
                     if key in DEFAULT_SETTINGS:
@@ -397,7 +420,7 @@ class ProjectStore:
                                 ),
                             )
                         merged[key] = value
-                data["settings"] = merged
+                data["settings"] = validate_settings(merged)
             data["updated_at"] = _now_iso()
             self._write(pid, data)
             return data
@@ -432,6 +455,8 @@ class ProjectStore:
             front = self._find_scan(data, front_sid)
             if back_sid is not None:
                 back = self._find_scan(data, back_sid)
+                if front.get("back_of") or any(s.get("back_of") == back_sid for s in data["scans"]):
+                    raise HTTPException(status_code=400, detail="Pairs must have one front and one back; unlink the existing relationship first")
                 for scan in data["scans"]:
                     if scan.get("back_of") == front_sid:
                         scan["back_of"] = None
@@ -445,91 +470,90 @@ class ProjectStore:
             return front
 
     def delete_project(self, pid: str) -> None:
-        pdir = self._project_dir(pid)
-        shutil.rmtree(pdir, ignore_errors=True)
+        with self._lock_for(pid):
+            pdir = self._project_dir(pid)
+            registry.drop_session(pid)
+            shutil.rmtree(pdir)
 
     # --- Scans ---
 
-    def add_scans(self, pid: str, files: list[tuple[str, bytes]]) -> list[dict]:
-        """Ingest uploaded files, expanding PDFs to one scan per page.
+    def add_scans(self, pid: str, files) -> list[dict]:
+        """Stage the whole batch, preserving immutable originals before commit.
 
-        Image bytes are decoded/validated and re-encoded into the project's
-        ``scans/`` directory before any project.json mutation, so a bad file
-        fails the request cleanly without leaving a half-written manifest.
+        Accept an iterable so the HTTP layer can enforce aggregate limits
+        without retaining every upload in memory.
         """
         pdir = self._project_dir(pid)
-        scans_dir = pdir / "scans"
-        scans_dir.mkdir(exist_ok=True)
-
-        new_entries: list[dict] = []
-        for filename, data in files:
-            display_name = Path(filename or "scan").name or "scan"
-            ext = Path(display_name).suffix.lower()
-            if ext not in ALLOWED_UPLOAD_EXTENSIONS:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"Unsupported file type: {ext or 'no extension'}",
-                )
-
-            if ext == ".pdf":
-                new_entries.extend(self._store_pdf(scans_dir, display_name, data))
-            else:
-                new_entries.append(self._store_image(scans_dir, display_name, data))
-
-        with self._lock_for(pid):
-            manifest = self._read(pid)
-            manifest["scans"].extend(new_entries)
-            manifest["updated_at"] = _now_iso()
-            self._write(pid, manifest)
-        return new_entries
-
-    def _store_image(self, scans_dir: Path, display_name: str, data: bytes) -> dict:
-        try:
-            image = Image.open(io.BytesIO(data)).convert("RGB")
-        except Exception as exc:  # includes PIL decompression-bomb errors
-            raise HTTPException(
-                status_code=400, detail=f"Could not read image {display_name}: {exc}"
-            ) from exc
-
-        sid = _new_id()
-        ext = "png" if Path(display_name).suffix.lower() == ".png" else "jpg"
-        dest = scans_dir / f"{sid}.{ext}"
-        if ext == "png":
-            image.save(dest, "PNG", optimize=True)
-        else:
-            image.save(dest, "JPEG", quality=95)
-        return _new_scan_entry(sid, display_name, f"scans/{sid}.{ext}", None, image.size)
-
-    def _store_pdf(self, scans_dir: Path, display_name: str, data: bytes) -> list[dict]:
-        tmp = scans_dir / f"_incoming_{_new_id()}.pdf"
-        try:
-            tmp.write_bytes(data)
-            try:
-                page_count = get_pdf_page_count(tmp)
-            except Exception as exc:
-                raise HTTPException(
-                    status_code=400, detail=f"Could not read PDF {display_name}: {exc}"
-                ) from exc
-            if page_count < 1:
-                raise HTTPException(status_code=400, detail="PDF contains no pages")
-            if page_count > MAX_PDF_PAGES:
-                raise HTTPException(
-                    status_code=400,
-                    detail=f"PDF has too many pages ({page_count}, max {MAX_PDF_PAGES})",
-                )
-
+        with tempfile.TemporaryDirectory(prefix="import-", dir=pdir) as staging:
+            staged = Path(staging)
             entries = []
-            for page in range(1, page_count + 1):
-                image = extract_pdf_page(tmp, page, dpi=_PDF_STORE_DPI).convert("RGB")
-                sid = _new_id()
-                dest = scans_dir / f"{sid}.jpg"
-                image.save(dest, "JPEG", quality=95)
-                entries.append(
-                    _new_scan_entry(sid, display_name, f"scans/{sid}.jpg", page, image.size)
-                )
+            total = 0
+            for filename, payload in files:
+                total += len(payload)
+                if len(payload) > MAX_UPLOAD_BYTES or total > 500 * 1024 * 1024:
+                    raise HTTPException(status_code=413, detail="Import exceeds 200 MB per file or 500 MB per batch")
+                display_name = sanitize_name(filename or "scan")
+                ext = Path(display_name).suffix.lower()
+                if ext not in ALLOWED_UPLOAD_EXTENSIONS:
+                    raise HTTPException(status_code=400, detail=f"Unsupported file type: {ext}")
+                source_name = f"{_new_id()}{ext}"
+                source = staged / source_name
+                source.write_bytes(payload)
+                checksum = hashlib.sha256(payload).hexdigest()
+                try:
+                    pages = get_pdf_page_count(source) if ext == ".pdf" else 1
+                    if not 1 <= pages <= MAX_PDF_PAGES:
+                        raise ValueError(f"PDF must contain 1–{MAX_PDF_PAGES} pages")
+                    for page in range(1, pages + 1):
+                        image = load_source(source, page, dpi=_PDF_STORE_DPI)
+                        sid = _new_id()
+                        # A lossless processing proxy is separate from the retained file.
+                        proxy = f"{sid}.png"
+                        image.save(staged / proxy, "PNG")
+                        entry = _new_scan_entry(sid, display_name, f"scans/{proxy}",
+                                                page if ext == ".pdf" else None, image.size)
+                        entry.update(source_file=f"originals/{source_name}", source_sha256=checksum,
+                                     source_integrity="original", revision=0)
+                        entries.append(entry)
+                except Exception as exc:
+                    if isinstance(exc, HTTPException):
+                        raise
+                    raise HTTPException(status_code=400, detail=f"Could not read {display_name}: {exc}") from exc
+            moved = []
+            with self._lock_for(pid):
+                manifest = self._read(pid)
+                (pdir / "originals").mkdir(exist_ok=True)
+                try:
+                    for source in staged.iterdir():
+                        folder = "scans" if any(e["stored_file"] == f"scans/{source.name}" for e in entries) else "originals"
+                        destination = pdir / folder / source.name
+                        os.replace(source, destination)
+                        moved.append(destination)
+                    manifest["scans"].extend(entries)
+                    manifest["version"] = 2
+                    manifest["updated_at"] = _now_iso()
+                    self._write(pid, manifest)
+                except Exception:
+                    for destination in moved:
+                        destination.unlink(missing_ok=True)
+                    raise
             return entries
-        finally:
-            tmp.unlink(missing_ok=True)
+
+    def _source_image(self, pid: str, scan: dict) -> Image.Image:
+        """Load original pixels (300 DPI for PDFs); legacy projects use their retained derivative."""
+        path = self._project_dir(pid) / scan.get("source_file", scan["stored_file"])
+        return load_source(path, scan.get("page") or 1)
+
+    def _render_crop(self, pid: str, scan: dict, box: dict, settings: dict, image: Image.Image | None = None) -> Image.Image:
+        from .rendering import render_crop
+        image = image if image is not None else self._source_image(pid, scan)
+        scaled = dict(box)
+        for key in ("x", "width"):
+            scaled[key] *= image.width / scan["width"]
+        for key in ("y", "height"):
+            scaled[key] *= image.height / scan["height"]
+        return render_crop(image, _box_to_region(scaled, image.width, image.height),
+                           {**settings, **box.get("restoration", {})})
 
     def get_scan(self, pid: str, sid: str) -> dict:
         return self._find_scan(self._read(pid), sid)
@@ -540,6 +564,7 @@ class ProjectStore:
         sid: str,
         boxes: list[dict] | None = None,
         status: str | None = None,
+        revision: int | None = None,
     ) -> dict:
         if status is not None and status not in ("approved", "needs_review"):
             raise HTTPException(
@@ -550,9 +575,13 @@ class ProjectStore:
         with self._lock_for(pid):
             data = self._read(pid)
             scan = self._find_scan(data, sid)
+            if revision is not None and revision != scan.get("revision", 0):
+                raise HTTPException(status_code=409, detail="This scan changed elsewhere. Your draft is still open; reload the latest scan before saving.")
 
             if boxes is not None:
+                validate_boxes([{**b, "angle": b.get("angle", 0)} for b in boxes], scan["width"], scan["height"])
                 clean_boxes = [_normalize_box(b) for b in boxes]
+                validate_boxes(clean_boxes, scan["width"], scan["height"])
                 geometry_changed = [_box_geometry(box) for box in clean_boxes] != [
                     _box_geometry(box) for box in scan["boxes"]
                 ]
@@ -568,6 +597,7 @@ class ProjectStore:
                 scan["status"] = status
                 scan["reviewed_at"] = _now_iso()
 
+            scan["revision"] = scan.get("revision", 0) + 1
             data["updated_at"] = _now_iso()
             self._write(pid, data)
             return scan
@@ -645,69 +675,83 @@ class ProjectStore:
                     os.replace(tmp_path, cache_path)
         return cache_path.read_bytes(), "image/jpeg"
 
-    def crop_image_bytes(self, pid: str, sid: str, box_id: str) -> bytes:
-        """Render a lightweight JPEG preview for one stored photo box."""
-        import cv2
-        import numpy as np
+    def crop_image_bytes(self, pid: str, sid: str, box_id: str, large: bool = False) -> bytes:
+        """Render a JPEG preview for one stored photo box.
 
-        pdir = self._project_dir(pid)
+        Sidebar previews stay lightweight; the bounded large variant retains
+        enough detail for inspecting corrected crop edges in the lightbox.
+        """
         data = self._read(pid)
         scan = self._find_scan(data, sid)
         box = next((item for item in scan["boxes"] if item["id"] == box_id), None)
         if box is None:
             raise HTTPException(status_code=404, detail="Photo box not found")
-        stored = pdir / scan["stored_file"]
-        if not stored.exists():
-            raise HTTPException(status_code=410, detail="Scan image no longer exists")
+        key = hashlib.sha256(json.dumps([box, data["settings"], large], sort_keys=True).encode()).hexdigest()[:24]
+        cache = self._project_dir(pid) / "previews" / f"crop-{sid}-{key}.jpg"
+        with self._lock_for(pid):
+            if not cache.exists():
+                image = self._render_crop(pid, scan, box, data["settings"])
+                image.thumbnail((2048, 2048) if large else (480, 480))
+                cache.parent.mkdir(exist_ok=True)
+                image.save(cache, "JPEG", quality=88)
+                # Bound stale revisions per scan.
+                old = sorted(cache.parent.glob(f"crop-{sid}-*.jpg"), key=lambda p: p.stat().st_mtime)
+                for path in old[:-32]:
+                    path.unlink(missing_ok=True)
+        return cache.read_bytes()
 
-        image = Image.open(stored).convert("RGB")
-        cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
-        cropped = crop_rotated_region(cv_image, _box_to_region(box, image.width, image.height))
-        if cropped.size == 0:
-            raise HTTPException(status_code=400, detail="Photo box produced an empty crop")
-        preview = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
-        effective_settings = {**data["settings"], **box.get("restoration", {})}
-        preview, _ = cleanup_photo_edges(
-            preview, _effective_edge_cleanup_mode(data["settings"], effective_settings)
-        )
-        if data["settings"]["auto_rotate"]:
-            preview, _ = auto_rotate(preview)
-        preview.thumbnail((480, 480))
-        output = io.BytesIO()
-        preview.save(output, "JPEG", quality=88)
-        return output.getvalue()
+    def export_photo(self, pid: str, sid: str, box_id: str, fmt: str = "jpeg", include_gps: bool = False) -> bytes:
+        data = self._read(pid)
+        scan = self._find_scan(data, sid)
+        box = next((b for b in scan["boxes"] if b["id"] == box_id), None)
+        if box is None:
+            raise HTTPException(status_code=404, detail="Photo box not found")
+        metadata = {**scan.get("metadata", {}), **({"caption": box["caption"]} if box.get("caption") else {})}
+        return _encode_image(self._render_crop(pid, scan, box, data["settings"]),
+                             "png" if fmt == "png" else "jpg", data["settings"]["quality"], metadata, include_gps)
 
     # --- Detection jobs ---
 
     def submit_detect_job(self, pid: str, sid: str) -> str:
-        """Mark a scan detecting and queue a background detection job."""
+        """Deduplicate in-flight work and persist only against its starting revision."""
+        key = (pid, sid)
         with self._lock_for(pid):
+            existing = registry.get(self._active_detections.get(key, ""))
+            if existing and existing.status in {"queued", "running"}:
+                return existing.job_id
             data = self._read(pid)
             scan = self._find_scan(data, sid)
-            scan["status"] = "detecting"
-            data["updated_at"] = _now_iso()
+            revision = scan.get("revision", 0) + 1
+            scan.update(status="detecting", revision=revision)
             self._write(pid, data)
 
-        def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
-            return self._detect_and_persist(pid, sid, progress, cancelled)
+            def finished(status):
+                if status != "succeeded":
+                    self._persist_scan_fields(pid, sid, {"status": "failed" if status == "failed" else ("needs_review" if scan["boxes"] else "pending"),
+                        "interruption": "Detection did not finish. Retry when ready."}, revision)
 
-        return submit_job("detect", pid, worker).job_id
+            def worker(progress, cancelled):
+                return self._detect_and_persist(pid, sid, progress, cancelled, revision)
 
-    def _detect_and_persist(
-        self, pid: str, sid: str, progress: ProgressCallback, cancelled: CancelCheck
-    ) -> dict:
+            try:
+                job = submit_job("detect", pid, worker, on_finished=finished)
+            except Exception:
+                scan["status"] = "needs_review" if scan["boxes"] else "pending"
+                self._write(pid, data)
+                raise
+            self._active_detections[key] = job.job_id
+            return job.job_id
+
+    def _detect_and_persist(self, pid: str, sid: str, progress: ProgressCallback,
+                            cancelled: CancelCheck, revision: int | None = None) -> dict:
         data = self._read(pid)
         scan = self._find_scan(data, sid)
+        revision = scan.get("revision", 0) if revision is None else revision
         settings = data["settings"]
-        stored = self._project_dir(pid) / scan["stored_file"]
-
-        progress(10, "loading scan")
         try:
-            image = Image.open(stored).convert("RGB")
-            if settings.get("detection_mode") == "openrouter":
-                progress(25, "sending scan to OpenRouter")
-            else:
-                progress(25, "detecting photo regions")
+            progress(10, "loading scan")
+            image = load_source(self._project_dir(pid) / scan["stored_file"])
+            progress(25, "sending scan to OpenRouter" if settings["detection_mode"] == "openrouter" else "detecting photo regions")
             try:
                 regions = _detect(image, settings)
             except OpenRouterConfigurationError as exc:
@@ -715,34 +759,26 @@ class ProjectStore:
             except OpenRouterDetectionError as exc:
                 raise HTTPException(status_code=502, detail=str(exc)) from exc
             boxes = [_region_to_box(r) for r in regions]
-            progress(70, "scoring confidence")
-            flags = _run_confidence(boxes, image.width, image.height)
-            status = "auto_approved" if not flags else "needs_review"
+            progress(70, "checking crop geometry")
+            if cancelled():
+                raise JobCancelled
+            fields = {"boxes": boxes, "flags": _run_confidence(boxes, image.width, image.height),
+                      "detected_count": len(boxes), "status": "needs_review", "interruption": None}
+            self._persist_scan_fields(pid, sid, fields, revision)
+            return fields
         except Exception:
-            self._persist_scan_fields(pid, sid, {"status": "failed"})
+            self._persist_scan_fields(pid, sid, {"status": "needs_review" if scan["boxes"] else "pending"}, revision)
             raise
 
-        self._persist_scan_fields(
-            pid,
-            sid,
-            {
-                "boxes": boxes,
-                "flags": flags,
-                "detected_count": len(boxes),
-                "status": status,
-            },
-        )
-        return {
-            "boxes": boxes,
-            "flags": flags,
-            "detected_count": len(boxes),
-            "status": status,
-        }
-
-    def _persist_scan_fields(self, pid: str, sid: str, fields: dict) -> None:
+    def _persist_scan_fields(self, pid: str, sid: str, fields: dict, revision: int | None = None) -> None:
         with self._lock_for(pid):
-            data = self._read(pid)
-            scan = self._find_scan(data, sid)
+            try:
+                data = self._read(pid)
+                scan = self._find_scan(data, sid)
+            except (HTTPException, FileNotFoundError):
+                return  # deletion wins over a late worker
+            if revision is not None and scan.get("revision", 0) != revision:
+                return  # a newer edit or job wins
             scan.update(fields)
             data["updated_at"] = _now_iso()
             self._write(pid, data)
@@ -762,7 +798,15 @@ class ProjectStore:
             or s["status"] in ("pending", "failed")
             or (s["status"] == "needs_review" and not s["boxes"])
         ]
-        return [{"scan_id": sid, "job_id": self.submit_detect_job(pid, sid)} for sid in pending]
+        jobs = []
+        for sid in pending:
+            try:
+                jobs.append({"scan_id": sid, "job_id": self.submit_detect_job(pid, sid)})
+            except HTTPException as exc:
+                if exc.status_code == 429 and jobs:
+                    break
+                raise
+        return jobs
 
     # --- Export ---
 
@@ -791,9 +835,9 @@ class ProjectStore:
         def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
             payload = self._build_export_zip(
                 pid, out_format, out_quality, out_include_gps, progress, cancelled,
-                out_master, out_organize, out_manifest, scan_ids, include_unapproved,
+                out_master, out_organize, out_manifest, scan_ids, include_unapproved, artifact_path=new_artifact(),
             )
-            return {"__download_bytes": payload}
+            return {"__download_path": payload}
 
         return submit_job("export", pid, worker).job_id
 
@@ -842,31 +886,46 @@ class ProjectStore:
         _validate_artifact_formats(master_format, manifest_format)
 
         def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
-            from .delivery import upload_immich, upload_nextcloud, write_watched_folder
+            from .delivery import (
+                DeliveryJournal,
+                upload_immich,
+                upload_nextcloud,
+                write_watched_folder,
+            )
 
             progress(5, "building export artifacts")
             payload = self._build_export_zip(
                 pid, settings["format"].lower(), settings["quality"], bool(config.get("include_gps")),
-                progress, cancelled, master_format, bool(organize_folders), manifest_format,
+                progress, cancelled, master_format, bool(organize_folders), manifest_format, artifact_path=new_artifact(),
             )
             progress(92, f"delivering to {target}")
+            identity = {key: value for key, value in config.items() if key not in {"password", "api_key"}}
+            journal_id = hashlib.sha256(json.dumps([target, identity], sort_keys=True).encode()).hexdigest()
+            journal = DeliveryJournal(self._project_dir(pid) / "deliveries" / f"{journal_id}.json", cancelled)
+
             dispatch = {
                 "folder": lambda: write_watched_folder(
-                    payload, Path(config["destination"]), bool(config.get("overwrite", False))
+                    payload, Path(config["destination"]), bool(config.get("overwrite", False)), journal=journal
                 ),
                 "nextcloud": lambda: upload_nextcloud(
                     payload,
                     config["base_url"],
                     config["username"],
                     config["password"],
-                    config.get("folder", "ScanSplitter"),
+                    config.get("folder", "ScanSplitter"), journal=journal, overwrite=bool(config.get("overwrite", False)),
                 ),
                 "immich": lambda: upload_immich(
-                    payload, config["server_url"], config["api_key"]
+                    payload, config["server_url"], config["api_key"], journal=journal
                 ),
             }
-            count = dispatch[target]()
-            return {"target": target, "count": count}
+            try:
+                with self._lock_for(f"delivery-{pid}-{journal_id}"):
+                    journal = DeliveryJournal(self._project_dir(pid) / "deliveries" / f"{journal_id}.json", cancelled)
+                    count = dispatch[target]()
+                    return {"target": target, "count": count, "resumed": journal.skipped}
+            finally:
+                if isinstance(payload, Path):
+                    payload.unlink(missing_ok=True)
 
         return submit_job("project-delivery", pid, worker).job_id
 
@@ -907,6 +966,8 @@ class ProjectStore:
                 before, _ = auto_rotate(before)
             progress(55, "applying restoration")
             after, detail = apply_restorations(before, effective_settings)
+            before = _apply_manual_rotation(before, effective_settings)
+            after = _apply_manual_rotation(after, effective_settings)
             preview = comparison_image(before, after, detail)
             output = io.BytesIO()
             preview.save(output, "JPEG", quality=88)
@@ -927,17 +988,14 @@ class ProjectStore:
         manifest_format: str | None = None,
         scan_ids: set[str] | None = None,
         include_unapproved: bool = False,
-    ) -> bytes:
+        artifact_path: Path | None = None,
+    ) -> bytes | Path:
         import zipfile
-
-        import cv2
-        import numpy as np
 
         from .jobs import JobCancelled
 
         data = self._read(pid)
         pdir = self._project_dir(pid)
-        auto_rotate_enabled = bool(data["settings"]["auto_rotate"])
         ext = "png" if out_format == "png" else "jpg"
 
         exportable = [
@@ -947,7 +1005,7 @@ class ProjectStore:
             and (scan_ids is None or scan["id"] in scan_ids)
         ]
 
-        buffer = io.BytesIO()
+        buffer = artifact_path or io.BytesIO()
         used_names: set[str] = set()
         records: list[dict[str, Any]] = []
         wants_manifest = manifest_format in MANIFEST_FORMATS
@@ -961,28 +1019,15 @@ class ProjectStore:
                 stored = pdir / scan["stored_file"]
                 if not stored.exists() or not scan["boxes"]:
                     continue
-                pil = Image.open(stored).convert("RGB")
-                cv_image = cv2.cvtColor(np.array(pil), cv2.COLOR_RGB2BGR)
+                source_image = self._source_image(pid, scan)
                 stem = _sanitize_stem(scan["original_name"])
                 metadata = scan.get("metadata") or metadata_defaults()
                 folder = _metadata_folder(metadata) if organize_folders else ""
 
                 for photo_index, box in enumerate(scan["boxes"], 1):
-                    region = _box_to_region(box, pil.width, pil.height)
-                    cropped = crop_rotated_region(cv_image, region)
-                    if cropped.size == 0:
-                        continue
-                    crop_pil = Image.fromarray(cv2.cvtColor(cropped, cv2.COLOR_BGR2RGB))
-                    effective_settings = {**data["settings"], **box.get("restoration", {})}
-                    crop_pil, _ = cleanup_photo_edges(
-                        crop_pil,
-                        _effective_edge_cleanup_mode(data["settings"], effective_settings),
-                    )
-                    if auto_rotate_enabled:
-                        crop_pil, _ = auto_rotate(crop_pil)
-                    from .restoration import apply_restorations
-
-                    crop_pil, _ = apply_restorations(crop_pil, effective_settings)
+                    if cancelled():
+                        raise JobCancelled
+                    crop_pil = self._render_crop(pid, scan, box, data["settings"], source_image)
 
                     crop_metadata = dict(metadata)
                     if box.get("caption"):
@@ -1031,7 +1076,7 @@ class ProjectStore:
                 writer.writerows({key: record[key] for key in writer.fieldnames} for record in records)
                 zf.writestr("digitization-manifest.csv", csv_buffer.getvalue())
 
-        return buffer.getvalue()
+        return artifact_path if artifact_path else buffer.getvalue()
 
 
 # --- Module-level helpers ---
@@ -1069,6 +1114,9 @@ def _normalize_box(box: dict) -> dict:
     }
     overrides = box.get("restoration")
     if isinstance(overrides, dict):
+        for key in {"auto_deskew", "restore_color", "upscale_2x", "edge_cleanup"} & overrides.keys():
+            if not isinstance(overrides[key], bool):
+                raise HTTPException(status_code=400, detail=f"{key} must be a boolean")
         normalized_overrides = {
             key: bool(value)
             for key, value in overrides.items()
@@ -1084,6 +1132,18 @@ def _normalize_box(box: dict) -> dict:
                     detail="edge_cleanup_mode must be one of: off, conservative, tight",
                 )
             normalized_overrides["edge_cleanup_mode"] = cleanup_mode
+        manual_rotation = overrides.get("manual_rotation")
+        if manual_rotation is not None:
+            if (
+                isinstance(manual_rotation, bool)
+                or not isinstance(manual_rotation, (int, float))
+                or manual_rotation not in {0, 90, 180, 270}
+            ):
+                raise HTTPException(
+                    status_code=400,
+                    detail="manual_rotation must be one of: 0, 90, 180, 270",
+                )
+            normalized_overrides["manual_rotation"] = int(manual_rotation)
         normalized["restoration"] = normalized_overrides
     for field, limit in (("filename", 255), ("caption", 2000)):
         value = box.get(field)
@@ -1110,24 +1170,13 @@ def _box_geometry(box: dict) -> tuple:
 
 
 def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
-    mode = settings.get("detection_mode", "scansplitterv5")
-    min_ratio = float(settings.get("min_area_ratio", 2.0)) / 100
-    max_ratio = float(settings.get("max_area_ratio", 80.0)) / 100
-    if mode == "album-splitter":
-        return detect_album_pages(image, layout=settings.get("album_layout", "auto"))
-    if mode == "scansplitterv3":
-        return detect_photos_v3(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
-    if mode == "scansplitterv4":
-        return detect_photos_v4(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
-    if mode == "scansplitterv5":
-        return detect_photos_v5(image, min_area_ratio=min_ratio, max_area_ratio=max_ratio)
-    if mode == "openrouter":
-        return detect_photos_openrouter(
-            image,
-            min_area_ratio=min_ratio,
-            max_area_ratio=max_ratio,
-        )
-    raise ValueError(f"Unsupported detection mode: {mode}")
+    from .detection import detect_regions
+    return detect_regions(image, settings["detection_mode"], settings.get("min_area_ratio", 2) / 100,
+        settings.get("max_area_ratio", 80) / 100, settings.get("album_layout", "auto"), {
+            "scansplitterv3": detect_photos_v3, "scansplitterv4": detect_photos_v4,
+            "scansplitterv5": detect_photos_v5, "album-splitter": detect_album_pages,
+            "openrouter": detect_photos_openrouter,
+        })
 
 
 def _effective_edge_cleanup_mode(settings: dict, effective_settings: dict) -> str:
@@ -1135,6 +1184,17 @@ def _effective_edge_cleanup_mode(settings: dict, effective_settings: dict) -> st
     if settings.get("detection_mode") == "album-splitter":
         return "off"
     return str(effective_settings.get("edge_cleanup_mode", "tight"))
+
+
+def _apply_manual_rotation(image: Image.Image, effective_settings: dict) -> Image.Image:
+    """Apply the stored final clockwise rotation without resampling pixels."""
+    rotation = effective_settings.get("manual_rotation", 0)
+    operation = {
+        90: Image.Transpose.ROTATE_270,
+        180: Image.Transpose.ROTATE_180,
+        270: Image.Transpose.ROTATE_90,
+    }.get(rotation)
+    return image.transpose(operation) if operation is not None else image
 
 
 def _count_statuses(scans: list[dict]) -> dict:
@@ -1174,9 +1234,10 @@ def _encode_image(
     quality: int,
     metadata: dict[str, Any],
     include_gps: bool,
+    original_exif: bytes | None = None,
 ) -> bytes:
     output = io.BytesIO()
-    exif = create_metadata_exif(metadata, include_gps)
+    exif = original_exif or create_metadata_exif(metadata, include_gps)
     xmp = create_xmp_packet(metadata)
     if ext == "jpg":
         image.save(output, "JPEG", quality=quality)
@@ -1209,10 +1270,10 @@ def _unique_name(base: str, ext: str, used: set[str]) -> str:
     """Return ``base.ext`` (or a ``base_N.ext`` variant) unused in ``used``."""
     candidate = f"{base}.{ext}"
     counter = 2
-    while candidate in used:
+    while candidate.casefold() in used:
         candidate = f"{base}_{counter}.{ext}"
         counter += 1
-    used.add(candidate)
+    used.add(candidate.casefold())
     return candidate
 
 

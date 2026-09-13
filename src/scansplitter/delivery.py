@@ -1,9 +1,11 @@
 """Explicit Phase 4 delivery targets for completed export artifacts."""
 
 import base64
+import hashlib
 import io
 import json
 import mimetypes
+import os
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -29,36 +31,70 @@ def _http_root(value: str) -> str:
     return value.rstrip("/")
 
 
+class DeliveryJournal:
+    """Confirmed per-file results, bound to a connection; never stores secrets.
+
+    A lost remote acknowledgment remains unconfirmed and is retried. Remote
+    services must provide their own duplicate/conflict handling for that case.
+    """
+    def __init__(self, path: Path, cancelled: Callable[[], bool]):
+        self.path, self.cancelled = path, cancelled
+        self.skipped = 0
+        self.records = json.loads(path.read_text()) if path.exists() else {}
+
+    def check(self, name: str, data: bytes) -> bool:
+        from .jobs import JobCancelled
+        if self.cancelled():
+            raise JobCancelled
+        if self.records.get(name) == hashlib.sha256(data).hexdigest():
+            self.skipped += 1
+            return True
+        return False
+
+    def complete(self, name: str, data: bytes):
+        self.records[name] = hashlib.sha256(data).hexdigest()
+        self.path.parent.mkdir(exist_ok=True)
+        tmp = self.path.with_suffix(".tmp")
+        tmp.write_text(json.dumps(self.records, indent=2))
+        os.replace(tmp, self.path)
+
+
 def archive_files(
     payload: bytes, include: Callable[[str], bool] | None = None
 ) -> Iterator[tuple[str, bytes]]:
-    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
+    with zipfile.ZipFile(io.BytesIO(payload) if isinstance(payload, bytes) else payload) as archive:
         for name in archive.namelist():
             if not name.endswith("/") and (include is None or include(name)):
                 yield name, archive.read(name)
 
 
-def write_watched_folder(payload: bytes, destination: Path, overwrite: bool = False) -> int:
+def write_watched_folder(payload: bytes | Path, destination: Path, overwrite: bool = False, journal: DeliveryJournal | None = None) -> int:
     destination = destination.expanduser().resolve()
     if not destination.is_dir():
         raise HTTPException(status_code=400, detail="Destination must be an existing directory")
     conflicts: list[str] = []
-    with zipfile.ZipFile(io.BytesIO(payload)) as archive:
-        names = [name for name in archive.namelist() if not name.endswith("/")]
-    for name in names:
+    for name, data in archive_files(payload):
         target = _folder_target(destination, name)
-        if not overwrite and target.exists():
+        digest = hashlib.sha256(data).hexdigest()
+        confirmed = journal and journal.records.get(name) == digest
+        if not overwrite and target.exists() and not (confirmed and hashlib.sha256(target.read_bytes()).hexdigest() == digest):
             conflicts.append(name)
     if conflicts:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Files already exist: {', '.join(sorted(conflicts))}",
-        )
+        raise HTTPException(status_code=409, detail=f"Files already exist: {', '.join(sorted(conflicts))}")
     count = 0
     for name, data in archive_files(payload):
         target = _folder_target(destination, name)
+        if journal:
+            # A previously delivered file may have been moved or removed.
+            if not target.exists():
+                journal.records.pop(name, None)
+            if journal.check(name, data):
+                continue
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes(data)
+        with target.open("wb" if overwrite else "xb") as output:
+            output.write(data)
+        if journal:
+            journal.complete(name, data)
         count += 1
     return count
 
@@ -70,11 +106,13 @@ def _folder_target(destination: Path, name: str) -> Path:
     return target
 
 
-def upload_nextcloud(payload: bytes, base_url: str, username: str, password: str, folder: str) -> int:
+def upload_nextcloud(payload: bytes | Path, base_url: str, username: str, password: str, folder: str, journal: DeliveryJournal | None = None, overwrite: bool = False) -> int:
     root = _http_root(base_url)
     auth = base64.b64encode(f"{username}:{password}".encode()).decode()
     count = 0
     for name, data in archive_files(payload):
+        if journal and journal.check(name, data):
+            continue
         remote = "/".join(part for part in (folder.strip("/"), name) if part)
         url = f"{root}/{urllib.parse.quote(remote, safe='/')}"
         headers = {
@@ -82,6 +120,8 @@ def upload_nextcloud(payload: bytes, base_url: str, username: str, password: str
             "X-NC-WebDAV-Auto-Mkcol": "1",
             "X-NC-WebDAV-AutoMkcol": "1",
         }
+        if not overwrite:
+            headers["If-None-Match"] = "*"
         request = urllib.request.Request(url, data=data, method="PUT", headers=headers)
         try:
             try:
@@ -107,6 +147,8 @@ def upload_nextcloud(payload: bytes, base_url: str, username: str, password: str
             raise
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Nextcloud upload failed: {exc}") from exc
+        if journal:
+            journal.complete(name, data)
         count += 1
     return count
 
@@ -128,7 +170,7 @@ def _multipart(fields: dict[str, str], filename: str, data: bytes) -> tuple[byte
     return b"".join(parts), f"multipart/form-data; boundary={boundary}"
 
 
-def upload_immich(payload: bytes, server_url: str, api_key: str) -> int:
+def upload_immich(payload: bytes | Path, server_url: str, api_key: str, journal: DeliveryJournal | None = None) -> int:
     root = _http_root(server_url)
     endpoint = f"{root}/assets" if root.endswith("/api") else f"{root}/api/assets"
     now = datetime.now(timezone.utc).isoformat()
@@ -137,6 +179,8 @@ def upload_immich(payload: bytes, server_url: str, api_key: str) -> int:
         return name.lower().endswith((".jpg", ".jpeg", ".png")) and not name.startswith("masters/")
 
     for name, data in archive_files(payload, is_access_image):
+        if journal and journal.check(name, data):
+            continue
         body, content_type = _multipart(
             {
                 "fileCreatedAt": now,
@@ -156,5 +200,7 @@ def upload_immich(payload: bytes, server_url: str, api_key: str) -> int:
             raise
         except Exception as exc:
             raise HTTPException(status_code=502, detail=f"Immich upload failed: {exc}") from exc
+        if journal:
+            journal.complete(name, data)
         count += 1
     return count

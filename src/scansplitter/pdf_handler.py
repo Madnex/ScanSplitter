@@ -2,8 +2,10 @@
 
 from pathlib import Path
 
-import fitz  # PyMuPDF
+import pymupdf as fitz
 from PIL import Image
+
+from .sources import MAX_DECODED_PIXELS
 
 
 def get_pdf_page_count(pdf_path: str | Path) -> int:
@@ -14,6 +16,9 @@ def get_pdf_page_count(pdf_path: str | Path) -> int:
 
     doc = fitz.open(pdf_path)
     try:
+        for page in doc:
+            if page.rect.width * page.rect.height * (300 / 72) ** 2 > MAX_DECODED_PIXELS:
+                raise ValueError("PDF page exceeds the decoded-pixel limit at export resolution")
         return len(doc)
     finally:
         doc.close()
@@ -43,7 +48,10 @@ def extract_pdf_page(pdf_path: str | Path, page: int, dpi: int = 300) -> Image.I
             raise ValueError(f"Invalid page number: {page} (PDF has {len(doc)} pages)")
         zoom = dpi / 72
         matrix = fitz.Matrix(zoom, zoom)
-        pix = doc[page - 1].get_pixmap(matrix=matrix)
+        rect = doc[page - 1].rect
+        if rect.width * zoom * rect.height * zoom > MAX_DECODED_PIXELS:
+            raise ValueError("PDF page exceeds the decoded-pixel limit")
+        pix = doc[page - 1].get_pixmap(matrix=matrix, colorspace=fitz.csRGB, alpha=False)
         return Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
     finally:
         doc.close()
@@ -74,7 +82,9 @@ def extract_images_from_pdf(pdf_path: str | Path, dpi: int = 300) -> list[Image.
 
         for page_num in range(len(doc)):
             page = doc[page_num]
-            pix = page.get_pixmap(matrix=matrix)
+            if page.rect.width * zoom * page.rect.height * zoom > MAX_DECODED_PIXELS:
+                raise ValueError("PDF page exceeds the decoded-pixel limit")
+            pix = page.get_pixmap(matrix=matrix, colorspace=fitz.csRGB, alpha=False)
 
             # Convert to PIL Image
             img = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)

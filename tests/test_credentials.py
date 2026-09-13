@@ -34,7 +34,7 @@ def test_credential_store_round_trip_never_exposes_secret(monkeypatch):
     credentials.save_delivery_credentials("immich", config)
     loaded = credentials.load_delivery_credentials("immich")
 
-    assert loaded == {"server_url": "https://photos.example/api", "api_key": "secret"}
+    assert loaded == {"server_url": "https://photos.example/api", "api_key": " secret "}
     assert credentials.public_delivery_credentials("immich", loaded) == {
         "target": "immich",
         "saved": True,
@@ -74,7 +74,7 @@ def test_saved_credentials_are_merged_server_side(monkeypatch):
         "/api/projects/project-1/deliver",
         json={
             "target": "immich",
-            "server_url": "https://new.example",
+            "server_url": "https://old.example",
             "use_saved_credentials": True,
         },
     )
@@ -85,7 +85,7 @@ def test_saved_credentials_are_merged_server_side(monkeypatch):
         "pid": "project-1",
         "target": "immich",
         "config": {
-            "server_url": "https://new.example",
+            "server_url": "https://old.example",
             "api_key": "saved-secret",
             "include_gps": False,
             "organize_folders": True,
@@ -147,3 +147,20 @@ def test_saved_credentials_are_disabled_outside_local_mode(monkeypatch, flag):
     )
     assert response.status_code == 403
     assert response.json()["detail"] == "Saved credentials require local mode"
+
+
+def test_saved_secret_is_never_sent_to_a_changed_connection(monkeypatch):
+    monkeypatch.setenv("SCANSPLITTER_LOCAL_MODE", "1")
+    monkeypatch.setattr(credentials, "load_delivery_credentials", lambda target: {
+        "base_url": "https://trusted.example/dav", "username": "original", "password": " secret ",
+    })
+    response = client.post("/api/projects/project-1/deliver", json={"target": "nextcloud",
+        "base_url": "https://different.example/dav", "username": "original", "use_saved_credentials": True})
+    assert response.status_code == 400
+    assert "different connection" in response.json()["detail"]
+
+
+def test_nextcloud_password_preserves_leading_and_trailing_spaces():
+    assert credentials._clean_config("nextcloud", {"username": " user ", "password": " secret "}) == {
+        "username": "user", "password": " secret ",
+    }

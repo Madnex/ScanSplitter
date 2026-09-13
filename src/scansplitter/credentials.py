@@ -47,9 +47,9 @@ def _validate_target(target: str) -> None:
 def _clean_config(target: str, config: dict[str, Any]) -> dict[str, str]:
     fields = DELIVERY_CREDENTIAL_FIELDS[target]
     return {
-        field: value.strip()
+        field: value if field in DELIVERY_SECRET_FIELDS[target] else value.strip()
         for field in fields
-        if isinstance((value := config.get(field)), str) and value.strip()
+        if isinstance((value := config.get(field)), str) and (value if field in DELIVERY_SECRET_FIELDS[target] else value.strip())
     }
 
 

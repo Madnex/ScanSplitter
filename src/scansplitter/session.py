@@ -163,20 +163,16 @@ class SessionManager:
         Uses last-accessed time (not creation time) so an actively used
         session is never deleted out from under the user.
         """
-        now = time.time()
-        to_delete = []
-
+        from .jobs import registry
+        expired = []
         with self._lock:
-            for session_id, session in self._sessions.items():
-                if now - session.last_accessed > self.max_age_seconds:
-                    to_delete.append(session_id)
-
-        deleted = 0
-        for session_id in to_delete:
-            if self.delete_session(session_id):
-                deleted += 1
-
-        return deleted
+            for session_id, session in list(self._sessions.items()):
+                if session.idle_seconds > self.max_age_seconds and not registry.has_active(session_id):
+                    expired.append(self._sessions.pop(session_id))
+        for session in expired:
+            registry.drop_session(session.id)
+            shutil.rmtree(session.directory, ignore_errors=True)
+        return len(expired)
 
     def _cleanup_loop(self):
         """Background cleanup loop."""

@@ -1,0 +1,9 @@
+{
+  "collection": "20 repository synthetic challenge fixtures; no ML restoration",
+  "max_scan_pixels": 1400000,
+  "total_photos": 67,
+  "export_bytes": 13262817,
+  "elapsed_seconds": 4.46,
+  "peak_process_rss_mib": 162.2,
+  "limit": "A repeatable baseline, not a capacity guarantee for 100 MP scans or model inference"
+}

@@ -79,29 +79,10 @@ def process_image(
     Returns:
         List of ProcessedImage objects
     """
-    # Detect photos based on selected mode.
-    if detection_mode == "album-splitter":
-        regions = detect_album_pages(image, layout=album_layout)
-    elif detection_mode == "scansplitterv5":
-        regions = detect_photos_v5(
-            image,
-            min_area_ratio=min_area_ratio,
-            max_area_ratio=max_area_ratio,
-        )
-    elif detection_mode == "scansplitterv4":
-        regions = detect_photos_v4(
-            image,
-            min_area_ratio=min_area_ratio,
-            max_area_ratio=max_area_ratio,
-        )
-    elif detection_mode == "scansplitterv3":
-        regions = detect_photos_v3(
-            image,
-            min_area_ratio=min_area_ratio,
-            max_area_ratio=max_area_ratio,
-        )
-    else:
-        raise ValueError(f"Unsupported detection mode: {detection_mode}")
+    from .detection import detect_regions
+    regions = detect_regions(image, detection_mode, min_area_ratio, max_area_ratio, album_layout,
+        {"scansplitterv3": detect_photos_v3, "scansplitterv4": detect_photos_v4,
+         "scansplitterv5": detect_photos_v5, "album-splitter": detect_album_pages})
 
     # If no regions detected, return the original image
     if not regions:

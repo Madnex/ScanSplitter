@@ -18,7 +18,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from PIL import Image
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict, Field
 
 import scansplitter
 
@@ -34,7 +34,7 @@ from .detector import (
 )
 from .edge_cleanup import cleanup_photo_edges
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
-from .jobs import JobCancelled, registry, submit_job
+from .jobs import JobCancelled, new_artifact, registry, submit_job
 from .llm_detector import (
     OpenRouterConfigurationError,
     OpenRouterDetectionError,
@@ -118,13 +118,14 @@ app.add_middleware(
 
 
 class BoundingBox(BaseModel):
+    model_config = ConfigDict(allow_inf_nan=False)
     """A rotatable bounding box."""
 
     id: str
     center_x: float
     center_y: float
-    width: float
-    height: float
+    width: float = Field(gt=0)
+    height: float = Field(gt=0)
     angle: float  # degrees
 
 
@@ -142,9 +143,9 @@ class DetectRequest(BaseModel):
     """Request for detection."""
 
     session_id: str
-    page: int = 1
-    min_area: float = 2.0  # percentage
-    max_area: float = 80.0  # percentage
+    page: int = Field(default=1, ge=1)
+    min_area: float = Field(default=2.0, gt=0, lt=100, allow_inf_nan=False)  # percentage
+    max_area: float = Field(default=80.0, gt=0, le=100, allow_inf_nan=False)  # percentage
     # Detection algorithms
     detection_mode: str = "scansplitterv5"
     album_layout: AlbumLayout = "auto"
@@ -161,7 +162,7 @@ class CropRequest(BaseModel):
     """Request for cropping with adjusted boxes."""
 
     session_id: str
-    page: int = 1
+    page: int = Field(default=1, ge=1)
     boxes: list[BoundingBox]
     auto_rotate: bool = True
     edge_cleanup_mode: Literal["off", "conservative", "tight"] = "tight"
@@ -175,6 +176,7 @@ class CroppedImage(BaseModel):
     data: str  # base64 encoded
     width: int
     height: int
+    crop_id: str | None = None
     rotation_applied: int
 
 
@@ -185,20 +187,21 @@ class CropResponse(BaseModel):
 
 
 class ImageData(BaseModel):
-    """Image data for export."""
-
     id: str
-    data: str  # base64 encoded
+    data: str = ""
     name: str
-    date_taken: str | None = None  # Per-image date in YYYY-MM-DD format
+    date_taken: str | None = None
+    session_id: str | None = None
+    crop_id: str | None = None
+    rotation: Literal[0, 90, 180, 270] = 0
 
 
 class ExportRequest(BaseModel):
     """Request for export."""
 
     session_id: str
-    format: str = "jpeg"  # jpeg or png
-    quality: int = 85
+    format: Literal["jpeg", "jpg", "png"] = "jpeg"  # jpeg or png
+    quality: int = Field(default=85, ge=1, le=100)
     names: dict[str, str] | None = None  # id -> custom name (legacy)
     images: list[ImageData] | None = None  # Direct image data with rotations applied
     include_gps: bool = False  # Copy GPS EXIF onto exports (privacy: off by default)
@@ -209,8 +212,8 @@ class ExportLocalRequest(BaseModel):
 
     session_id: str
     output_directory: str
-    format: str = "jpeg"  # jpeg or png
-    quality: int = 85
+    format: Literal["jpeg", "jpg", "png"] = "jpeg"  # jpeg or png
+    quality: int = Field(default=85, ge=1, le=100)
     names: dict[str, str] | None = None  # id -> custom name (legacy)
     images: list[ImageData] | None = None  # Direct image data with rotations applied
     overwrite: bool = False  # Whether to overwrite existing files
@@ -271,6 +274,7 @@ class ProjectPatchRequest(BaseModel):
 
 
 class ScanPatchRequest(BaseModel):
+    revision: int | None = Field(default=None, ge=0)
     """Update a scan's boxes and/or review status."""
 
     boxes: list[dict] | None = None
@@ -280,8 +284,8 @@ class ScanPatchRequest(BaseModel):
 class ProjectExportRequest(BaseModel):
     """Request to export a project's approved scans (defaults from settings)."""
 
-    format: str | None = None
-    quality: int | None = None
+    format: Literal["jpeg", "png"] | None = None
+    quality: int | None = Field(default=None, ge=1, le=100)
     include_gps: bool | None = None
     master_format: str | None = None
     organize_folders: bool | None = None
@@ -400,7 +404,8 @@ def load_page_image(session: Session, filename: str, page: int) -> Image.Image:
         return image
     else:
         # Load image directly
-        return Image.open(file_path).convert("RGB")
+        from .sources import load_source
+        return load_source(file_path)
 
 
 def image_to_base64(image: Image.Image, format: str = "JPEG", quality: int = 85) -> str:
@@ -640,6 +645,8 @@ def upload_file(file: UploadFile = File(...)):
         else:
             page_count = 1
             with Image.open(file_path) as image:
+                from .sources import validate_image
+                validate_image(image)
                 width, height = image.size
 
             # Extract EXIF from non-PDF files
@@ -719,6 +726,8 @@ def run_detect(
     progress_cb(20, "preprocessing")
     _check_cancelled(is_cancelled)
 
+    if request.min_area >= request.max_area:
+        raise HTTPException(status_code=400, detail="Minimum photo area must be below maximum photo area")
     detection_mode = request.detection_mode
     if detection_mode in ("ScanSplitterv5", "v5"):
         detection_mode = "scansplitterv5"
@@ -729,54 +738,21 @@ def run_detect(
     elif detection_mode in ("OpenRouter", "llm", "llm-based"):
         detection_mode = "openrouter"
 
-    # Run detection based on mode
-    if detection_mode in ("album", "album_splitter", "album-splitter"):
-        progress_cb(35, "finding album page")
-        regions = detect_album_pages(image, layout=request.album_layout)
-        progress_cb(75, "refining page edges")
-    elif detection_mode == "scansplitterv5":
-        progress_cb(35, "finding photo candidates")
-        regions = detect_photos_v5(
-            image,
-            min_area_ratio=request.min_area / 100,
-            max_area_ratio=request.max_area / 100,
-        )
-        progress_cb(75, "refining complete photo borders")
-    elif detection_mode == "scansplitterv4":
-        progress_cb(35, "finding photo candidates")
-        regions = detect_photos_v4(
-            image,
-            min_area_ratio=request.min_area / 100,
-            max_area_ratio=request.max_area / 100,
-        )
-        progress_cb(75, "refining photo borders")
-    elif detection_mode == "scansplitterv3":
-        progress_cb(45, "modeling background")
-        regions = detect_photos_v3(
-            image,
-            min_area_ratio=request.min_area / 100,
-            max_area_ratio=request.max_area / 100,
-        )
-    elif detection_mode == "openrouter":
-        progress_cb(30, "sending scan to OpenRouter")
-        try:
-            regions = detect_photos_openrouter(
-                image,
-                min_area_ratio=request.min_area / 100,
-                max_area_ratio=request.max_area / 100,
-            )
-        except OpenRouterDetectionError as exc:
-            status = 503 if isinstance(exc, OpenRouterConfigurationError) else 502
-            raise HTTPException(status_code=status, detail=str(exc)) from exc
-        progress_cb(75, "converting LLM photo corners")
-    else:
-        raise HTTPException(
-            status_code=400,
-            detail=(
-                "detection_mode must be one of: scansplitterv5, "
-                "scansplitterv4, scansplitterv3, openrouter, album-splitter"
-            ),
-        )
+    from .detection import detect_regions
+    if detection_mode in {"album", "album_splitter"}:
+        detection_mode = "album-splitter"
+    progress_cb(35, "sending scan to OpenRouter" if detection_mode == "openrouter" else "detecting regions")
+    try:
+        regions = detect_regions(image, detection_mode, request.min_area / 100, request.max_area / 100,
+            request.album_layout, {"scansplitterv3": detect_photos_v3, "scansplitterv4": detect_photos_v4,
+                "scansplitterv5": detect_photos_v5, "album-splitter": detect_album_pages,
+                "openrouter": detect_photos_openrouter})
+    except OpenRouterDetectionError as exc:
+        raise HTTPException(status_code=503 if isinstance(exc, OpenRouterConfigurationError) else 502,
+                            detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    progress_cb(75, "preparing editable boxes")
 
     _check_cancelled(is_cancelled)
     progress_cb(85, "scoring rotations")
@@ -824,18 +800,23 @@ def run_crop(
     progress_cb(5, "rendering page")
     image = load_page_image(session, filename, request.page)
 
-    # Drop results from previous crop calls so legacy exports can't mix
-    # stale crops with the current ones (and disk usage stays bounded).
-    for old_path in session.cropped_images:
-        old_path.unlink(missing_ok=True)
-    session.cropped_images.clear()
+    from .validation import validate_boxes
+    validate_boxes([{"id": b.id, "x": b.center_x, "y": b.center_y, "width": b.width,
+                     "height": b.height, "angle": b.angle} for b in request.boxes], image.width, image.height)
+    boxes = request.boxes
+    if session.files[filename].get("is_pdf"):
+        source = extract_pdf_page(Path(session.files[filename]["path"]), request.page, dpi=300)
+        boxes = [b.model_copy(update={"center_x": b.center_x * source.width / image.width,
+            "width": b.width * source.width / image.width, "center_y": b.center_y * source.height / image.height,
+            "height": b.height * source.height / image.height}) for b in boxes]
+        image = source
 
     # Convert to OpenCV format
     cv_image = cv2.cvtColor(np.array(image), cv2.COLOR_RGB2BGR)
 
     cropped_images = []
     total = len(request.boxes)
-    for index, box in enumerate(request.boxes, 1):
+    for index, box in enumerate(boxes, 1):
         _check_cancelled(is_cancelled)
         progress_cb(10 + int(85 * (index - 1) / max(total, 1)), f"cropping image {index}/{total}")
         # Convert box to DetectedRegion
@@ -858,12 +839,16 @@ def run_crop(
         if request.auto_rotate:
             cropped_pil, rotation_applied = auto_rotate(cropped_pil)
 
-        # Convert to base64
-        data = image_to_base64(cropped_pil)
+        # Previews are bounded JPEGs; downloads use the lossless retained crop.
+        crop_id = uuid.uuid4().hex
+        preview = cropped_pil.copy()
+        preview.thumbnail((1600, 1600))
+        data = image_to_base64(preview)
 
         cropped_images.append(
             CroppedImage(
                 id=box.id,
+                crop_id=crop_id,
                 data=data,
                 width=cropped_pil.width,
                 height=cropped_pil.height,
@@ -872,9 +857,8 @@ def run_crop(
         )
 
         # Save to session for export (sanitize the client-supplied box id)
-        safe_id = sanitize_name(box.id, default=uuid.uuid4().hex[:8], allow_dot=False)
-        cropped_path = session.directory / f"cropped_{safe_id}.jpg"
-        cropped_pil.save(cropped_path, "JPEG", quality=95)
+        cropped_path = session.directory / f"cropped_{crop_id}.png"
+        cropped_pil.save(cropped_path, "PNG")
         session.cropped_images.append(cropped_path)
 
     return CropResponse(images=cropped_images)
@@ -886,13 +870,70 @@ def crop_images(request: CropRequest):
     return run_crop(request)
 
 
+def _validate_export_names(request: ExportRequest | ExportLocalRequest, session: Session) -> None:
+    """Reject collisions after sanitization, before writing any artifacts."""
+    if request.images:
+        names = [image.name for image in request.images]
+    else:
+        names = [
+            (request.names or {}).get(path.stem.removeprefix("cropped_"), f"photo_{index:03d}")
+            for index, path in enumerate(session.cropped_images, 1)
+            if path.exists()
+        ]
+    seen: set[str] = set()
+    for name in names:
+        safe_name = sanitize_name(name, default="photo")
+        key = safe_name.casefold()
+        if key in seen:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Duplicate export filename after sanitization: {safe_name}. Rename the photos before exporting.",
+            )
+        seen.add(key)
+
+
+def _quick_export_image(item: ImageData, fmt: str, quality: int, include_gps: bool, fallback_session_id: str | None = None) -> bytes:
+    from .projects import _apply_manual_rotation, _encode_image
+    from .sources import validate_image
+    if item.crop_id:
+        source_session = get_session_or_404(item.session_id or "")
+        safe_id = sanitize_name(item.crop_id, allow_dot=False)
+        path = source_session.directory / f"cropped_{safe_id}.png"
+        if path not in source_session.cropped_images or not path.exists():
+            raise HTTPException(status_code=410, detail="Crop expired. Crop the scan again.")
+        image = Image.open(path)
+    else:
+        image = Image.open(io.BytesIO(base64.b64decode(item.data)))
+    validate_image(image)
+    image = _apply_manual_rotation(image.convert("RGB"), {"manual_rotation": item.rotation})
+    metadata = {"date": item.date_taken} if item.date_taken else {}
+    source_session = get_session_or_404(item.session_id or fallback_session_id) if (item.session_id or fallback_session_id) else None
+    raw = None
+    if source_session and source_session.files:
+        raw = source_session.exif_data.get(next(iter(source_session.files)), {}).get("_raw")
+    exif = create_exif_bytes(date_taken=item.date_taken, original_exif=raw, include_gps=include_gps,
+                             clear_date=item.date_taken is None)
+    return _encode_image(image, "png" if fmt == "png" else "jpg", quality, metadata, include_gps, exif)
+
+
+@app.post("/api/export/photo")
+def export_quick_photo(request: ExportRequest):
+    if not request.images or len(request.images) != 1:
+        raise HTTPException(status_code=400, detail="Select exactly one photo")
+    image = request.images[0]
+    return Response(_quick_export_image(image, request.format, request.quality, request.include_gps, request.session_id),
+        media_type="image/png" if request.format == "png" else "image/jpeg")
+
+
 def run_export_zip(
     request: ExportRequest,
     progress_cb: ProgressCallback = _noop_progress,
     is_cancelled: CancelCheck = _never_cancelled,
-) -> bytes:
+    artifact_path: Path | None = None,
+) -> bytes | Path:
     """Build an export ZIP for both synchronous requests and background jobs."""
     session = get_session_or_404(request.session_id)
+    _validate_export_names(request, session)
 
     # Get original EXIF data for potential reuse
     original_exif_raw = None
@@ -903,38 +944,21 @@ def run_export_zip(
 
     # Use provided image data if available (includes client-side rotations)
     if request.images:
-        zip_path = session.directory / "export.zip"
+        zip_buffer = artifact_path or io.BytesIO()
         ext = "png" if request.format.lower() == "png" else "jpg"
 
-        with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
             total = len(request.images)
             for index, img_data in enumerate(request.images, 1):
                 _check_cancelled(is_cancelled)
                 progress_cb(int(90 * (index - 1) / max(total, 1)), f"encoding image {index}/{total}")
-                # Decode base64 and re-encode in requested format
-                img_bytes = base64.b64decode(img_data.data)
-                img = Image.open(io.BytesIO(img_bytes))
-
-                buffer = io.BytesIO()
-                if request.format.lower() == "png":
-                    img.save(buffer, "PNG", optimize=True)
-                else:
-                    img.save(buffer, "JPEG", quality=request.quality)
-                    # Apply per-image EXIF if date is set
-                    if img_data.date_taken:
-                        exif_bytes = create_exif_bytes(
-                            date_taken=img_data.date_taken,
-                            original_exif=original_exif_raw,
-                            include_gps=request.include_gps,
-                        )
-                        if exif_bytes:
-                            buffer = io.BytesIO(apply_exif_to_jpeg(buffer.getvalue(), exif_bytes))
+                payload = _quick_export_image(img_data, request.format, request.quality, request.include_gps, request.session_id)
 
                 # Sanitize client-supplied name to prevent zip-slip.
                 filename = f"{sanitize_name(img_data.name, default='photo')}.{ext}"
-                zf.writestr(filename, buffer.getvalue())
+                zf.writestr(filename, payload)
 
-        return zip_path.read_bytes()
+        return artifact_path if artifact_path else zip_buffer.getvalue()
 
     # Legacy fallback: use cached images from session
     if not session.cropped_images:
@@ -950,8 +974,8 @@ def run_export_zip(
         clear_date=clear_date,
     )
 
-    zip_path = session.directory / "export.zip"
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
+    zip_buffer = artifact_path or io.BytesIO()
+    with zipfile.ZipFile(zip_buffer, "w", zipfile.ZIP_DEFLATED) as zf:
         total = len(session.cropped_images)
         for i, img_path in enumerate(session.cropped_images, 1):
             _check_cancelled(is_cancelled)
@@ -981,7 +1005,7 @@ def run_export_zip(
 
                 zf.writestr(filename, buffer.getvalue())
 
-    return zip_path.read_bytes()
+    return artifact_path if artifact_path else zip_buffer.getvalue()
 
 
 @app.post("/api/export")
@@ -1007,6 +1031,7 @@ def run_export_local(
         )
 
     session = get_session_or_404(request.session_id)
+    _validate_export_names(request, session)
 
     # Get original EXIF data for potential reuse
     original_exif_raw = None
@@ -1068,28 +1093,10 @@ def run_export_local(
             for index, img_data in enumerate(request.images, 1):
                 _check_cancelled(is_cancelled)
                 progress_cb(int(90 * (index - 1) / max(total, 1)), f"encoding image {index}/{total}")
-                # Decode base64 and re-encode in requested format
-                img_bytes = base64.b64decode(img_data.data)
-                img = Image.open(io.BytesIO(img_bytes))
-
                 output_file = safe_output_file(img_data.name)
-
-                if request.format.lower() == "png":
-                    img.save(output_file, "PNG", optimize=True)
-                else:
-                    # Save to buffer first, apply per-image EXIF if date is set, then write
-                    buffer = io.BytesIO()
-                    img.save(buffer, "JPEG", quality=request.quality)
-                    output_bytes = buffer.getvalue()
-                    if img_data.date_taken:
-                        exif_bytes = create_exif_bytes(
-                            date_taken=img_data.date_taken,
-                            original_exif=original_exif_raw,
-                            include_gps=request.include_gps,
-                        )
-                        if exif_bytes:
-                            output_bytes = apply_exif_to_jpeg(output_bytes, exif_bytes)
-                    output_file.write_bytes(output_bytes)
+                payload = _quick_export_image(img_data, request.format, request.quality, request.include_gps, request.session_id)
+                with output_file.open("wb" if request.overwrite else "xb") as output:
+                    output.write(payload)
 
                 exported_files.append(str(output_file))
         else:
@@ -1191,8 +1198,8 @@ def create_export_job(request: ExportRequest):
     get_session_or_404(request.session_id)
 
     def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
-        data = run_export_zip(request, progress, cancelled)
-        return {"__download_bytes": data}
+        data = run_export_zip(request, progress, cancelled, artifact_path=new_artifact())
+        return {"__download_path": data}
 
     job = submit_job("export", request.session_id, worker)
     return {"job_id": job.job_id}
@@ -1229,12 +1236,12 @@ def download_job(job_id: str):
         job is None
         or job.kind not in {"export", "restoration-preview"}
         or job.status != "succeeded"
-        or job.download_bytes is None
+        or job.download_path is None or not job.download_path.exists()
     ):
         raise HTTPException(status_code=404, detail="Job download not ready or expired")
     is_preview = job.kind == "restoration-preview"
-    return Response(
-        content=job.download_bytes,
+    return FileResponse(
+        path=job.download_path,
         media_type="image/jpeg" if is_preview else "application/zip",
         headers={
             "Content-Disposition": (
@@ -1388,41 +1395,46 @@ def add_project_scans(pid: str, files: list[UploadFile] = File(...), detect: boo
     store = get_project_store()
     store.get_project(pid)  # validate id / existence before reading uploads
 
-    uploaded: list[tuple[str, bytes]] = []
-    for upload in files:
-        if upload.filename is None:
-            raise HTTPException(status_code=400, detail="No filename provided")
-        ext = Path(upload.filename).suffix.lower()
-        if ext not in ALLOWED_UPLOAD_EXTENSIONS:
-            raise HTTPException(
-                status_code=400,
-                detail=(
-                    f"Unsupported file type: {ext or 'no extension'}. "
-                    f"Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}"
-                ),
-            )
-
-        size = 0
-        chunks: list[bytes] = []
-        while True:
-            chunk = upload.file.read(_UPLOAD_CHUNK_SIZE)
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > MAX_UPLOAD_BYTES:
+    def uploads():
+        for upload in files:
+            if upload.filename is None:
+                raise HTTPException(status_code=400, detail="No filename provided")
+            ext = Path(upload.filename).suffix.lower()
+            if ext not in ALLOWED_UPLOAD_EXTENSIONS:
                 raise HTTPException(
-                    status_code=413,
-                    detail=f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)",
+                    status_code=400,
+                    detail=(
+                        f"Unsupported file type: {ext or 'no extension'}. "
+                        f"Allowed: {', '.join(sorted(ALLOWED_UPLOAD_EXTENSIONS))}"
+                    ),
                 )
-            chunks.append(chunk)
-        uploaded.append((upload.filename, b"".join(chunks)))
 
-    scans = store.add_scans(pid, uploaded)
+            size = 0
+            chunks: list[bytes] = []
+            while True:
+                chunk = upload.file.read(_UPLOAD_CHUNK_SIZE)
+                if not chunk:
+                    break
+                size += len(chunk)
+                if size > MAX_UPLOAD_BYTES:
+                    raise HTTPException(
+                        status_code=413,
+                        detail=f"File too large (max {MAX_UPLOAD_BYTES // (1024 * 1024)} MB)",
+                    )
+                chunks.append(chunk)
+            yield upload.filename, b"".join(chunks)
+
+    scans = store.add_scans(pid, uploads())
 
     jobs = []
     if detect:
         for scan in scans:
-            job_id = store.submit_detect_job(pid, scan["id"])
+            try:
+                job_id = store.submit_detect_job(pid, scan["id"])
+            except HTTPException as exc:
+                if exc.status_code == 429:
+                    break
+                raise
             scan["status"] = "detecting"
             jobs.append({"scan_id": scan["id"], "job_id": job_id})
 
@@ -1441,10 +1453,10 @@ def get_project_scan_image(
 
 
 @app.get("/api/projects/{pid}/scans/{sid}/crops/{box_id}")
-def get_project_scan_crop(pid: str, sid: str, box_id: str):
+def get_project_scan_crop(pid: str, sid: str, box_id: str, large: bool = False):
     """Render a JPEG preview of one detected crop."""
     return Response(
-        content=get_project_store().crop_image_bytes(pid, sid, box_id),
+        content=get_project_store().crop_image_bytes(pid, sid, box_id, large=large),
         media_type="image/jpeg",
     )
 
@@ -1453,7 +1465,7 @@ def get_project_scan_crop(pid: str, sid: str, box_id: str):
 def patch_project_scan(pid: str, sid: str, request: ScanPatchRequest):
     """Update a scan's boxes (re-runs confidence) and/or review status."""
     return get_project_store().update_scan(
-        pid, sid, boxes=request.boxes, status=request.status
+        pid, sid, boxes=request.boxes, status=request.status, revision=request.revision
     )
 
 
@@ -1542,7 +1554,7 @@ def deliver_project(pid: str, request: ProjectDeliveryRequest):
     """Deliver canonical project artifacts, optionally using the system vault."""
     config = request.model_dump(exclude_none=True)
     config = {
-        key: value.strip() if isinstance(value, str) else value
+        key: value.strip() if isinstance(value, str) and key not in {"password", "api_key"} else value
         for key, value in config.items()
     }
     target = config.pop("target")
@@ -1573,6 +1585,9 @@ def deliver_project(pid: str, request: ProjectDeliveryRequest):
             for key, value in config.items()
             if not isinstance(value, str) or value
         }
+        identity_fields = ("server_url",) if target == "immich" else ("base_url", "username")
+        if any(key in explicit and explicit[key] != saved.get(key) for key in identity_fields):
+            raise HTTPException(status_code=400, detail="Saved credentials belong to a different connection. Enter credentials for this connection.")
         config = {**saved, **explicit}
     if missing := sorted(field for field in required if not config.get(field)):
         raise HTTPException(status_code=400, detail=f"Missing delivery fields: {', '.join(missing)}")
@@ -1635,3 +1650,9 @@ def preview_project_restoration(pid: str, sid: str, request: RestorationPreviewR
 def create_app() -> FastAPI:
     """Create the FastAPI app."""
     return app
+
+
+@app.get("/api/projects/{pid}/scans/{sid}/photos/{box_id}/download")
+def download_project_photo(pid: str, sid: str, box_id: str, format: Literal["jpeg", "png"] = "jpeg", include_gps: bool = False):
+    return Response(get_project_store().export_photo(pid, sid, box_id, format, include_gps),
+                    media_type="image/png" if format == "png" else "image/jpeg")
