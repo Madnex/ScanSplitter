@@ -1,5 +1,7 @@
 # Album Splitter mode
 
+> September 2026: [Approved audit hardening contract](audit-hardening-2026-09.md) supersedes conflicting storage, confidence, lifecycle and export behavior below.
+
 ## Purpose
 
 Album Splitter digitizes the album page as the artifact. Mounted photographs,

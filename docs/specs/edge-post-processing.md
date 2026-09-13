@@ -1,5 +1,7 @@
 # Edge Post-processing Spec
 
+> September 2026: [Approved audit hardening contract](audit-hardening-2026-09.md) supersedes conflicting storage, confidence, lifecycle and export behavior below.
+
 *Status: implemented on branch `edge-post-processing` (2026-08-16).*
 *This document is the binding contract between backend and frontend work.*
 

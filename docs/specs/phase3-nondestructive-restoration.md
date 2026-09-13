@@ -1,5 +1,7 @@
 # Phase 3 Spec — Non-destructive Restoration
 
+> September 2026: [Approved audit hardening contract](audit-hardening-2026-09.md) supersedes conflicting storage, confidence, lifecycle and export behavior below.
+
 *Status: complete on branch `quality-overhaul` (2026-07-11).*
 *This document is the binding contract between backend and frontend work. If the
 implementation must deviate, update this file in the same commit.*
@@ -50,7 +52,8 @@ Any stored photo box may add a sparse override map:
   "angle": 0,
   "restoration": {
     "auto_deskew": true,
-    "restore_color": false
+    "restore_color": false,
+    "manual_rotation": 90
   }
 }
 ```
@@ -58,8 +61,9 @@ Any stored photo box may add a sparse override map:
 Overrides are submitted through the existing
 `PATCH /api/projects/{pid}/scans/{sid}` `boxes` array. Alongside the optional
 per-photo filename and caption, the box normalizer keeps the `auto_deskew`,
-`restore_color`, and `upscale_2x` boolean keys plus the `edge_cleanup_mode`
-enum; other override keys are discarded. At execution,
+`restore_color`, and `upscale_2x` boolean keys, the `edge_cleanup_mode` enum,
+and a clockwise `manual_rotation` of `0`, `90`, `180`, or `270`; other override
+keys are discarded. At execution,
 `{**project.settings, **box.restoration}` is used.
 
 Project settings are submitted through the existing
@@ -76,6 +80,7 @@ type/error validation.
 | `auto_deskew` | Uses strong Hough lines within 5° of a horizontal/vertical axis and a line-length-weighted median. Corrections below 0.25° or without enough evidence are skipped; large rotations are not treated as deskew. |
 | `restore_color` | Capped highlight gray-world balance followed by a gently blended luminance stretch. Channel gains are bounded to 0.85–1.18. |
 | `upscale_2x` | Non-generative 2× Lanczos resize followed by restrained sharpening. |
+| `manual_rotation` | Applies a final lossless quarter-turn after automatic processing. Project thumbnails, lightbox previews, comparisons, and exports use the same stored orientation. |
 
 Semantic colorization is excluded because generated colors are not archival
 facts.

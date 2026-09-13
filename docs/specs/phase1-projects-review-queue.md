@@ -1,5 +1,7 @@
 # Phase 1 Spec — Persistent Projects, Bulk Upload, Review Queue
 
+> September 2026: [Approved audit hardening contract](audit-hardening-2026-09.md) supersedes conflicting storage, confidence, lifecycle and export behavior below.
+
 *Status: complete on branch `quality-overhaul` (2026-07-11).*
 *This document is the contract between backend and frontend work. If the
 implementation must deviate, update this file in the same commit.*
@@ -30,7 +32,7 @@ untouched; Projects is an additional top-level mode.
 - Filenames on disk are always server-generated ids — never client input
   (same rule as `sanitize_name` elsewhere).
 
-## Data model (`project.json`, version 1)
+## Original phase data model (see version-2 audit addendum)
 
 ```json
 {
@@ -109,12 +111,10 @@ Flag codes (v1):
 | `area_outlier`    | box area < 35% of the median box area on the scan (≥3 boxes)    |
 | `overlap`         | two boxes with IoU > 0.15 (axis-aligned approximation is fine)  |
 
-A scan with zero flags after detection gets status `auto_approved`;
-otherwise `needs_review`. Each scan is evaluated independently because pages
-within a project may contain different numbers of photos. Deprecated
-`count_mismatch` flags are discarded when existing projects are loaded; a scan
-that needed review only for that flag returns to `auto_approved` unless it was
-explicitly reviewed by a user.
+Every new detection gets status `needs_review`, regardless of geometry flags.
+Each scan is evaluated independently. Deprecated `count_mismatch` flags are
+removed on read without granting approval. Historical `auto_approved` entries
+remain readable and exportable for compatibility, labelled Detected in the UI.
 
 ## Backend API
 
@@ -131,7 +131,7 @@ All endpoints follow existing conventions: sync `def` (threadpool), 404 via
 | `DELETE /api/projects/{pid}` | – | `{"status":"deleted"}` |
 | `POST /api/projects/{pid}/scans` | multipart, field `files` (repeatable); query `detect` (default `true`) | `{"scans":[scan...], "jobs":[{scan_id, job_id}]}` — PDFs expand to one scan per page; when `detect=true`, one detect job per new scan is queued |
 | `GET  /api/projects/{pid}/scans/{sid}/image` | query `thumb` or `preview` (bool) | image bytes (thumbnail is a cached 320px JPEG; preview is a cached, max-4096px JPEG used by the canvas while coordinates remain full-resolution) |
-| `GET  /api/projects/{pid}/scans/{sid}/crops/{box_id}` | – | On-demand JPEG preview of the stored crop geometry with project auto-rotation applied; unknown box is `404` |
+| `GET  /api/projects/{pid}/scans/{sid}/crops/{box_id}` | query `large` (bool) | On-demand JPEG preview of the stored crop geometry with project auto-rotation applied; defaults to a 480px sidebar preview, while `large=true` returns a bounded 2048px lightbox preview; unknown box is `404` |
 | `PATCH /api/projects/{pid}/scans/{sid}` | `{boxes?, status?}` | updated scan JSON. Setting `boxes` re-runs `evaluate_scan` and updates flags; geometry changes without an explicit status return the scan to `needs_review`, while filename/caption/restoration-only changes preserve status. Allowed client statuses: `approved`, `needs_review` |
 | `DELETE /api/projects/{pid}/scans/{sid}` | – | `{"status":"deleted"}` |
 | `POST /api/projects/{pid}/scans/{sid}/detect` | – | `202 {"job_id"}` (re-detect one scan; job result also persisted into the project) |
@@ -168,7 +168,7 @@ Screens:
    updated-at; create (name prompt), open, delete (confirm dialog).
 2. **Project overview** — dropzone accepting many files (`webkitdirectory`
    optional; multi-select required), grid of scan thumbnails with status
-   chips: `OK · n` (auto_approved, green), `CHECK` (needs_review, amber),
+   chips: `Detected · n` (legacy auto_approved), `Review` (needs_review, amber),
    `✓` (approved), `…` (pending/detecting), `!` (failed). Filter tabs:
    All / Needs review / Approved / Pending. A progress header while any
    scan is `detecting` ("Detecting 251/400…"). Poll `GET /api/projects/{pid}`
@@ -178,9 +178,17 @@ Screens:
    existing `ImageCanvas` box editor; the sidebar shows every rendered crop
    with optional filename and caption fields plus flag messages. **Crop page**
    downloads a ZIP containing only the current page's crops without waiting for
-   project-wide batch export.
+   project-wide batch export. **Refresh crops** first persists any edited box
+   geometry and then re-renders all sidebar crop previews, so corrections can
+   be checked before approval. Clicking a sidebar crop opens a full-screen
+   preview with previous/next keyboard navigation, download, and Escape-to-close,
+   matching the Quick-mode gallery interaction. Thumbnail and lightbox controls
+   also rotate an individual crop left/right in persistent 90° steps, and the
+   chosen orientation is used for export. The primary **Approve & next** action approves
+   the current scan and advances to the immediately following scan (the same
+   result as the former two-step Approve, then `→` workflow).
    Keyboard (with the standard input-focus guard):
-   - `Enter` approve → advance to next needs_review scan
+   - `Enter` approve → advance to the immediately following scan
    - `→` / `←` next / previous scan (any status)
    - `E` toggle box editing focus (boxes are always editable on click)
    - `R` re-detect this scan

@@ -1,6 +1,6 @@
 # ScanSplitter Roadmap
 
-*Last updated: 2026-07-11. Status legend: ✅ done · 🔨 in progress · ⬜ planned*
+*Last updated: 2026-09-13. Status legend: ✅ done · 🔨 in progress · ⬜ planned*
 
 ## Vision
 
@@ -25,8 +25,17 @@ loop hundreds of times per sitting — every click removed compounds.
   place in Apple/Google Photos, Immich, etc.
 - **Local & private** — processing stays local; any cloud step must be
   explicit and optional.
-- **Trust the machine, verify the doubt** — automate the obvious silently,
-  surface only the uncertain for human review.
+- **Trust earned through validation** — detection suggests crops; every new scan requires human approval until representative accuracy measurements justify automatic approval.
+
+## September 2026 audit implementation
+
+✅ Immutable originals and separate proxies; canonical exports and lossless crop references.
+✅ Revision-safe jobs/saves, restart recovery, page drafts and retrying polling.
+✅ Shared settings, responsive editor, native dialogs, numeric geometry and consolidated export options.
+✅ Transactional imports, pixel/queue limits, disk artifacts and resumable confirmed deliveries.
+✅ Strict validation, shared processing services, lifecycle/DOM regression tests and reusable CI artifacts.
+
+The [binding hardening contract](specs/audit-hardening-2026-09.md) records migration behavior, limits and acceptance evidence. Automatic approval remains disabled: 9 of 20 synthetic challenge scans would have been falsely approved by the old no-flags rule. A consented representative real-scan dataset, physical-device/screen-reader testing and production-scale delivery/load certification remain future validation work.
 
 ## Foundations (done)
 

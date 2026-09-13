@@ -1,5 +1,7 @@
 # Phase 4 Spec — Library Delivery
 
+> September 2026: [Approved audit hardening contract](audit-hardening-2026-09.md) supersedes conflicting storage, confidence, lifecycle and export behavior below.
+
 *Status: complete on branch `quality-overhaul` (2026-07-11).*
 *This document is the binding contract between backend and frontend work. If the
 implementation must deviate, update this file in the same commit.*
