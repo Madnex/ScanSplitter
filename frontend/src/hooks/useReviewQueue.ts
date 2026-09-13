@@ -4,8 +4,8 @@ import type { ProjectScan } from "@/types/projects";
 /**
  * Navigation over a project's scans for review mode. `scans` is the full,
  * project-ordered list (arrows navigate across *any* status per spec);
- * `goNextNeedsReview` specifically skips to the next `needs_review` scan
- * (used by the Enter-to-approve shortcut and "Start review").
+ * Navigation in review mode always follows project order. The overview owns
+ * the separate decision of which `needs_review` scan starts a review session.
  */
 export function useReviewQueue(scans: ProjectScan[], currentScanId: string | null) {
   const index = useMemo(
@@ -22,18 +22,6 @@ export function useReviewQueue(scans: ProjectScan[], currentScanId: string | nul
   const nextId = useCallback(() => idAt(index + 1), [idAt, index]);
   const prevId = useCallback(() => idAt(index - 1), [idAt, index]);
 
-  /** Id of the next `needs_review` scan after the current one, or null if
-   * there isn't one (caller decides what to do then, e.g. return to grid). */
-  const nextNeedsReviewId = useCallback((): string | null => {
-    for (let i = index + 1; i < scans.length; i++) {
-      if (scans[i].status === "needs_review") return scans[i].id;
-    }
-    return null;
-  }, [scans, index]);
-
-  /** Id of the first `needs_review` scan in the project, for "Start review". */
-  const firstNeedsReviewId = useMemo(() => scans.find((s) => s.status === "needs_review")?.id ?? null, [scans]);
-
   return {
     currentScan,
     index,
@@ -42,7 +30,5 @@ export function useReviewQueue(scans: ProjectScan[], currentScanId: string | nul
     hasNext,
     nextId,
     prevId,
-    nextNeedsReviewId,
-    firstNeedsReviewId,
   };
 }

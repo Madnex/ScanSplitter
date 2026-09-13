@@ -25,7 +25,22 @@ export function nextPendingDetectionIndex(
  * scans with no boxes are skipped rather than generating empty crop jobs.
  */
 export function cropTargets(files: UploadedFile[]): CropTarget[] {
-  return files.flatMap((file, fileIndex) =>
-    file.boxes.length > 0 ? [{ file, fileIndex }] : []
-  );
+  return files.flatMap((file, fileIndex) => {
+    const pages = { ...file.pages, [file.currentPage]: file };
+    return Object.entries(pages).flatMap(([page, state]) => state.boxes.length
+      ? [{ file: { ...file, ...state, currentPage: Number(page) }, fileIndex }]
+      : []);
+  });
+}
+
+/** Retain each page draft while switching the currently displayed page. */
+export function selectPage(file: UploadedFile, page: number): UploadedFile {
+  const pages = { ...file.pages, [file.currentPage]: {
+    boxes: file.boxes, detectionStatus: file.detectionStatus === "detecting" ? "pending" as const : file.detectionStatus,
+    imageWidth: file.imageWidth, imageHeight: file.imageHeight,
+  } };
+  return { ...file, pages, currentPage: page, ...(pages[page] ?? {
+    boxes: [], detectionStatus: "pending" as const,
+    imageWidth: file.imageWidth, imageHeight: file.imageHeight,
+  }) };
 }

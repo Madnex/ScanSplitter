@@ -1,4 +1,5 @@
-import { useEffect, useState } from "react";
+import { Modal } from "@/components/ui/modal";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { ProgressBar } from "@/components/ui/progress";
@@ -33,6 +34,9 @@ interface DeliveryDialogProps {
 }
 
 export function DeliveryDialog({ project, onClose, showToast }: DeliveryDialogProps) {
+  const deliveryAbort = useRef<AbortController | null>(null);
+  const close = () => { deliveryAbort.current?.abort(); onClose(); };
+  useEffect(() => () => deliveryAbort.current?.abort(), []);
   const [target, setTarget] = useState<DeliveryTarget>(readPreferredDeliveryTarget);
   const [form, setForm] = useState(EMPTY_FORM);
   const [overwrite, setOverwrite] = useState(false);
@@ -88,9 +92,9 @@ export function DeliveryDialog({ project, onClose, showToast }: DeliveryDialogPr
 
   const hasSavedSecret = credentialStatus?.saved === true;
   const hasEnteredSecret = target === "immich"
-    ? !!form.api_key.trim()
+    ? !!form.api_key
     : target === "nextcloud"
-      ? !!form.password.trim()
+      ? !!form.password
       : false;
   const canDeliver = target === "folder"
     ? !!form.destination.trim()
@@ -112,6 +116,8 @@ export function DeliveryDialog({ project, onClose, showToast }: DeliveryDialogPr
   };
 
   const deliver = async () => {
+    const controller = new AbortController();
+    deliveryAbort.current = controller;
     setProgress({ value: 0, stage: "starting" });
     try {
       const targetConfig = target === "folder"
@@ -119,16 +125,16 @@ export function DeliveryDialog({ project, onClose, showToast }: DeliveryDialogPr
         : target === "immich"
           ? {
               server_url: form.server_url.trim(),
-              ...(form.api_key.trim() ? { api_key: form.api_key.trim() } : {}),
-              use_saved_credentials: hasSavedSecret && !form.api_key.trim(),
+              ...(form.api_key ? { api_key: form.api_key } : {}),
+              use_saved_credentials: hasSavedSecret && !form.api_key,
               remember_credentials: rememberCredentials,
             }
           : {
               base_url: form.base_url.trim(),
               username: form.username.trim(),
-              ...(form.password.trim() ? { password: form.password.trim() } : {}),
+              ...(form.password ? { password: form.password } : {}),
               folder: form.folder.trim(),
-              use_saved_credentials: hasSavedSecret && !form.password.trim(),
+              use_saved_credentials: hasSavedSecret && !form.password,
               remember_credentials: rememberCredentials,
             };
       const result = await deliverProject(
@@ -141,11 +147,13 @@ export function DeliveryDialog({ project, onClose, showToast }: DeliveryDialogPr
           organize_folders: project.settings.organize_folders,
           manifest_format: project.settings.manifest_format,
         },
-        (value, stage) => setProgress({ value, stage })
+        (value, stage) => setProgress({ value, stage }),
+        controller.signal
       );
-      showToast(`Delivered ${result.count} file(s) to ${result.target}`);
+      showToast(`Delivered ${result.count} file(s) to ${result.target}${result.resumed ? `; ${result.resumed} already delivered` : ""}`);
       onClose();
     } catch (error) {
+      if (controller.signal.aborted) return;
       let message = error instanceof Error ? error.message : "Delivery failed";
       if (error instanceof JobFailedError && error.errorStatus === 409) {
         const detail = error.errorDetail;
@@ -168,7 +176,7 @@ export function DeliveryDialog({ project, onClose, showToast }: DeliveryDialogPr
   const credentialHelp = target === "folder" ? null : credentialStatus;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" role="dialog" aria-modal="true">
+    <Modal title="Export and delivery" onClose={close} className="max-w-6xl w-[calc(100%-2rem)]">
       <div className="w-full max-w-xl rounded-lg border bg-background p-5">
         <div className="mb-4 flex justify-between">
           <div>
@@ -177,7 +185,7 @@ export function DeliveryDialog({ project, onClose, showToast }: DeliveryDialogPr
               Secrets can be kept in your operating system credential store.
             </p>
           </div>
-          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+          <Button variant="ghost" size="sm" onClick={close}>{progress ? "Cancel delivery" : "Close"}</Button>
         </div>
 
         <label className="text-sm">
@@ -278,6 +286,6 @@ export function DeliveryDialog({ project, onClose, showToast }: DeliveryDialogPr
           <Button onClick={() => void deliver()} disabled={!!progress || !canDeliver || loadingCredentials}>Deliver</Button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 }

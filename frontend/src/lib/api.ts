@@ -51,7 +51,7 @@ export async function uploadFile(file: File): Promise<{
   });
 
   if (!response.ok) {
-    throw new Error(`Upload failed: ${response.statusText}`);
+    await throwForResponse(response, `Upload failed: ${response.statusText}`);
   }
 
   const data: UploadResponse = await response.json();
@@ -194,7 +194,7 @@ export async function runJob<T>(
   });
 
   if (!startResponse.ok) {
-    throw new Error(`Failed to start ${kind} job: ${startResponse.statusText}`);
+    await throwForResponse(startResponse, `Failed to start ${kind} job: ${startResponse.statusText}`);
   }
 
   const { job_id: jobId }: { job_id: string } = await startResponse.json();
@@ -307,15 +307,20 @@ export async function cropImages(
   );
 
   return result.images.map((img) => ({
-    id: img.id,
+    id: img.crop_id ?? img.id,
     data: img.data,
     width: img.width,
     height: img.height,
     rotationApplied: img.rotation_applied,
+    cropId: img.crop_id,
+    manualRotation: 0,
   }));
 }
 
 export interface ExportImageData {
+  session_id?: string;
+  crop_id?: string;
+  rotation?: number;
   id: string;
   data: string;
   name: string;
@@ -598,10 +603,14 @@ export function getProjectScanCropUrl(
   projectId: string,
   scanId: string,
   boxId: string,
-  version: string = ""
+  version: string = "",
+  large: boolean = false
 ): string {
-  const suffix = version ? `?v=${encodeURIComponent(version)}` : "";
-  return `${API_BASE}/projects/${projectId}/scans/${scanId}/crops/${encodeURIComponent(boxId)}${suffix}`;
+  const params = new URLSearchParams();
+  if (version) params.set("v", version);
+  if (large) params.set("large", "true");
+  const query = params.size > 0 ? `?${params.toString()}` : "";
+  return `${API_BASE}/projects/${projectId}/scans/${scanId}/crops/${encodeURIComponent(boxId)}${query}`;
 }
 
 /**
@@ -613,7 +622,7 @@ export function getProjectScanCropUrl(
 export async function patchProjectScan(
   projectId: string,
   scanId: string,
-  patch: { boxes?: ProjectBox[]; status?: "approved" | "needs_review" }
+  patch: { boxes?: ProjectBox[]; status?: "approved" | "needs_review"; revision?: number }
 ): Promise<ProjectScan> {
   const response = await fetch(`${API_BASE}/projects/${projectId}/scans/${scanId}`, {
     method: "PATCH",
@@ -750,9 +759,10 @@ export async function exportProjectScan(
 export async function deliverProject(
   projectId: string,
   config: Record<string, unknown>,
-  onProgress?: (progress: number, stage: string | null) => void
-): Promise<{ target: string; count: number }> {
-  return runJobAt(`${API_BASE}/projects/${projectId}/deliver`, config, "project-delivery", { onProgress });
+  onProgress?: (progress: number, stage: string | null) => void,
+  signal?: AbortSignal
+): Promise<{ target: string; count: number; resumed?: number }> {
+  return runJobAt(`${API_BASE}/projects/${projectId}/deliver`, config, "project-delivery", { onProgress, signal });
 }
 
 export type DeliveryCredentialTarget = "immich" | "nextcloud";

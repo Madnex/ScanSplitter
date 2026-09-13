@@ -13,6 +13,7 @@ export const KEYBOARD_SHORTCUTS: ShortcutGroup[] = [
     name: "Canvas",
     shortcuts: [
       { keys: ["Delete", "/", "Backspace"], description: "Delete selected boxes" },
+      { keys: ["⌘ / Ctrl", "Z"], description: "Undo box deletion" },
     ],
   },
   {

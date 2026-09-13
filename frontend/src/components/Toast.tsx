@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { CheckCircle, X, XCircle, Info } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -64,10 +65,12 @@ export function Toast({ message, type = "success", duration = 4000, onClose, act
     info: "bg-blue-50 border-blue-200 text-blue-800 dark:bg-blue-950 dark:border-blue-800 dark:text-blue-100",
   };
 
-  return (
+  const content = (
     <div
+      role={type === "error" ? "alert" : "status"}
+      aria-atomic="true"
       className={cn(
-        "fixed bottom-4 right-4 z-50 flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg transition-all duration-300",
+        "fixed bottom-4 right-4 z-50 max-w-[calc(100vw-2rem)] flex items-center gap-3 px-4 py-3 rounded-lg border shadow-lg transition-all duration-300",
         styles[type],
         isExiting ? "opacity-0 translate-y-2" : "opacity-100 translate-y-0"
       )}
@@ -84,10 +87,16 @@ export function Toast({ message, type = "success", duration = 4000, onClose, act
       )}
       <button
         onClick={handleClose}
+        aria-label="Dismiss notification"
         className="ml-2 p-1 rounded-md hover:bg-black/10 dark:hover:bg-white/10 transition-colors"
       >
         <X className="w-4 h-4" />
       </button>
     </div>
   );
+
+  // A native modal is in the browser's top layer. Render feedback inside
+  // it so failures (for example project creation) remain visible.
+  const openDialog = typeof document === "undefined" ? null : document.querySelector("dialog[open]");
+  return openDialog ? createPortal(content, openDialog) : content;
 }

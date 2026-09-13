@@ -36,7 +36,7 @@ describe("SettingsPanel crop actions", () => {
     expect(html).toContain("Crop Current (3 photos)");
     expect(html).toContain("Crop All (7 photos)");
     expect(html).toContain("2 of 3 scans have photos ready");
-    expect(html).toContain("Output");
+    expect(html).toContain("Split into");
     expect(html).toContain("Photos");
     expect(html).toContain("Album pages");
     expect(html).toContain("Detection");
@@ -44,7 +44,7 @@ describe("SettingsPanel crop actions", () => {
     expect(html).toContain("Cloud AI");
     expect(html).toContain("Advanced photo settings");
     expect(html).toContain("Edge cleanup");
-    expect(html).toContain('<option value="scansplitterv5">ScanSplitter v5 · Recommended</option>');
+    expect(html).toContain('<option value="scansplitterv5">v5 · Recommended</option>');
     expect(html).toContain('<option value="conservative" selected="">Conservative</option>');
     expect(html).toContain('<option value="tight">Tight</option>');
   });
@@ -118,7 +118,7 @@ describe("SettingsPanel crop actions", () => {
     expect(html).toContain("Page layout");
     expect(html).toContain("Album pages are detected locally.");
     expect(html).toContain('<option value="single">One physical page</option>');
-    expect(html).toContain('<option value="spread" selected="">Two-page spread · split into pages</option>');
+    expect(html).toContain('<option value="spread" selected="">Two-page spread</option>');
     expect(html).toContain("Crop Current (2 pages)");
     expect(html).not.toContain("Edge cleanup");
     expect(html).not.toContain("Photo detection method");

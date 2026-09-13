@@ -1,3 +1,4 @@
+import { Modal } from "@/components/ui/modal";
 import { useEffect, useCallback } from "react";
 import { ChevronLeft, ChevronRight, X, RotateCcw, RotateCw, Download } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -10,6 +11,7 @@ interface LightboxProps {
   onClose: () => void;
   onNavigate: (index: number) => void;
   onRotate: (id: string, direction: "left" | "right") => void;
+  onDownload: (image: CroppedImage) => void;
 }
 
 export function Lightbox({
@@ -18,6 +20,7 @@ export function Lightbox({
   onClose,
   onNavigate,
   onRotate,
+  onDownload,
 }: LightboxProps) {
   const currentImage = images[currentIndex];
   const hasPrev = currentIndex > 0;
@@ -33,13 +36,8 @@ export function Lightbox({
 
   const handleDownload = useCallback(() => {
     if (!currentImage) return;
-    const link = document.createElement("a");
-    link.href = `data:image/jpeg;base64,${currentImage.data}`;
-    link.download = `${currentImage.name}.jpg`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-  }, [currentImage]);
+    onDownload(currentImage);
+  }, [currentImage, onDownload]);
 
   const handleRotateLeft = useCallback(() => {
     if (currentImage) onRotate(currentImage.id, "left");
@@ -73,14 +71,14 @@ export function Lightbox({
       }
     };
 
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown, true);
+    return () => window.removeEventListener("keydown", handleKeyDown, true);
   }, [onClose, handlePrev, handleNext, handleRotateLeft, handleRotateRight]);
 
   if (!currentImage) return null;
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/90 flex flex-col">
+    <Modal title="Photo preview" onClose={onClose} className="max-w-6xl w-[calc(100%-2rem)] h-[90dvh] bg-zinc-950 text-white">
       {/* Header */}
       <div className="flex items-center justify-between p-4 text-white">
         <div className="flex items-center gap-4">
@@ -177,6 +175,6 @@ export function Lightbox({
           </>
         )}
       </div>
-    </div>
+    </Modal>
   );
 }

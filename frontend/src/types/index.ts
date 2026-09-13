@@ -13,6 +13,7 @@ export type DetectionStatus = 'pending' | 'detecting' | 'detected' | 'failed';
 
 // Uploaded file state
 export interface UploadedFile {
+  pages?: Record<number, Pick<UploadedFile, "boxes" | "detectionStatus" | "imageWidth" | "imageHeight">>;
   sessionId: string;
   filename: string;
   pageCount: number;
@@ -25,6 +26,7 @@ export interface UploadedFile {
 
 // Source tracking for cropped images
 export interface ImageSource {
+  sessionId?: string;
   fileIndex: number;
   filename: string;
   page: number;
@@ -33,6 +35,8 @@ export interface ImageSource {
 
 // Cropped image result
 export interface CroppedImage {
+  cropId?: string;
+  manualRotation?: number;
   id: string;
   data: string; // base64
   width: number;
@@ -100,6 +104,7 @@ export interface CropResponse {
     data: string;
     width: number;
     height: number;
+    crop_id?: string;
     rotation_applied: number;
   }>;
 }

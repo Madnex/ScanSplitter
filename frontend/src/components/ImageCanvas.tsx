@@ -58,6 +58,8 @@ export function ImageCanvas({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [imageLoaded, setImageLoaded] = useState(false);
   const [imageError, setImageError] = useState<string | null>(null);
+  const [zoom, setZoom] = useState(1);
+  const [resizeVersion, setResizeVersion] = useState(0);
   const [loadAttempt, setLoadAttempt] = useState(0);
   const isUpdatingRef = useRef(false);
   const imageScaleRef = useRef(1);
@@ -239,6 +241,22 @@ export function ImageCanvas({
     };
   }, [syncBoxesFromCanvas]);
 
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+    let previous = "";
+    let timer: ReturnType<typeof setTimeout>;
+    const observer = new ResizeObserver(([entry]) => {
+      const size = `${Math.round(entry.contentRect.width)}:${Math.round(entry.contentRect.height)}`;
+      if (size === previous) return;
+      previous = size;
+      clearTimeout(timer);
+      timer = setTimeout(() => setResizeVersion(v => v + 1), 100);
+    });
+    observer.observe(container);
+    return () => { observer.disconnect(); clearTimeout(timer); };
+  }, []);
+
   // Load image when URL changes
   useEffect(() => {
     const canvas = fabricRef.current;
@@ -303,7 +321,7 @@ export function ImageCanvas({
         const containerHeight = container.clientHeight || 600;
         const availableWidth = Math.max(1, containerWidth - padding * 2);
         const availableHeight = Math.max(1, containerHeight - padding * 2);
-        const scale = Math.min(
+        const scale = zoom * Math.min(
           availableWidth / coordinateWidth,
           availableHeight / coordinateHeight,
           1 // Don't scale up small images
@@ -369,7 +387,7 @@ export function ImageCanvas({
       htmlImg.onerror = null;
       htmlImg.src = "";
     };
-  }, [imageUrl, loadAttempt, originalImageSize?.height, originalImageSize?.width]);
+  }, [imageUrl, loadAttempt, originalImageSize?.height, originalImageSize?.width, resizeVersion, zoom]);
 
   // Update boxes on canvas when props change (and image is loaded)
   useEffect(() => {
@@ -433,7 +451,7 @@ export function ImageCanvas({
 
     canvas.renderAll();
     isUpdatingRef.current = false;
-  }, [addBoxToCanvas, boxes, imageLoaded]);
+  }, [addBoxToCanvas, boxes, imageLoaded, imageMetrics]);
 
   const handleAddBox = useCallback(() => {
     const canvas = fabricRef.current;
@@ -506,6 +524,7 @@ export function ImageCanvas({
   // Handle keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (document.querySelector("dialog[open]") || e.target instanceof HTMLButtonElement || e.target instanceof HTMLSelectElement) return;
       // Skip if focused on an input, textarea, or contenteditable element
       if (
         e.target instanceof HTMLInputElement ||
@@ -531,6 +550,9 @@ export function ImageCanvas({
     <div className="flex flex-col h-full">
       {/* Toolbar */}
       <div className="flex gap-2 mb-2 flex-wrap">
+        <Button size="sm" variant="outline" onClick={() => setZoom(z => Math.max(1, z / 1.5))} disabled={zoom <= 1} aria-label="Zoom out">−</Button>
+        <Button size="sm" variant="outline" onClick={() => setZoom(z => Math.min(6, z * 1.5))} disabled={zoom >= 6} aria-label="Zoom in">+</Button>
+        <Button size="sm" variant="outline" onClick={() => setZoom(1)}>Fit</Button>
         <Button size="sm" variant="outline" onClick={handleAddBox} disabled={!imageLoaded}>
           <Plus className="w-4 h-4 mr-1" />
           Add Box
@@ -562,10 +584,12 @@ export function ImageCanvas({
       {/* Canvas container */}
       <div
         ref={containerRef}
-        className="flex-1 bg-muted/30 rounded-lg overflow-hidden flex items-center justify-center min-h-[400px] relative"
+        className="flex-1 bg-muted/30 rounded-lg overflow-auto flex items-start justify-start min-h-[240px] lg:min-h-0 relative"
       >
         {/* Canvas wrapper - Fabric creates its own wrapper, so we wrap that */}
         <div style={{
+          margin: "auto",
+          flexShrink: 0,
           visibility: imageUrl && imageLoaded ? 'visible' : 'hidden',
           position: imageUrl && imageLoaded ? 'relative' : 'absolute',
         }}>
@@ -614,9 +638,23 @@ export function ImageCanvas({
         )}
       </div>
 
+      <details className="mt-2 shrink-0 rounded border p-2 text-xs">
+        <summary className="cursor-pointer">Edit photo coordinates with keyboard</summary>
+        <div className="mt-2 max-h-48 space-y-3 overflow-auto">
+          {boxes.map((box, index) => <fieldset key={box.id} className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+            <legend className="mb-1 font-medium">Photo {index + 1}</legend>
+            {([['centerX', 'Center X'], ['centerY', 'Center Y'], ['width', 'Width'], ['height', 'Height'], ['angle', 'Angle']] as const).map(([key, label]) => <label key={key}>{label}<input className="mt-1 w-full rounded border bg-background p-1.5" type="number" step="1" value={Math.round(box[key] * 100) / 100} min={key === 'width' || key === 'height' ? 1 : undefined} onChange={e => {
+              const value = Number(e.target.value);
+              if (!Number.isFinite(value) || ((key === 'width' || key === 'height') && value <= 0)) return;
+              onBoxesChange(boxes.map(b => b.id === box.id ? { ...b, [key]: value } : b));
+            }} /></label>)}
+          </fieldset>)}
+        </div>
+      </details>
+
       {/* Instructions */}
       <p className="text-xs text-muted-foreground mt-2">
-        Drag boxes to move, use corner handles to resize/rotate, press Delete to remove selected
+        Drag boxes to move; use handles to resize/rotate. Zoom in and scroll to pan. Numeric controls are available above.
       </p>
     </div>
   );

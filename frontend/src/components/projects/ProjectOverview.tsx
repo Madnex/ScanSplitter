@@ -1,5 +1,7 @@
+import { ProjectExportDialog } from "./ProjectExportDialog";
+import { DetectionControls } from "@/components/DetectionControls";
 import { useCallback, useMemo, useRef, useState } from "react";
-import { ArrowLeft, BookOpen, Download, PlayCircle, RefreshCw, Send, SlidersHorizontal, Tags, Upload } from "lucide-react";
+import { ArrowLeft, BookOpen, Download, PlayCircle, RefreshCw, SlidersHorizontal, Tags, Upload } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { ConfirmDialog } from "@/components/ConfirmDialog";
 import { ProgressBar } from "@/components/ui/progress";
@@ -128,6 +130,7 @@ function matchesFilter(scan: ProjectScan, filter: FilterTab): boolean {
 export function ProjectOverview({ projectId, onBack, onReview, showToast }: ProjectOverviewProps) {
   const { project, isLoading, error, refresh, setProject } = useProject(projectId);
   const [filter, setFilter] = useState<FilterTab>("all");
+  const [autoDetectUploads, setAutoDetectUploads] = useState(true);
   const [isUploading, setIsUploading] = useState(false);
   const [isExporting, setIsExporting] = useState(false);
   const [exportProgress, setExportProgress] = useState<{ progress: number; stage: string | null } | null>(null);
@@ -136,6 +139,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
   const [confirmRedetectAll, setConfirmRedetectAll] = useState(false);
   const [showMetadata, setShowMetadata] = useState(false);
   const [showPairing, setShowPairing] = useState(false);
+  const [showExport, setShowExport] = useState(false);
   const [showDelivery, setShowDelivery] = useState(false);
   const [showRestoration, setShowRestoration] = useState(false);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
@@ -163,7 +167,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
       if (files.length === 0) return;
       setIsUploading(true);
       try {
-        await uploadProjectScans(projectId, files, true);
+        await uploadProjectScans(projectId, files, autoDetectUploads);
         await refresh();
       } catch (err) {
         showToast(err instanceof Error ? err.message : "Failed to upload scans", "error");
@@ -171,7 +175,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
         setIsUploading(false);
       }
     },
-    [projectId, refresh, showToast]
+    [projectId, refresh, showToast, autoDetectUploads]
   );
 
   const handleFileInputChange = useCallback(
@@ -188,12 +192,11 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
     (e: React.DragEvent) => {
       e.preventDefault();
       setIsDragging(false);
-      const files = Array.from(e.dataTransfer.files).filter(
-        (f) => f.type.startsWith("image/") || f.type === "application/pdf"
-      );
+      if (isUploading) return;
+      const files = Array.from(e.dataTransfer.files);
       void handleFilesSelected(files);
     },
-    [handleFilesSelected]
+    [handleFilesSelected, isUploading]
   );
 
   const queueDetection = useCallback(async (redetectAll: boolean) => {
@@ -249,7 +252,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
         controller.signal,
         (progress, stage) => setExportProgress({ progress, stage })
       );
-      showToast(`Exported ${exportableCount} photo(s)`, "success");
+      showToast(`Exported photos from ${exportableCount} scan${exportableCount === 1 ? "" : "s"}`, "success");
     } catch (err) {
       showToast(err instanceof Error ? err.message : "Failed to export project", "error");
     } finally {
@@ -290,35 +293,12 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
 
   return (
     <div className="flex-1 flex flex-col min-h-0 overflow-y-auto">
-      <div className="flex items-center gap-3 mb-4">
+      <div className="flex flex-wrap items-center gap-3 mb-4">
         <Button size="sm" variant="ghost" onClick={onBack}>
           <ArrowLeft className="w-4 h-4 mr-1" />
           Projects
         </Button>
-        <h2 className="text-lg font-semibold truncate flex-1">{project.name}</h2>
-        <ProjectDetectorSelect
-          value={project.settings.detection_mode}
-          disabled={isSavingSettings || isDetectingAny}
-          onChange={(detection_mode) => void handleSettingsChange({ detection_mode })}
-        />
-        {project.settings.detection_mode === "album-splitter" && (
-          <label className="flex items-center gap-2 text-xs text-muted-foreground">
-            Pages
-            <select
-              aria-label="Album page layout"
-              className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
-              value={project.settings.album_layout}
-              disabled={isSavingSettings || isDetectingAny}
-              onChange={(event) => void handleSettingsChange({
-                album_layout: event.target.value as ProjectSettings["album_layout"],
-              })}
-            >
-              <option value="auto">Auto</option>
-              <option value="single">One page</option>
-              <option value="spread">Split spread</option>
-            </select>
-          </label>
-        )}
+        <h2 className="text-lg font-semibold truncate min-w-32 flex-1" title={project.name}>{project.name}</h2>
         <ProjectDetectionControls
           scope={detectionScope}
           disabled={isQueueingDetect || isSavingSettings || isDetectingAny || scans.length === 0}
@@ -335,33 +315,32 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
         </Button>
         <Button size="sm" variant="outline" onClick={() => setShowRestoration((value) => !value)}>
           <SlidersHorizontal className="w-4 h-4 mr-1" />
-          Process
+          Settings
         </Button>
-        <label className="flex items-center gap-2 text-xs text-muted-foreground">
-          Output
-          <select
-            aria-label="Output format"
-            className="h-8 rounded-md border bg-background px-2 text-xs text-foreground"
-            value={project.settings.format}
-            disabled={isSavingSettings || isExporting}
-            onChange={(event) => void handleSettingsChange({ format: event.target.value as "jpeg" | "png" })}
-          >
-            <option value="jpeg">JPEG</option>
-            <option value="png">PNG (lossless)</option>
-          </select>
-        </label>
-        <Button size="sm" onClick={handleExport} disabled={isExporting || exportableCount === 0}>
+        <Button size="sm" onClick={() => setShowExport(true)} disabled={isExporting || exportableCount === 0}>
           <Download className="w-4 h-4 mr-1" />
-          {isExporting ? "Exporting…" : `Export (${exportableCount})`}
+          {isExporting ? "Exporting…" : `Export ${exportableCount} scan${exportableCount === 1 ? "" : "s"}`}
         </Button>
-        <Button size="sm" variant="outline" onClick={() => setShowDelivery(true)} disabled={exportableCount === 0}><Send className="mr-1 h-4 w-4" />Deliver</Button>
+
       </div>
 
+      {scans.some(scan => scan.source_integrity === "legacy_derivative") && <p role="status" className="mb-3 rounded border p-3 text-sm">This project contains legacy imports. Only processed copies were retained. Re-import the original files for archival output; existing edits remain available.</p>}
+      <p className="mb-3 text-xs text-muted-foreground">1. Upload scans → 2. Review each crop → 3. Export reviewed photos</p>
       {project.settings.detection_mode === "openrouter" && <ProjectCloudDisclosure />}
 
       {showRestoration && (
         <section className="mb-4 rounded-lg bg-muted/45 px-4 py-3" aria-labelledby="restoration-heading">
-          <div className="flex items-start justify-between gap-5">
+          <div className="mb-5 max-w-xl"><DetectionControls disabled={isSavingSettings || isDetectingAny} settings={{
+            detectionMode: project.settings.detection_mode, albumLayout: project.settings.album_layout,
+            minArea: project.settings.min_area_ratio, maxArea: project.settings.max_area_ratio,
+            autoRotate: project.settings.auto_rotate, edgeCleanupMode: project.settings.edge_cleanup_mode,
+            autoDetect: autoDetectUploads,
+          }} onChange={(next) => { setAutoDetectUploads(next.autoDetect); void handleSettingsChange({
+            detection_mode: next.detectionMode, album_layout: next.albumLayout,
+            min_area_ratio: next.minArea, max_area_ratio: next.maxArea,
+            auto_rotate: next.autoRotate, edge_cleanup_mode: next.edgeCleanupMode,
+          }); }} /></div>
+          <div className="flex flex-wrap items-start justify-between gap-5">
             <div>
               <h3 id="restoration-heading" className="text-sm font-semibold">Crop processing & restoration</h3>
               <p className="mt-0.5 max-w-2xl text-xs leading-relaxed text-muted-foreground">
@@ -397,9 +376,14 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
               <label className="flex cursor-pointer items-center justify-end gap-3 text-sm"><span className="text-right"><span className="block font-medium">2× upscale</span><span className="block text-xs text-muted-foreground">Non-generative Lanczos</span></span><input type="checkbox" className="h-4 w-4 accent-primary" checked={project.settings.upscale_2x} disabled={isSavingSettings} onChange={(event) => void handleSettingsChange({ upscale_2x: event.target.checked })} /></label>
             </div>
           </div>
-          <div className="mt-3 flex flex-wrap items-end gap-4 border-t pt-3"><label className="text-xs">Lossless master<select disabled={isSavingSettings} className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.master_format ?? ""} onChange={(event) => void handleSettingsChange({ master_format: (event.target.value || null) as "png" | "tiff" | null })}><option value="">None</option><option value="png">PNG</option><option value="tiff">TIFF</option></select></label><label className="flex items-center gap-2 text-xs"><input type="checkbox" disabled={isSavingSettings} checked={project.settings.include_gps} onChange={(event) => void handleSettingsChange({ include_gps: event.target.checked })} />Include GPS coordinates</label><label className="flex items-center gap-2 text-xs"><input type="checkbox" disabled={isSavingSettings} checked={project.settings.organize_folders} onChange={(event) => void handleSettingsChange({ organize_folders: event.target.checked })} />Folders by album/year/event</label><label className="text-xs">Manifest<select disabled={isSavingSettings} className="mt-1 block h-8 rounded border bg-background px-2" value={project.settings.manifest_format ?? ""} onChange={(event) => void handleSettingsChange({ manifest_format: (event.target.value || null) as "json" | "csv" | "both" | null })}><option value="">None</option><option value="json">JSON</option><option value="csv">CSV</option><option value="both">JSON + CSV</option></select></label></div>
+
         </section>
       )}
+
+      {showExport && <ProjectExportDialog settings={project.settings} count={exportableCount}
+        busy={isSavingSettings || isExporting} onChange={patch => void handleSettingsChange(patch)}
+        onDownload={() => void handleExport()} onClose={() => setShowExport(false)}
+        onDeliver={() => { setShowExport(false); setShowDelivery(true); }} />}
 
       {confirmRedetectAll && (
         <ConfirmDialog
@@ -445,25 +429,27 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
           ref={fileInputRef}
           type="file"
           multiple
-          accept="image/*,.pdf"
+          accept=".jpg,.jpeg,.png,.tif,.tiff,.bmp,.webp,.pdf"
           className="hidden"
           onChange={handleFileInputChange}
           disabled={isUploading}
         />
-        <label
+        <button
+          type="button"
+          disabled={isUploading}
           onClick={() => fileInputRef.current?.click()}
-          className="flex flex-col items-center gap-1.5 cursor-pointer"
+          className="flex w-full flex-col items-center gap-1.5 rounded cursor-pointer"
         >
           <Upload className="w-6 h-6 text-muted-foreground" />
           <span className="text-sm text-muted-foreground">
             {isUploading ? "Uploading…" : "Drop scans here or click to upload (images or PDFs, multi-select)"}
           </span>
-        </label>
+        </button>
       </div>
 
       {/* Filter tabs + Start review */}
       <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
-        <div className="flex gap-1">
+        <div className="flex flex-wrap gap-1">
           {FILTER_TABS.map((tab) => {
             const count =
               tab.key === "all"
@@ -473,6 +459,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
               <button
                 key={tab.key}
                 onClick={() => setFilter(tab.key)}
+                aria-pressed={filter === tab.key}
                 className={cn(
                   "px-3 py-1.5 rounded-md text-sm transition-colors",
                   filter === tab.key

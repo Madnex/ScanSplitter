@@ -33,21 +33,31 @@ export function FileTabs({ files, activeIndex, onSelect, onClose }: FileTabsProp
         <div
           key={`${file.sessionId}-${file.filename}`}
           className={cn(
-            "flex min-w-0 max-w-full items-center gap-2 px-3 py-1.5 rounded-t-md text-sm cursor-pointer transition-colors",
+            "flex min-w-0 max-w-full items-center gap-2 px-3 py-1.5 rounded-t-md text-sm transition-colors",
             index === activeIndex
               ? "bg-background border border-b-0"
               : "bg-muted/50 hover:bg-muted"
           )}
-          onClick={() => onSelect(index)}
         >
-          <DetectionStatusIcon status={file.detectionStatus} />
-          <span className="min-w-0 max-w-32 truncate">{file.filename}</span>
-          {file.pageCount > 1 && (
-            <span className="text-xs text-muted-foreground">
-              ({file.pageCount} pages)
-            </span>
-          )}
           <button
+            type="button"
+            onClick={() => onSelect(index)}
+            aria-pressed={index === activeIndex}
+            aria-label={`Open ${file.filename}, ${file.detectionStatus}`}
+            title={file.filename}
+            className="flex min-w-0 items-center gap-2 rounded text-left"
+          >
+            <DetectionStatusIcon status={file.detectionStatus} />
+            <span className="min-w-0 max-w-32 truncate">{file.filename}</span>
+            {file.pageCount > 1 && (
+              <span className="text-xs text-muted-foreground">
+                ({file.pageCount} pages)
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            aria-label={`Close ${file.filename}`}
             onClick={(e) => {
               e.stopPropagation();
               onClose(index);

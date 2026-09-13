@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Upload } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -9,6 +9,7 @@ interface FileUploadProps {
 
 export function FileUpload({ onUpload, disabled }: FileUploadProps) {
   const [isDragging, setIsDragging] = useState(false);
+  const inputRef = useRef<HTMLInputElement>(null);
 
   const handleDragOver = useCallback((e: React.DragEvent) => {
     e.preventDefault();
@@ -28,14 +29,10 @@ export function FileUpload({ onUpload, disabled }: FileUploadProps) {
       if (disabled) return;
 
       const files = Array.from(e.dataTransfer.files);
-      const validFiles = files.filter(
-        (f) =>
-          f.type.startsWith("image/") ||
-          f.type === "application/pdf"
-      );
-
-      if (validFiles.length > 0) {
-        onUpload(validFiles);
+      // The server validates extensions and content. MIME types may be empty
+      // for valid scans, and unsupported files should produce a useful error.
+      if (files.length > 0) {
+        onUpload(files);
       }
     },
     [onUpload, disabled]
@@ -44,18 +41,13 @@ export function FileUpload({ onUpload, disabled }: FileUploadProps) {
   const handleFileSelect = useCallback(
     (e: React.ChangeEvent<HTMLInputElement>) => {
       const files = Array.from(e.target.files ?? []);
-      const validFiles = files.filter(
-        (f) =>
-          f.type.startsWith("image/") ||
-          f.type === "application/pdf"
-      );
-      if (validFiles.length > 0) {
-        onUpload(validFiles);
+      if (!disabled && files.length > 0) {
+        onUpload(files);
       }
       // Reset input so same file can be selected again
       e.target.value = "";
     },
-    [onUpload]
+    [onUpload, disabled]
   );
 
   return (
@@ -72,29 +64,32 @@ export function FileUpload({ onUpload, disabled }: FileUploadProps) {
       )}
     >
       <input
+        ref={inputRef}
         type="file"
         id="file-upload"
         className="hidden"
-        accept="image/*,.pdf"
+        accept=".jpg,.jpeg,.png,.tif,.tiff,.bmp,.webp,.pdf"
         onChange={handleFileSelect}
         disabled={disabled}
         multiple
       />
-      <label
-        htmlFor="file-upload"
+      <button
+        type="button"
+        onClick={() => inputRef.current?.click()}
+        disabled={disabled}
         className={cn(
-          "flex flex-col items-center gap-2 cursor-pointer",
+          "flex w-full flex-col items-center gap-2 rounded cursor-pointer",
           disabled && "cursor-not-allowed"
         )}
       >
         <Upload className="w-8 h-8 text-muted-foreground" />
         <span className="text-sm text-muted-foreground">
-          Drop files here or click to upload
+          {disabled ? "Uploading…" : "Drop files here or click to upload"}
         </span>
         <span className="text-xs text-muted-foreground/75">
           Images or PDFs
         </span>
-      </label>
+      </button>
     </div>
   );
 }

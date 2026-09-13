@@ -1,3 +1,4 @@
+import { selectPage } from "@/lib/quickMode";
 import { useState, useCallback, useEffect, useMemo, useRef } from "react";
 import { HelpCircle } from "lucide-react";
 import { FileUpload } from "@/components/FileUpload";
@@ -43,6 +44,7 @@ function App() {
   // Top-level mode: "quick" is the entire pre-existing single-session flow
   // below, unchanged; "projects" is the new persistent-projects flow, fully
   // self-contained in src/components/projects/ + src/hooks/.
+  const [mobilePanel, setMobilePanel] = useState<"upload" | "review" | "export">("upload");
   const [mode, setMode] = useState<AppMode>("quick");
 
   // File state
@@ -164,7 +166,9 @@ function App() {
     }
 
     // Poll until ready (or error)
+    const deadline = Date.now() + 180_000;
     for (;;) {
+      if (Date.now() > deadline) throw new Error("Model preparation timed out. Check your connection and retry.");
       await sleep(500);
       statuses = await refreshModelStatuses();
       if (!statuses) continue;
@@ -240,6 +244,7 @@ function App() {
   // Global keyboard shortcut (? for help)
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (mode !== "quick" || document.querySelector("dialog[open]")) return;
       // Skip if in input field
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
         return;
@@ -252,7 +257,7 @@ function App() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [mode]);
 
   // Compute images for current scan vs all
   const currentScanImages = useMemo(() => {
@@ -335,6 +340,7 @@ function App() {
         options.silent ? undefined : (progress, stage) => setDetectProgress({ progress, stage })
       );
 
+      if (controller.signal.aborted || detectAbortControllerRef.current !== controller) return;
       // Belt-and-braces staleness guard: only apply if the target file is
       // still at the index/page we computed boxes for. abort() should have
       // already prevented this branch from running for a superseded
@@ -394,7 +400,9 @@ function App() {
     const startIndex = files.length;
 
     try {
+      const failures: string[] = [];
       for (const file of filesToUpload) {
+        try {
         const result = await uploadFile(file);
         const newFile: UploadedFile = {
           sessionId: result.sessionId,
@@ -407,14 +415,19 @@ function App() {
           detectionStatus: 'pending',
         };
         setFiles((prev) => [...prev, newFile]);
+        } catch (error) {
+          failures.push(`${file.name}: ${error instanceof Error ? error.message : "Upload failed"}`);
+        }
       }
+      if (failures.length) showToast(failures.join("; "), "error");
       // Switch to first newly uploaded file. Auto-detection (if enabled) is
       // handled reactively by the "pending" effect below for every file
       // that just got added, not triggered here directly.
       setActiveFileIndex(startIndex);
+      setMobilePanel("review");
     } catch (error) {
       console.error("Upload failed:", error);
-      showToast("Failed to upload file(s)", "error");
+      showToast(error instanceof Error ? error.message : "Failed to upload file(s)", "error");
     } finally {
       setIsUploading(false);
     }
@@ -428,6 +441,9 @@ function App() {
   // Handle file tab close
   const handleCloseFile = useCallback((index: number) => {
     cancelInFlightDetection();
+    cropAbortControllerRef.current?.abort();
+    const closingSession = files[index]?.sessionId;
+    if (closingSession) void fetch(`/api/session/${closingSession}`, { method: "DELETE" }).catch(() => undefined);
     // Remove cropped images from this file
     setCroppedImages((prev) => prev.filter((img) => img.source.fileIndex !== index));
     // Reindex sources for files after the removed one
@@ -442,7 +458,7 @@ function App() {
     if (activeFileIndex >= index && activeFileIndex > 0) {
       setActiveFileIndex(activeFileIndex - 1);
     }
-  }, [activeFileIndex, cancelInFlightDetection]);
+  }, [activeFileIndex, cancelInFlightDetection, files]);
 
   // Handle page change
   const handlePageChange = useCallback((page: number) => {
@@ -451,7 +467,7 @@ function App() {
     setFiles((prev) =>
       prev.map((f, i) =>
         i === activeFileIndex
-          ? { ...f, currentPage: page, boxes: [], detectionStatus: 'pending' as const }
+          ? selectPage(f, page)
           : f
       )
     );
@@ -648,6 +664,7 @@ function App() {
                 width: item.height,
                 height: item.width,
                 rotationApplied: (item.rotationApplied + rotationDelta + 360) % 360,
+                manualRotation: ((item.manualRotation ?? 0) + rotationDelta + 360) % 360,
               }
             : item
         )
@@ -700,10 +717,11 @@ function App() {
       );
 
       // Remove existing images from same file/page before adding new ones
+      if (controller.signal.aborted) return;
       setCroppedImages((prev) => {
         const filtered = prev.filter(
           (img) =>
-            img.source.fileIndex !== activeFileIndex ||
+            img.source.sessionId !== activeFile.sessionId ||
             img.source.page !== activeFile.currentPage
         );
 
@@ -716,6 +734,7 @@ function App() {
           name: `${settings.detectionMode === "album-splitter" ? "page" : "photo"}_${nextIndex + idx}`,
           dateTaken: null as string | null,
           source: {
+            sessionId: activeFile.sessionId,
             fileIndex: activeFileIndex,
             filename: activeFile.filename,
             page: activeFile.currentPage,
@@ -782,13 +801,13 @@ function App() {
         batches.push({ ...target, images });
       }
 
+      if (controller.signal.aborted) return;
       setCroppedImages((previous) => {
         const replacedScans = new Set(
           batches.map((batch) => `${batch.file.sessionId}:${batch.file.currentPage}`)
         );
         const retained = previous.filter((image) => {
-          const sourceFile = files[image.source.fileIndex];
-          return !sourceFile || !replacedScans.has(`${sourceFile.sessionId}:${image.source.page}`);
+          return !replacedScans.has(`${image.source.sessionId}:${image.source.page}`);
         });
         const added = batches.flatMap((batch) =>
           batch.images.map((image, index) => ({
@@ -796,6 +815,7 @@ function App() {
             name: `${settings.detectionMode === "album-splitter" ? "page" : "photo"}_${retained.length + index + 1}`,
             dateTaken: null as string | null,
             source: {
+              sessionId: batch.file.sessionId,
               fileIndex: batch.fileIndex,
               filename: batch.file.filename,
               page: batch.file.currentPage,
@@ -828,7 +848,7 @@ function App() {
         setCropProgress(null);
       }
     }
-  }, [batchCropTargets, files, settings.autoRotate, settings.edgeCleanupMode, settings.detectionMode, ensureModelReady, namingPattern, showToast]);
+  }, [batchCropTargets, settings.autoRotate, settings.edgeCleanupMode, settings.detectionMode, ensureModelReady, namingPattern, showToast]);
 
   // Handle export
   const handleExport = useCallback(async () => {
@@ -951,7 +971,7 @@ function App() {
       setFiles((prev) =>
         prev.map((f, i) =>
           i === fileIndex
-            ? { ...f, currentPage: page, boxes: [], detectionStatus: 'pending' as const }
+            ? selectPage(f, page)
             : f
         )
       );
@@ -964,10 +984,11 @@ function App() {
     : null;
 
   return (
-    <div className="h-screen flex flex-col p-4 overflow-hidden">
-      <div className="flex-1 flex flex-col min-h-0">
+    <div className="min-h-dvh xl:h-dvh flex flex-col p-4 xl:overflow-hidden">
+      <a href="#main-content" className="sr-only focus:not-sr-only">Skip to workspace</a>
+      <main tabIndex={-1} id="main-content" className="flex-1 flex flex-col xl:min-h-0">
         {/* Header */}
-        <header className="mb-4 flex-shrink-0 flex items-center justify-between">
+        <header className="mb-4 flex-shrink-0 flex flex-wrap gap-3 items-center justify-between">
           <div className="flex items-center gap-3">
             <img src="/logo_grid_only.png" alt="ScanSplitter" className="w-10 h-10" />
             <div>
@@ -983,7 +1004,9 @@ function App() {
           <div className="flex items-center gap-3">
             <div className="flex items-center rounded-md border p-0.5 bg-muted/50">
               <button
-                onClick={() => setMode("quick")}
+                onClick={() => { if (window.dispatchEvent(new Event("scansplitter:navigate", { cancelable: true }))) setMode("quick"); }}
+                aria-pressed={mode === "quick"}
+                title="Quick: temporary scans for this browser session"
                 className={`px-3 py-1 text-sm rounded transition-colors ${
                   mode === "quick" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
                 }`}
@@ -991,7 +1014,9 @@ function App() {
                 Quick
               </button>
               <button
-                onClick={() => setMode("projects")}
+                onClick={() => { if (window.dispatchEvent(new Event("scansplitter:navigate", { cancelable: true }))) setMode("projects"); }}
+                aria-pressed={mode === "projects"}
+                title="Projects: saved collections you can reopen"
                 className={`px-3 py-1 text-sm rounded transition-colors ${
                   mode === "projects" ? "bg-background shadow-sm font-medium" : "text-muted-foreground hover:text-foreground"
                 }`}
@@ -1012,13 +1037,17 @@ function App() {
           </div>
         </header>
 
+        <p className="mb-3 text-xs text-muted-foreground">{mode === "quick" ? "Quick is temporary. Upload → Review crops → Export. Use Projects to save a collection for later." : "Projects save your scans and editing progress on this computer."}</p>
+        {mode === "quick" && <nav aria-label="Workflow" className="mb-3 flex gap-2 xl:hidden">
+          {(["upload", "review", "export"] as const).map((panel, index) => <Button key={panel} size="sm" variant={mobilePanel === panel ? "default" : "outline"} aria-pressed={mobilePanel === panel} onClick={() => setMobilePanel(panel)}>{index + 1}. {panel[0].toUpperCase() + panel.slice(1)}</Button>)}
+        </nav>}
         {mode === "projects" && <ProjectsRoot />}
 
         {/* Main layout */}
         {mode === "quick" && (
-        <div className="flex-1 grid min-w-0 grid-cols-1 lg:grid-cols-[250px_minmax(0,1fr)_320px] gap-4 min-h-0">
+        <div className="flex-1 grid min-w-0 grid-cols-1 xl:grid-cols-[20rem_minmax(0,1fr)_20rem] gap-4 min-h-0">
           {/* Left panel - Settings */}
-          <div className="space-y-4 overflow-y-auto">
+          <div className={`${mobilePanel === "upload" ? "block" : "hidden"} xl:block space-y-4 xl:overflow-y-auto`}>
             <FileUpload onUpload={handleUpload} disabled={isUploading} />
             <SettingsPanel
               settings={settings}
@@ -1047,7 +1076,7 @@ function App() {
           </div>
 
           {/* Center panel - Canvas */}
-          <div className="flex min-w-0 flex-col min-h-0">
+          <div className={`${mobilePanel === "review" ? "flex" : "hidden"} xl:flex min-w-0 flex-col min-h-[32rem] xl:min-h-0`}>
             <div className="flex min-w-0 flex-col items-start gap-2">
               <FileTabs
                 files={files}
@@ -1081,7 +1110,7 @@ function App() {
           </div>
 
           {/* Right panel - Results */}
-          <div className="min-w-0 overflow-y-auto">
+          <div className={`${mobilePanel === "export" ? "block" : "hidden"} xl:block min-w-0 xl:overflow-y-auto`}>
             <ResultsGallery
               allImages={croppedImages}
               currentScanImages={currentScanImages}
@@ -1108,7 +1137,7 @@ function App() {
           </div>
         </div>
         )}
-      </div>
+      </main>
 
       {/* Toast notifications */}
       {toast && (

@@ -1,7 +1,8 @@
+import { Modal } from "@/components/ui/modal";
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { geocodePlace, patchProjectMetadata } from "@/lib/api";
+import { patchProjectMetadata } from "@/lib/api";
 import type { DatePrecision, Project, ProjectMetadata } from "@/types/projects";
 
 interface MetadataEditorProps {
@@ -16,7 +17,7 @@ const empty: ProjectMetadata = {
   latitude: null, longitude: null, caption: null, people: [], event: null, album: null,
 };
 
-function text(value: string): string | null { return value.trim() || null; }
+function text(value: string): string | null { return value || null; }
 
 export function MetadataEditor({ project, onClose, onSaved, showToast }: MetadataEditorProps) {
   const [scope, setScope] = useState<"all" | string>("all");
@@ -28,9 +29,10 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
   const [dirty, setDirty] = useState<Set<keyof ProjectMetadata>>(() => new Set());
   const [peopleInput, setPeopleInput] = useState(() => initial.people.join(", "));
   const [saving, setSaving] = useState(false);
-  const [lookingUp, setLookingUp] = useState(false);
+  const close = () => { if (!saving && (!dirty.size || window.confirm("Discard unsaved metadata changes?"))) onClose(); };
 
   const changeScope = (next: string) => {
+    if (dirty.size && !window.confirm("Discard unsaved metadata before changing scope?")) return;
     setScope(next);
     const nextForm = next === "all" ? empty : (project.scans.find((scan) => scan.id === next)?.metadata ?? empty);
     setForm(nextForm);
@@ -53,6 +55,12 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
           Object.assign(metadata, { [key]: form[key] });
         }
       });
+      // Coordinates are one partial-patch field pair, even when editing
+      // only one coordinate of an existing location.
+      if (dirty.has("latitude") || dirty.has("longitude")) {
+        metadata.latitude = form.latitude;
+        metadata.longitude = form.longitude;
+      }
       await patchProjectMetadata(project.id, scope === "all" ? null : [scope], metadata);
       await onSaved();
       showToast(`Metadata applied to ${scope === "all" ? `${project.scans.length} scans` : "1 scan"}`);
@@ -61,29 +69,16 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
       showToast(error instanceof Error ? error.message : "Failed to save metadata", "error");
     } finally { setSaving(false); }
   };
-  const lookup = async () => {
-    if (!form.place_name) return;
-    setLookingUp(true);
-    try {
-      const response = await geocodePlace(form.place_name);
-      const first = response.results[0];
-      if (!first) return showToast("No matching place found", "info");
-      setForm((current) => ({ ...current, place_name: first.name, latitude: first.latitude, longitude: first.longitude }));
-      setDirty((current) => new Set([...current, "place_name", "latitude", "longitude"]));
-      showToast(`Coordinates from ${response.provider}`, "info");
-    } catch (error) { showToast(error instanceof Error ? error.message : "Place lookup failed", "error"); }
-    finally { setLookingUp(false); }
-  };
 
   return (
-    <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4" role="dialog" aria-modal="true">
+    <Modal title="Archival metadata" onClose={close} className="max-w-2xl">
       <div className="bg-background border rounded-lg w-full max-w-2xl max-h-[90vh] overflow-y-auto p-5">
         <div className="flex items-start justify-between gap-4 mb-4">
-          <div><h3 className="text-lg font-semibold">Archival metadata</h3><p className="text-xs text-muted-foreground">Written to every JPEG crop at export; originals stay untouched.</p></div>
-          <Button variant="ghost" size="sm" onClick={onClose}>Close</Button>
+          <div><h3 className="text-lg font-semibold">Archival metadata</h3><p className="text-xs text-muted-foreground">Written to exported photos; retained originals stay untouched.</p></div>
+          <Button variant="ghost" size="sm" onClick={close}>Close</Button>
         </div>
         <label className="text-sm font-medium">Apply to
-          <select className="mt-1 w-full h-9 rounded-md border bg-background px-3 text-sm" value={scope} onChange={(e) => changeScope(e.target.value)}>
+          <select className="mt-1 w-full h-9 rounded-md border bg-background px-3 text-sm" value={scope} disabled={saving} onChange={(e) => changeScope(e.target.value)}>
             <option value="all">All scans</option>
             {project.scans.map((scan, index) => <option key={scan.id} value={scan.id}>Scan {index + 1}: {scan.original_name}</option>)}
           </select>
@@ -96,7 +91,7 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
             </select>
           </label>
           <label className="text-sm sm:col-span-2">Archival date wording<Input placeholder="circa 1980, summer 1975…" value={form.date_label ?? ""} onChange={(e) => set("date_label", text(e.target.value))} /></label>
-          <label className="text-sm sm:col-span-2">Place<Input placeholder="Antwerp, Belgium" value={form.place_name ?? ""} onChange={(e) => set("place_name", text(e.target.value))} /><Button type="button" size="sm" variant="outline" className="mt-2" onClick={lookup} disabled={lookingUp || !form.place_name}>{lookingUp ? "Looking up…" : "Look up with OpenStreetMap"}</Button></label>
+          <label className="text-sm sm:col-span-2">Place<Input placeholder="Antwerp, Belgium" value={form.place_name ?? ""} onChange={(e) => set("place_name", text(e.target.value))} /></label>
           <label className="text-sm">Latitude<Input type="number" step="any" value={form.latitude ?? ""} onChange={(e) => set("latitude", e.target.value === "" ? null : Number(e.target.value))} /></label>
           <label className="text-sm">Longitude<Input type="number" step="any" value={form.longitude ?? ""} onChange={(e) => set("longitude", e.target.value === "" ? null : Number(e.target.value))} /></label>
           <label className="text-sm sm:col-span-2">Caption<textarea className="mt-1 w-full min-h-20 rounded-md border bg-background px-3 py-2 text-sm" value={form.caption ?? ""} onChange={(e) => set("caption", text(e.target.value))} /></label>
@@ -104,9 +99,9 @@ export function MetadataEditor({ project, onClose, onSaved, showToast }: Metadat
           <label className="text-sm">Event<Input placeholder="Family reunion" value={form.event ?? ""} onChange={(e) => set("event", text(e.target.value))} /></label>
           <label className="text-sm">Album / roll<Input placeholder="Shoebox 3" value={form.album ?? ""} onChange={(e) => set("album", text(e.target.value))} /></label>
         </div>
-        <p className="text-xs text-muted-foreground mt-4">Coordinates are embedded only when Include GPS is enabled. Library-grade portable metadata requires JPEG export.</p>
-        <div className="flex justify-end gap-2 mt-5"><Button variant="outline" onClick={onClose}>Cancel</Button><Button onClick={save} disabled={saving || project.scans.length === 0}>{saving ? "Saving…" : "Apply metadata"}</Button></div>
+        <p className="text-xs text-muted-foreground mt-4">Coordinates are embedded only when Include GPS is enabled. JPEG, PNG and TIFF carry metadata; support varies between photo libraries.</p>
+        <div className="flex justify-end gap-2 mt-5"><Button variant="outline" onClick={close}>Cancel</Button><Button onClick={save} disabled={saving || project.scans.length === 0}>{saving ? "Saving…" : "Apply metadata"}</Button></div>
       </div>
-    </div>
+    </Modal>
   );
 }

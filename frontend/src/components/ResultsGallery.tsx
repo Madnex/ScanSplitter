@@ -1,3 +1,4 @@
+import { buildExportPayload } from "@/lib/utils";
 import { useMemo, useState } from "react";
 import { Download, FolderDown, FolderOpen, RotateCcw, RotateCw, Expand, Calendar } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -91,34 +92,21 @@ export function ResultsGallery({
     return findDuplicateName(names);
   }, [allImages, namingPattern, patternValidation.valid]);
 
-  const downloadImage = (image: CroppedImage) => {
-    const link = document.createElement("a");
-    const download = (href: string, extension: "jpg" | "png") => {
-      link.href = href;
-      link.download = `${image.name}.${extension}`;
-      document.body.appendChild(link);
+  const downloadImage = async (image: CroppedImage) => {
+    try {
+      const response = await fetch("/api/export/photo", { method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ session_id: image.source.sessionId ?? "", format: outputFormat,
+          images: buildExportPayload([image]), include_gps: includeGps }) });
+      if (!response.ok) throw new Error("Download failed. Re-crop if your temporary session expired.");
+      const url = URL.createObjectURL(await response.blob());
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `${image.name}.${outputFormat === "png" ? "png" : "jpg"}`;
       link.click();
-      document.body.removeChild(link);
-    };
-
-    if (outputFormat === "jpeg") {
-      download(`data:image/jpeg;base64,${image.data}`, "jpg");
-      return;
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : "Download failed");
     }
-
-    // Cropped previews are JPEG payloads. Re-encode through a canvas for a
-    // true PNG when the user downloads one image directly.
-    const source = new Image();
-    source.onload = () => {
-      const canvas = document.createElement("canvas");
-      canvas.width = source.naturalWidth;
-      canvas.height = source.naturalHeight;
-      const context = canvas.getContext("2d");
-      if (!context) return;
-      context.drawImage(source, 0, 0);
-      download(canvas.toDataURL("image/png"), "png");
-    };
-    source.src = `data:image/jpeg;base64,${image.data}`;
   };
 
   if (allImages.length === 0) {
@@ -379,6 +367,7 @@ export function ResultsGallery({
           onClose={() => setLightboxIndex(null)}
           onNavigate={setLightboxIndex}
           onRotate={onRotate}
+          onDownload={downloadImage}
         />
       )}
     </>

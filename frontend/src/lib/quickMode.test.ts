@@ -73,3 +73,15 @@ describe("cropTargets", () => {
     expect(cropTargets([file("pending", 0), file("failed", 1)])).toEqual([]);
   });
 });
+
+it("preserves page drafts and crops every edited PDF page", async () => {
+  const { selectPage, cropTargets } = await import("./quickMode");
+  const original: UploadedFile = { sessionId: "stable-id", filename: "album.pdf", pageCount: 2, currentPage: 1,
+    imageWidth: 1000, imageHeight: 800, detectionStatus: "detected", boxes: [{ id: "one", centerX: 200, centerY: 200, width: 100, height: 100, angle: 0 }] };
+  let file = selectPage(original, 2);
+  file = { ...file, detectionStatus: "detected", boxes: [{ ...original.boxes[0], id: "two" }] };
+  file = selectPage(file, 1);
+  expect(file.boxes[0].id).toBe("one");
+  expect(cropTargets([file]).map(target => [target.file.sessionId, target.file.currentPage, target.file.boxes[0].id]))
+    .toEqual([["stable-id", 1, "one"], ["stable-id", 2, "two"]]);
+});

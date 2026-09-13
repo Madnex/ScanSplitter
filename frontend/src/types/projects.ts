@@ -27,7 +27,12 @@ export interface ProjectBox {
   angle: number; // degrees
   filename?: string;
   caption?: string;
-  restoration?: Partial<Pick<ProjectSettings, "edge_cleanup_mode" | "auto_deskew" | "restore_color" | "upscale_2x">>;
+  restoration?: ProjectRestorationOverrides;
+}
+
+export interface ProjectRestorationOverrides extends Partial<Pick<ProjectSettings, "edge_cleanup_mode" | "auto_deskew" | "restore_color" | "upscale_2x">> {
+  /** Final clockwise rotation applied after automatic processing. */
+  manual_rotation?: 0 | 90 | 180 | 270;
 }
 
 export interface Flag {
@@ -45,6 +50,10 @@ export type ScanStatus =
   | "failed";
 
 export interface ProjectScan {
+  revision?: number;
+  source_integrity?: "original" | "legacy_derivative";
+  source_sha256?: string;
+  interruption?: string | null;
   id: string;
   original_name: string;
   stored_file: string;

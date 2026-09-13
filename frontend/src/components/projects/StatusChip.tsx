@@ -23,25 +23,25 @@ export function StatusChip({ status, boxCount, className }: StatusChipProps) {
     case "auto_approved":
       return (
         <span className={cn(base, "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300", className)}>
-          OK &middot; {boxCount ?? 0}
+          Detected &middot; {boxCount ?? 0}
         </span>
       );
     case "needs_review":
       return (
         <span className={cn(base, "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300", className)}>
-          CHECK
+          Review
         </span>
       );
     case "approved":
       return (
         <span className={cn(base, "bg-green-100 text-green-800 dark:bg-green-950 dark:text-green-300", className)}>
-          <Check className="w-3 h-3" />
+          <Check className="w-3 h-3" /> Reviewed
         </span>
       );
     case "failed":
       return (
         <span className={cn(base, "bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300", className)}>
-          !
+          Failed
         </span>
       );
     case "detecting":

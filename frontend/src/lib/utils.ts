@@ -14,7 +14,10 @@ export function cn(...inputs: ClassValue[]) {
 export function buildExportPayload(images: CroppedImage[]): ExportImageData[] {
   return images.map((img) => ({
     id: img.id,
-    data: img.data,
+    data: img.cropId ? "" : img.data,
+    session_id: img.source.sessionId,
+    crop_id: img.cropId,
+    rotation: img.manualRotation ?? 0,
     name: img.name,
     date_taken: img.dateTaken,
   }));
