@@ -281,3 +281,10 @@ npm run build
 ```
 
 Builds to `src/scansplitter/static/`, which FastAPI serves automatically.
+
+### Portable archive bundles
+
+Project Export offers an optional **Archive bundle** with full scans, crops,
+checksums, geometry and provenance, plus optional untouched originals. It is a
+public file format for any compatible consumer and has no receiving-app dependency.
+See [the v1 format specification](docs/specs/archive-bundle-v1.md).

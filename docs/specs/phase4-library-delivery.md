@@ -158,3 +158,10 @@ browser preference; and displays shared job progress/errors.
 Multiple credential profiles per target, automatic/scheduled network delivery,
 remote library deletion or synchronization, source replacement, and TIFF
 compression.
+
+## Optional archive bundle export
+
+The reviewed Project ZIP endpoint also supports the consumer-independent
+[archive bundle v1](archive-bundle-v1.md). It is a separate optional download
+format; delivery targets and their canonical artifacts remain unchanged.
+Quick and immediate per-scan exports retain the existing image workflow.

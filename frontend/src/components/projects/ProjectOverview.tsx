@@ -230,7 +230,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
     void queueDetection(true);
   }, [queueDetection]);
 
-  const handleExport = useCallback(async () => {
+  const handleExport = useCallback(async (archive_bundle = false, include_originals = false) => {
     if (!project || exportableCount === 0) return;
     exportAbortRef.current?.abort();
     const controller = new AbortController();
@@ -242,6 +242,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
         projectId,
         project.name,
         {
+          archive_bundle, include_originals,
           format: project.settings.format,
           quality: project.settings.quality,
           include_gps: project.settings.include_gps,
@@ -382,7 +383,7 @@ export function ProjectOverview({ projectId, onBack, onReview, showToast }: Proj
 
       {showExport && <ProjectExportDialog settings={project.settings} count={exportableCount}
         busy={isSavingSettings || isExporting} onChange={patch => void handleSettingsChange(patch)}
-        onDownload={() => void handleExport()} onClose={() => setShowExport(false)}
+        onDownload={(bundle, originals) => void handleExport(bundle, originals)} onClose={() => setShowExport(false)}
         onDeliver={() => { setShowExport(false); setShowDelivery(true); }} />}
 
       {confirmRedetectAll && (

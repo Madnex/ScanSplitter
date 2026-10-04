@@ -290,6 +290,8 @@ class ProjectExportRequest(BaseModel):
     master_format: str | None = None
     organize_folders: bool | None = None
     manifest_format: str | None = None
+    archive_bundle: bool = False
+    include_originals: bool = False
 
 
 class RestorationPreviewRequest(BaseModel):
@@ -1529,6 +1531,7 @@ def export_project(pid: str, request: ProjectExportRequest):
         pid, fmt=request.format, quality=request.quality, include_gps=request.include_gps,
         master_format=request.master_format, organize_folders=request.organize_folders,
         manifest_format=request.manifest_format,
+        archive_bundle=request.archive_bundle, include_originals=request.include_originals,
     )
     return {"job_id": job_id}
 
@@ -1536,6 +1539,8 @@ def export_project(pid: str, request: ProjectExportRequest):
 @app.post("/api/projects/{pid}/scans/{sid}/export", status_code=202)
 def export_project_scan(pid: str, sid: str, request: ProjectExportRequest):
     """Crop and zip only the selected review page as a background job."""
+    if request.archive_bundle or request.include_originals:
+        raise HTTPException(400, "Archive bundles are available through reviewed project export")
     job_id = get_project_store().submit_scan_export_job(
         pid,
         sid,

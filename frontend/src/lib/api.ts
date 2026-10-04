@@ -724,7 +724,7 @@ export async function detectProjectScans(
 export async function exportProject(
   projectId: string,
   projectName: string,
-  options: { format?: "jpeg" | "png"; quality?: number; include_gps?: boolean; master_format?: "png" | "tiff" | null; organize_folders?: boolean; manifest_format?: "json" | "csv" | "both" | null } = {},
+  options: { archive_bundle?: boolean; include_originals?: boolean; format?: "jpeg" | "png"; quality?: number; include_gps?: boolean; master_format?: "png" | "tiff" | null; organize_folders?: boolean; manifest_format?: "json" | "csv" | "both" | null } = {},
   signal?: AbortSignal,
   onProgress?: (progress: number, stage: string | null) => void
 ): Promise<void> {

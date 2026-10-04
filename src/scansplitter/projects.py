@@ -821,6 +821,8 @@ class ProjectStore:
         manifest_format: str | None = None,
         scan_ids: set[str] | None = None,
         include_unapproved: bool = False,
+        archive_bundle: bool = False,
+        include_originals: bool = False,
     ) -> str:
         data = self._read(pid)  # validates the project exists up front
         settings = data["settings"]
@@ -832,7 +834,15 @@ class ProjectStore:
         out_manifest = manifest_format if manifest_format is not None else settings["manifest_format"]
         _validate_artifact_formats(out_master, out_manifest)
 
+        if include_originals and not archive_bundle:
+            raise HTTPException(400, "Original inclusion requires an archive bundle")
+
         def worker(progress: ProgressCallback, cancelled: CancelCheck) -> dict:
+            if archive_bundle:
+                from .archive_bundle import build_archive_bundle
+                payload = build_archive_bundle(self, pid, out_format, out_quality, out_include_gps,
+                    out_master, include_originals, progress, cancelled, new_artifact())
+                return {"__download_path": payload}
             payload = self._build_export_zip(
                 pid, out_format, out_quality, out_include_gps, progress, cancelled,
                 out_master, out_organize, out_manifest, scan_ids, include_unapproved, artifact_path=new_artifact(),

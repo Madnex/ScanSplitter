@@ -1,0 +1,411 @@
+{
+  "$defs": {
+    "BundleFile": {
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "path": {
+          "minLength": 1,
+          "title": "Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        },
+        "media_type": {
+          "title": "Media Type",
+          "type": "string"
+        },
+        "role": {
+          "enum": [
+            "source_original",
+            "scan_image",
+            "access",
+            "processed_derivative"
+          ],
+          "title": "Role",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "path",
+        "sha256",
+        "media_type",
+        "role"
+      ],
+      "title": "BundleFile",
+      "type": "object"
+    },
+    "BundleGeometry": {
+      "properties": {
+        "version": {
+          "const": 1,
+          "default": 1,
+          "title": "Version",
+          "type": "integer"
+        },
+        "type": {
+          "const": "rotated_rect",
+          "default": "rotated_rect",
+          "title": "Type",
+          "type": "string"
+        },
+        "center": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Center",
+          "type": "array"
+        },
+        "size": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "number"
+            },
+            {
+              "type": "number"
+            }
+          ],
+          "title": "Size",
+          "type": "array"
+        },
+        "angle": {
+          "default": 0.0,
+          "maximum": 360.0,
+          "minimum": -360.0,
+          "title": "Angle",
+          "type": "number"
+        },
+        "units": {
+          "const": "normalized",
+          "title": "Units",
+          "type": "string"
+        }
+      },
+      "required": [
+        "center",
+        "size",
+        "units"
+      ],
+      "title": "BundleGeometry",
+      "type": "object"
+    },
+    "BundlePhoto": {
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "scan_id": {
+          "title": "Scan Id",
+          "type": "string"
+        },
+        "box_id": {
+          "title": "Box Id",
+          "type": "string"
+        },
+        "sequence": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "access_file_id": {
+          "title": "Access File Id",
+          "type": "string"
+        },
+        "processed_file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Processed File Id"
+        },
+        "geometry": {
+          "$ref": "#/$defs/BundleGeometry"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        },
+        "transformations": {
+          "additionalProperties": true,
+          "title": "Transformations",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "scan_id",
+        "box_id",
+        "sequence",
+        "access_file_id",
+        "geometry"
+      ],
+      "title": "BundlePhoto",
+      "type": "object"
+    },
+    "BundleScan": {
+      "properties": {
+        "id": {
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "file_id": {
+          "title": "File Id",
+          "type": "string"
+        },
+        "source_file_id": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source File Id"
+        },
+        "source_name": {
+          "title": "Source Name",
+          "type": "string"
+        },
+        "source_sha256": {
+          "anyOf": [
+            {
+              "pattern": "^[0-9a-f]{64}$",
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Sha256"
+        },
+        "source_integrity": {
+          "enum": [
+            "original",
+            "legacy_derivative"
+          ],
+          "title": "Source Integrity",
+          "type": "string"
+        },
+        "source_page": {
+          "anyOf": [
+            {
+              "minimum": 1,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Source Page"
+        },
+        "sequence": {
+          "minimum": 1,
+          "title": "Sequence",
+          "type": "integer"
+        },
+        "back_of": {
+          "anyOf": [
+            {
+              "type": "string"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Back Of"
+        },
+        "review_status": {
+          "enum": [
+            "approved",
+            "auto_approved"
+          ],
+          "title": "Review Status",
+          "type": "string"
+        },
+        "coordinate_size": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Coordinate Size",
+          "type": "array"
+        },
+        "image_size": {
+          "maxItems": 2,
+          "minItems": 2,
+          "prefixItems": [
+            {
+              "type": "integer"
+            },
+            {
+              "type": "integer"
+            }
+          ],
+          "title": "Image Size",
+          "type": "array"
+        },
+        "metadata": {
+          "additionalProperties": true,
+          "title": "Metadata",
+          "type": "object"
+        }
+      },
+      "required": [
+        "id",
+        "file_id",
+        "source_name",
+        "source_integrity",
+        "sequence",
+        "review_status",
+        "coordinate_size",
+        "image_size"
+      ],
+      "title": "BundleScan",
+      "type": "object"
+    },
+    "ScanSplitterProducer": {
+      "properties": {
+        "name": {
+          "const": "ScanSplitter",
+          "title": "Name",
+          "type": "string"
+        },
+        "version": {
+          "maxLength": 64,
+          "minLength": 1,
+          "title": "Version",
+          "type": "string"
+        }
+      },
+      "required": [
+        "name",
+        "version"
+      ],
+      "title": "ScanSplitterProducer",
+      "type": "object"
+    },
+    "ScanSplitterProject": {
+      "properties": {
+        "id": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Id",
+          "type": "string"
+        },
+        "name": {
+          "maxLength": 255,
+          "minLength": 1,
+          "title": "Name",
+          "type": "string"
+        }
+      },
+      "required": [
+        "id",
+        "name"
+      ],
+      "title": "ScanSplitterProject",
+      "type": "object"
+    }
+  },
+  "properties": {
+    "schema": {
+      "const": "scansplitter.archive-bundle",
+      "title": "Schema",
+      "type": "string"
+    },
+    "version": {
+      "const": 1,
+      "title": "Version",
+      "type": "integer"
+    },
+    "package_id": {
+      "format": "uuid",
+      "title": "Package Id",
+      "type": "string"
+    },
+    "producer": {
+      "$ref": "#/$defs/ScanSplitterProducer"
+    },
+    "project": {
+      "$ref": "#/$defs/ScanSplitterProject"
+    },
+    "ordering": {
+      "const": "project_scan_order",
+      "title": "Ordering",
+      "type": "string"
+    },
+    "files": {
+      "items": {
+        "$ref": "#/$defs/BundleFile"
+      },
+      "minItems": 1,
+      "title": "Files",
+      "type": "array"
+    },
+    "scans": {
+      "items": {
+        "$ref": "#/$defs/BundleScan"
+      },
+      "minItems": 1,
+      "title": "Scans",
+      "type": "array"
+    },
+    "photos": {
+      "items": {
+        "$ref": "#/$defs/BundlePhoto"
+      },
+      "title": "Photos",
+      "type": "array"
+    }
+  },
+  "required": [
+    "schema",
+    "version",
+    "package_id",
+    "producer",
+    "project",
+    "ordering",
+    "files",
+    "scans",
+    "photos"
+  ],
+  "title": "ScanSplitter Archive Bundle v1",
+  "type": "object",
+  "$schema": "https://json-schema.org/draft/2020-12/schema"
+}
