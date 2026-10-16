@@ -42,7 +42,7 @@ interface Metrics {
 }
 
 interface Variant {
-  key: "v3" | "v4" | "v5" | "llm" | "album";
+  key: "v3" | "v4" | "v5" | "v6" | "llm" | "album";
   label: string;
   boxes: BenchmarkBox[];
   metrics: Metrics;
@@ -61,6 +61,7 @@ const COLORS: Record<string, string> = {
   v3: "#f59e0b",
   v4: "#3b82f6",
   v5: "#ef4444",
+  v6: "#10b981",
   llm: "#06b6d4",
   album: "#a855f7",
 };

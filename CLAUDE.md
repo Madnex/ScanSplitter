@@ -37,7 +37,7 @@ ScanSplitter detects and extracts multiple photos from scanned images using Open
 
 **Processing Pipeline** (`processor.py` orchestrates):
 1. **Input** - Load image or extract pages from PDF (`pdf_handler.py`)
-2. **Detection** - Grayscale → Gaussian blur → Adaptive threshold → Contour detection → Filter by area ratio (`detector.py`)
+2. **Detection** - Default `scansplitterv6` (`detector_v6.py`, pure OpenCV, no ML): border surface model → foreground watershed → rectangle hypotheses (merge/split) → straight-edge snapping → inner-picture extraction at an 800 px working scale. v3/v4/v5 (`detector.py`, v4/v5 use MobileSAM) stay selectable; stored v5 projects keep working. Spec: `docs/specs/detector-v6.md`
 3. **Rotation** - Score each 90° rotation using Hough line detection, pick best alignment (`rotator.py`)
 4. **Output** - Cropped, rotated images
 

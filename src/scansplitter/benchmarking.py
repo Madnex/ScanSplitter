@@ -13,6 +13,7 @@ from PIL import Image
 from .album_detector import detect_album_pages
 from .benchmark_metrics import score_rectangles
 from .detector import DetectedRegion, detect_photos_v3, detect_photos_v4, detect_photos_v5
+from .detector_v6 import detect_photos_v6
 from .llm_detector import detect_photos_openrouter, is_openrouter_configured, openrouter_model
 
 BENCHMARK_ROOT = Path(__file__).resolve().parents[2] / "benchmarks"
@@ -105,6 +106,7 @@ def run_case(case_id: str) -> dict[str, Any]:
             ("v3", "ScanSplitter v3", detect_photos_v3(image)),
             ("v4", "ScanSplitter v4", detect_photos_v4(image)),
             ("v5", "ScanSplitter v5", detect_photos_v5(image)),
+            ("v6", "ScanSplitter v6", detect_photos_v6(image)),
         ]
         if is_openrouter_configured():
             runs.append(

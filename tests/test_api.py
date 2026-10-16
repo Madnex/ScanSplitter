@@ -500,7 +500,7 @@ def test_detect_request_defaults_to_v5(monkeypatch):
         called = True
         return []
 
-    monkeypatch.setattr(api_module, "detect_photos_v5", fake_detect)
+    monkeypatch.setattr(api_module, "detect_photos_v6", fake_detect)
     response = client.post(
         "/api/detect",
         json={"session_id": data["session_id"], "page": 1},

@@ -44,7 +44,7 @@ describe("SettingsPanel crop actions", () => {
     expect(html).toContain("Cloud AI");
     expect(html).toContain("Advanced photo settings");
     expect(html).toContain("Edge cleanup");
-    expect(html).toContain('<option value="scansplitterv5">v5 · Recommended</option>');
+    expect(html).toContain('<option value="scansplitterv6">ScanSplitter v6 (recommended)</option>');
     expect(html).toContain('<option value="conservative" selected="">Conservative</option>');
     expect(html).toContain('<option value="tight">Tight</option>');
   });

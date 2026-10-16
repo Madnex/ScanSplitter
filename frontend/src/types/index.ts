@@ -52,6 +52,7 @@ export type DetectionMode =
   | "scansplitterv3"
   | "scansplitterv4"
   | "scansplitterv5"
+  | "scansplitterv6"
   | "openrouter"
   | "album-splitter";
 

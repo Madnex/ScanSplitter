@@ -19,6 +19,7 @@ Useful comparisons:
 uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v3 --output benchmarks/results/v3.md
 uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v4 --output benchmarks/results/v4.md
 uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v5 --output benchmarks/results/v5.md
+uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v6 --output benchmarks/results/v6.md
 uv run benchmarks/evaluate.py --suite album --output benchmarks/results/album.md
 ```
 
@@ -78,3 +79,22 @@ gutters, dark scrapbook pages, mixed print formats, binding and page edges, and
 irregular layouts. Album Splitter retains its single leaves, forced spreads,
 auto-detected spreads, dark pages, small pages, and portrait/landscape leaves.
 Image generation provenance and prompts are in `IMAGEGEN_PROMPTS.md`.
+
+## Robustness benchmark (DEV / HOLDOUT)
+
+`benchmarks/robustness/` holds a much larger, procedurally generated suite
+(`robust-dev` and `robust-holdout`, ~47 cases each) with exact rotated-rectangle
+ground truth (same convention: inner photographic area only). Scenario families:
+flatbed white/black, strongly rotated prints, single large print, many small
+prints, tight gutters, edge-touching, low contrast, Polaroids, phone captures
+(perspective, vignetting, cast shadow), album pages (plastic glare, mounts) and
+mixed-hard combinations. Every case has a `scenario` and `tags` field, and the
+report adds a per-scenario table. DEV and HOLDOUT use different seeds and
+disjoint source photos; tune on DEV, report HOLDOUT.
+
+```bash
+uv run benchmarks/_build_robustness.py                    # regenerate (deterministic)
+uv run benchmarks/_build_robustness.py --overlay /tmp/ov  # draw GT boxes for QA
+uv run benchmarks/evaluate.py --manifest benchmarks/robustness/manifest.json \
+  --suite robust-dev --scan-detector v6 --output benchmarks/results/robust-dev-v6.md
+```

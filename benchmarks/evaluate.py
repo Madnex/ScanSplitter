@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import importlib
 import json
 import time
 from pathlib import Path
@@ -14,6 +15,7 @@ from PIL import Image
 from scansplitter.album_detector import detect_album_pages
 from scansplitter.benchmark_metrics import score_rectangles
 from scansplitter.detector import detect_photos_v3, detect_photos_v4, detect_photos_v5
+from scansplitter.detector_v6 import detect_photos_v6
 from scansplitter.llm_detector import detect_photos_openrouter, openrouter_model
 
 ROOT = Path(__file__).resolve().parent
@@ -35,10 +37,15 @@ def score_case(
 def detector_for(case: dict[str, Any], scan_detector: str):
     if case["suite"] == "album":
         return lambda image: detect_album_pages(image, layout=case["layout"])
+    if ":" in scan_detector:
+        # Experimental detectors: "module.path:function_name".
+        module_name, function_name = scan_detector.split(":", 1)
+        return getattr(importlib.import_module(module_name), function_name)
     return {
         "v3": detect_photos_v3,
         "v4": detect_photos_v4,
         "v5": detect_photos_v5,
+        "v6": detect_photos_v6,
         "openrouter": detect_photos_openrouter,
     }[scan_detector]
 
@@ -122,9 +129,11 @@ def markdown_report(report: dict[str, Any]) -> str:
         "| Suite | Cases | Box quality | Tightness | Coverage | F1@0.50 | F1@0.85 | Count accuracy | Time |",
         "|---|---:|---:|---:|---:|---:|---:|---:|---:|",
     ]
-    for name in ("scansplitter", "album", "all"):
-        if name not in report["summary"]:
-            continue
+    summary_names = [name for name in report["summary"] if name != "all"]
+    summary_names = sorted(summary_names, key=lambda n: (("scansplitter", "album").index(n) if n in ("scansplitter", "album") else 2, n))
+    if "all" in report["summary"]:
+        summary_names.append("all")
+    for name in summary_names:
         value = report["summary"][name]
         lines.append(
             f"| {name} | {value['cases']} | {value['box_quality']:.1%} | "
@@ -132,6 +141,24 @@ def markdown_report(report: dict[str, Any]) -> str:
             f"{value['f1']:.1%} | {value['strict_f1']:.1%} | "
             f"{value['count_accuracy']:.1%} | {value['runtime_seconds']:.2f}s |"
         )
+    scenarios = sorted({item["scenario"] for item in report["cases"] if item.get("scenario")})
+    if scenarios:
+        lines.extend(
+            [
+                "",
+                "## Per scenario",
+                "",
+                "| Scenario | Cases | Regions | Box quality | F1@0.50 | F1@0.85 | Count accuracy |",
+                "|---|---:|---:|---:|---:|---:|---:|",
+            ]
+        )
+        for scenario in scenarios:
+            value = summarize([item for item in report["cases"] if item.get("scenario") == scenario])
+            lines.append(
+                f"| {scenario} | {value['cases']} | {value['expected_regions']} | "
+                f"{value['box_quality']:.1%} | {value['f1']:.1%} | "
+                f"{value['strict_f1']:.1%} | {value['count_accuracy']:.1%} |"
+            )
     lines.extend(
         [
             "",
@@ -156,11 +183,16 @@ def markdown_report(report: dict[str, Any]) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--suite", choices=("all", "scansplitter", "album"), default="all")
+    parser.add_argument("--manifest", type=Path, default=ROOT / "manifest.json")
+    parser.add_argument(
+        "--suite",
+        default="all",
+        help="Suite name present in the manifest, or 'all' (default).",
+    )
     parser.add_argument(
         "--scan-detector",
-        choices=("v3", "v4", "v5", "openrouter"),
-        default="v5",
+        default="v6",
+        help='v3, v4, v5, v6, openrouter, or an experimental "module:function"',
     )
     parser.add_argument("--iou-threshold", type=float, default=0.5)
     parser.add_argument("--strict-iou-threshold", type=float, default=0.85)
@@ -172,11 +204,15 @@ def main() -> None:
     if not args.iou_threshold < args.strict_iou_threshold <= 1:
         parser.error("--strict-iou-threshold must be greater than --iou-threshold and at most 1")
 
-    manifest = json.loads((ROOT / "manifest.json").read_text())
+    manifest_path = args.manifest.resolve()
+    manifest = json.loads(manifest_path.read_text())
+    available = sorted({case["suite"] for case in manifest["cases"]})
+    if args.suite != "all" and args.suite not in available:
+        parser.error(f"--suite must be 'all' or one of: {', '.join(available)}")
     cases = [case for case in manifest["cases"] if args.suite == "all" or case["suite"] == args.suite]
     results = []
     for case in cases:
-        with Image.open(ROOT / case["image"]) as image:
+        with Image.open(manifest_path.parent / case["image"]) as image:
             started = time.perf_counter()
             detected = detector_for(case, args.scan_detector)(image.convert("RGB"))
             elapsed = time.perf_counter() - started
@@ -186,6 +222,9 @@ def main() -> None:
             expected, actual, args.iou_threshold, args.strict_iou_threshold
         )
         result.update({"id": case["id"], "suite": case["suite"], "runtime_seconds": elapsed})
+        if case.get("scenario"):
+            result["scenario"] = case["scenario"]
+            result["tags"] = case.get("tags", [])
         results.append(result)
 
     suites = sorted({item["suite"] for item in results})

@@ -42,7 +42,7 @@ untouched; Projects is an additional top-level mode.
   "created_at": "2026-07-11T10:00:00Z",
   "updated_at": "...",
   "settings": {
-    "detection_mode": "scansplitterv5",
+    "detection_mode": "scansplitterv6",
     "album_layout": "auto",
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
@@ -150,7 +150,7 @@ PDF-page scans share the PDF filename as `original_name` (all pages same
 stem) and rely on collision-suffixing to disambiguate.
 
 `detection_mode` accepts `scansplitterv3`, `scansplitterv4`,
-`scansplitterv5`, `openrouter`, and `album-splitter`. The `openrouter` mode has
+`scansplitterv5`, `scansplitterv6`, `openrouter`, and `album-splitter`. The `openrouter` mode has
 the same remote-upload disclosure, retry/cache behavior, and configuration
 errors specified in [openrouter-detector.md](openrouter-detector.md). Detection
 modes and settings must maintain Quick/Project parity unless a binding spec
