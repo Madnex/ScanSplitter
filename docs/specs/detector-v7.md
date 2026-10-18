@@ -2,8 +2,8 @@
 
 Status: DEFAULT detector. Binding: keep this file updated in the same commit as
 any change to `src/scansplitter/detector_v7.py`. v5 stays selectable ("v5 ·
-Previous"), v6 stays "experimental", and stored projects with older modes keep
-working unchanged.
+Previous"), and stored projects with older modes keep working; the removed
+synthetic-tuned v6 (`scansplitterv6`) maps to v7.
 
 ## Contract
 
@@ -48,8 +48,9 @@ rotated rectangles in input coordinates, same as every other detector.
 
 ## Evaluation protocol
 
-Real-scan quality, not synthetic scores, decides detector changes (see the v6
-post-mortem in `detector-v6.md`).
+Real-scan quality, not synthetic scores, decides detector changes. The removed
+v6 scored ~94% on the synthetic holdouts yet only 0.52 box quality on real
+scans (v5 0.78), because it was tuned on synthetic data alone.
 
 - A **private real-scan benchmark** of user-approved scans with re-annotated
   inner-photo ground truth lives OUTSIDE the repository at

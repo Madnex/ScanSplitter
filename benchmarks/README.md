@@ -19,8 +19,7 @@ Useful comparisons:
 uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v3 --output benchmarks/results/v3.md
 uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v4 --output benchmarks/results/v4.md
 uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v5 --output benchmarks/results/v5.md
-uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v6 --output benchmarks/results/v6.md
---scan-detector v7 --output benchmarks/results/v7.md
+uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v7 --output benchmarks/results/v7.md
 uv run benchmarks/evaluate.py --suite album --output benchmarks/results/album.md
 ```
 
@@ -97,5 +96,5 @@ disjoint source photos; tune on DEV, report HOLDOUT.
 uv run benchmarks/_build_robustness.py                    # regenerate (deterministic)
 uv run benchmarks/_build_robustness.py --overlay /tmp/ov  # draw GT boxes for QA
 uv run benchmarks/evaluate.py --manifest benchmarks/robustness/manifest.json \
-  --suite robust-dev --scan-detector v6 --output benchmarks/results/robust-dev-v6.md
+  --suite robust-dev --scan-detector v7 --output benchmarks/results/robust-dev-v7.md
 ```

@@ -109,7 +109,6 @@ def test_benchmark_adds_openrouter_variant_only_when_configured(monkeypatch):
     monkeypatch.setattr(benchmarking, "detect_photos_v3", empty)
     monkeypatch.setattr(benchmarking, "detect_photos_v4", empty)
     monkeypatch.setattr(benchmarking, "detect_photos_v5", empty)
-    monkeypatch.setattr(benchmarking, "detect_photos_v6", empty)
     monkeypatch.setattr(benchmarking, "detect_photos_v7", empty)
     monkeypatch.setattr(benchmarking, "detect_photos_openrouter", empty)
     monkeypatch.setattr(benchmarking, "is_openrouter_configured", lambda: True)
@@ -121,7 +120,6 @@ def test_benchmark_adds_openrouter_variant_only_when_configured(monkeypatch):
         "v3",
         "v4",
         "v5",
-        "v6",
         "v7",
         "llm",
     ]

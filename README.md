@@ -53,7 +53,6 @@ uvx scansplitter api --port 8001
 
 ### Photo detection (splitter)
 
-- **ScanSplitterv6 (experimental)**: A pure-OpenCV detector (no ML models) tuned on the synthetic robustness benchmark. It is not yet reliable on real album scans; see `docs/specs/detector-v6.md`.
 - **ScanSplitterv7 (default)**: Builds on v5 (MobileSAM anchors plus texture and frame passes) and adds alternative v3/chroma proposals scored by their boundary step, per-side tightening onto the inner photographic edge so white and scalloped print borders are excluded, and relative rejection of prints seen through glassine sleeves. Needs the MobileSAM models; see `docs/specs/detector-v7.md`.
 - **ScanSplitterv5**: Combines conservative v3/MobileSAM anchors with color-independent texture and frame passes. Agreeing texture rectangles tighten crops, multiple texture islands split merged page proposals, closed frames recover pale photographs, and tightly prompted segmentation verifies candidates near scan edges. Conflicting evidence falls back to the conservative anchor.
 - **ScanSplitterv4**: The previous tightly prompted MobileSAM detector, retained for comparisons and existing saved projects.
@@ -242,7 +241,7 @@ uv run scansplitter process scan.jpg \
 | `--no-rotate` | Disable auto-rotation |
 | `--min-area` | Minimum photo size as % of scan (default: 2) |
 | `--max-area` | Maximum photo size as % of scan (default: 80) |
-| `--detection-mode` | `scansplitterv7` (default), `scansplitterv5`, `scansplitterv6` (experimental), `scansplitterv4`, `album-splitter`, or `scansplitterv3` (Cloud AI is available in Quick, Projects, and the API, but not this batch command) |
+| `--detection-mode` | `scansplitterv7` (default), `scansplitterv5`, `scansplitterv4`, `album-splitter`, or `scansplitterv3` (Cloud AI is available in Quick, Projects, and the API, but not this batch command) |
 | `--album-layout` | Album mode: `auto` (default), `single`, or `spread` |
 | `--format` | Output format: `png` or `jpg` (default: png) |
 

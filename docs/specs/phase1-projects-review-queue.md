@@ -150,7 +150,7 @@ PDF-page scans share the PDF filename as `original_name` (all pages same
 stem) and rely on collision-suffixing to disambiguate.
 
 `detection_mode` accepts `scansplitterv3`, `scansplitterv4`,
-`scansplitterv5`, `scansplitterv6` (experimental), `scansplitterv7` (default), `openrouter`, and `album-splitter`. The `openrouter` mode has
+`scansplitterv5`, `scansplitterv7` (default), `openrouter`, and `album-splitter`. The `openrouter` mode has
 the same remote-upload disclosure, retry/cache behavior, and configuration
 errors specified in [openrouter-detector.md](openrouter-detector.md). Detection
 modes and settings must maintain Quick/Project parity unless a binding spec

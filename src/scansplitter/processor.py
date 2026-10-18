@@ -13,7 +13,6 @@ from .detector import (
     detect_photos_v4,
     detect_photos_v5,
 )
-from .detector_v6 import detect_photos_v6
 from .detector_v7 import detect_photos_v7
 from .edge_cleanup import EdgeCleanupMode, cleanup_photo_edges
 from .pdf_handler import extract_images_from_pdf, is_pdf
@@ -61,7 +60,6 @@ def process_image(
         "scansplitterv3",
         "scansplitterv4",
         "scansplitterv5",
-        "scansplitterv6",
         "scansplitterv7",
         "album-splitter",
     ] = "scansplitterv7",
@@ -78,7 +76,7 @@ def process_image(
         edge_cleanup_mode: Off, conservative scan-background trim, or tight margin trim
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
-        detection_mode: "scansplitterv7" (default), v5, v6 (experimental), v4, v3, or "album-splitter"
+        detection_mode: "scansplitterv7" (default), v5, v4, v3, or "album-splitter"
 
     Returns:
         List of ProcessedImage objects
@@ -86,7 +84,7 @@ def process_image(
     from .detection import detect_regions
     regions = detect_regions(image, detection_mode, min_area_ratio, max_area_ratio, album_layout,
         {"scansplitterv3": detect_photos_v3, "scansplitterv4": detect_photos_v4,
-         "scansplitterv5": detect_photos_v5, "scansplitterv6": detect_photos_v6, "scansplitterv7": detect_photos_v7, "album-splitter": detect_album_pages})
+         "scansplitterv5": detect_photos_v5, "scansplitterv7": detect_photos_v7, "album-splitter": detect_album_pages})
 
     # If no regions detected, return the original image
     if not regions:
@@ -129,7 +127,6 @@ def process_file(
         "scansplitterv3",
         "scansplitterv4",
         "scansplitterv5",
-        "scansplitterv6",
         "scansplitterv7",
         "album-splitter",
     ] = "scansplitterv7",
@@ -145,7 +142,7 @@ def process_file(
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
         pdf_dpi: DPI for PDF rendering
-        detection_mode: "scansplitterv7" (default), v5, v6 (experimental), v4, v3, or "album-splitter"
+        detection_mode: "scansplitterv7" (default), v5, v4, v3, or "album-splitter"
 
     Returns:
         List of ProcessedImage objects
