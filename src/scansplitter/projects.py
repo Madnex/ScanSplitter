@@ -103,7 +103,7 @@ DETECTION_MODES = {
 }
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "detection_mode": "scansplitterv6",
+    "detection_mode": "scansplitterv5",
     "album_layout": "auto",
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,

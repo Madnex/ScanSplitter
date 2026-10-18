@@ -49,8 +49,8 @@ export function ProjectDetectorSelect({ value, disabled, onChange }: ProjectDete
         disabled={disabled}
         onChange={(event) => onChange(event.target.value as DetectionMode)}
       >
-        <option value="scansplitterv6">ScanSplitterv6</option>
         <option value="scansplitterv5">ScanSplitterv5</option>
+        <option value="scansplitterv6">ScanSplitterv6 (experimental)</option>
         <option value="scansplitterv4">ScanSplitterv4</option>
         <option value="openrouter">Cloud AI · OpenRouter</option>
         <option value="album-splitter">Album Splitter</option>

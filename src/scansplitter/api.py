@@ -148,7 +148,7 @@ class DetectRequest(BaseModel):
     min_area: float = Field(default=2.0, gt=0, lt=100, allow_inf_nan=False)  # percentage
     max_area: float = Field(default=80.0, gt=0, le=100, allow_inf_nan=False)  # percentage
     # Detection algorithms
-    detection_mode: str = "scansplitterv6"
+    detection_mode: str = "scansplitterv5"
     album_layout: AlbumLayout = "auto"
 
 

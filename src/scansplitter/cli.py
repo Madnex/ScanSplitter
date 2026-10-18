@@ -129,8 +129,8 @@ def main():
     process_parser.add_argument(
         "--detection-mode",
         choices=["scansplitterv6", "scansplitterv5", "scansplitterv4", "scansplitterv3", "album-splitter"],
-        default="scansplitterv6",
-        help="Detection mode: scansplitterv6 (default), v5, v4, v3, or album-splitter",
+        default="scansplitterv5",
+        help="Detection mode: scansplitterv5 (default), v6 (experimental), v4, v3, or album-splitter",
     )
     process_parser.add_argument(
         "--album-layout",

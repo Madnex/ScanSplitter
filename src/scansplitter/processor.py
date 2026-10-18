@@ -62,7 +62,7 @@ def process_image(
         "scansplitterv5",
         "scansplitterv6",
         "album-splitter",
-    ] = "scansplitterv6",
+    ] = "scansplitterv5",
     album_layout: AlbumLayout = "auto",
 ) -> list[ProcessedImage]:
     """
@@ -76,7 +76,7 @@ def process_image(
         edge_cleanup_mode: Off, conservative scan-background trim, or tight margin trim
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
-        detection_mode: "scansplitterv6" (default), v5, v4, v3, or "album-splitter"
+        detection_mode: "scansplitterv5" (default), v6 (experimental), v4, v3, or "album-splitter"
 
     Returns:
         List of ProcessedImage objects
@@ -129,7 +129,7 @@ def process_file(
         "scansplitterv5",
         "scansplitterv6",
         "album-splitter",
-    ] = "scansplitterv6",
+    ] = "scansplitterv5",
     album_layout: AlbumLayout = "auto",
 ) -> list[ProcessedImage]:
     """
@@ -142,7 +142,7 @@ def process_file(
         min_area_ratio: Minimum photo area as fraction of scan
         max_area_ratio: Maximum photo area as fraction of scan
         pdf_dpi: DPI for PDF rendering
-        detection_mode: "scansplitterv6" (default), v5, v4, v3, or "album-splitter"
+        detection_mode: "scansplitterv5" (default), v6 (experimental), v4, v3, or "album-splitter"
 
     Returns:
         List of ProcessedImage objects

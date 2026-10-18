@@ -191,7 +191,7 @@ def main() -> None:
     )
     parser.add_argument(
         "--scan-detector",
-        default="v6",
+        default="v5",
         help='v3, v4, v5, v6, openrouter, or an experimental "module:function"',
     )
     parser.add_argument("--iou-threshold", type=float, default=0.5)

@@ -1,7 +1,18 @@
 # Detector v6 (`scansplitterv6`)
 
-Status: binding. Default detector. Keep this file updated in the same commit as
-any change to `src/scansplitter/detector_v6.py`.
+Status: experimental, NOT the default (v5 remains the default). Keep this file
+updated in the same commit as any change to `src/scansplitter/detector_v6.py`.
+
+## Real-scan evaluation (2026-10-18)
+
+v6 was tuned on the synthetic robustness suite and does not transfer to real
+album scans. On 40 privately held, user-approved real scans (159 boxes,
+6020x4015 to ~10000x9000 px, kept outside the repository) it scored box
+quality 0.52 / F1@0.50 0.56 / count accuracy 0.28, versus v5 0.78 / 0.89 / 0.58
+and v3 0.79 / 0.90 / 0.68. Failure modes: no detections on cream album pages
+with scalloped white-bordered prints, page-sized boxes, and single prints split
+along tonal edges. Synthetic results below are therefore not evidence of
+real-world quality; any future default change must be judged on real scans.
 
 ## Contract
 

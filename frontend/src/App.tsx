@@ -71,7 +71,7 @@ function App() {
     autoRotate: true,
     edgeCleanupMode: "tight",
     autoDetect: true,
-    detectionMode: "scansplitterv6",
+    detectionMode: "scansplitterv5",
     albumLayout: "auto",
   });
 
