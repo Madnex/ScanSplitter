@@ -16,6 +16,7 @@ from scansplitter.album_detector import detect_album_pages
 from scansplitter.benchmark_metrics import score_rectangles
 from scansplitter.detector import detect_photos_v3, detect_photos_v4, detect_photos_v5
 from scansplitter.detector_v6 import detect_photos_v6
+from scansplitter.detector_v7 import detect_photos_v7
 from scansplitter.llm_detector import detect_photos_openrouter, openrouter_model
 
 ROOT = Path(__file__).resolve().parent
@@ -46,6 +47,7 @@ def detector_for(case: dict[str, Any], scan_detector: str):
         "v4": detect_photos_v4,
         "v5": detect_photos_v5,
         "v6": detect_photos_v6,
+        "v7": detect_photos_v7,
         "openrouter": detect_photos_openrouter,
     }[scan_detector]
 
@@ -191,8 +193,8 @@ def main() -> None:
     )
     parser.add_argument(
         "--scan-detector",
-        default="v5",
-        help='v3, v4, v5, v6, openrouter, or an experimental "module:function"',
+        default="v7",
+        help='v3, v4, v5, v6, v7, openrouter, or an experimental "module:function"',
     )
     parser.add_argument("--iou-threshold", type=float, default=0.5)
     parser.add_argument("--strict-iou-threshold", type=float, default=0.85)

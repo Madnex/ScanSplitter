@@ -33,6 +33,7 @@ from .detector import (
     detect_photos_v5,
 )
 from .detector_v6 import detect_photos_v6
+from .detector_v7 import detect_photos_v7
 from .edge_cleanup import cleanup_photo_edges
 from .exif_handler import apply_exif_to_jpeg, create_exif_bytes, extract_exif
 from .jobs import JobCancelled, new_artifact, registry, submit_job
@@ -148,7 +149,7 @@ class DetectRequest(BaseModel):
     min_area: float = Field(default=2.0, gt=0, lt=100, allow_inf_nan=False)  # percentage
     max_area: float = Field(default=80.0, gt=0, le=100, allow_inf_nan=False)  # percentage
     # Detection algorithms
-    detection_mode: str = "scansplitterv5"
+    detection_mode: str = "scansplitterv7"
     album_layout: AlbumLayout = "auto"
 
 
@@ -732,7 +733,9 @@ def run_detect(
     if request.min_area >= request.max_area:
         raise HTTPException(status_code=400, detail="Minimum photo area must be below maximum photo area")
     detection_mode = request.detection_mode
-    if detection_mode in ("ScanSplitterv6", "v6"):
+    if detection_mode in ("ScanSplitterv7", "v7"):
+        detection_mode = "scansplitterv7"
+    elif detection_mode in ("ScanSplitterv6", "v6"):
         detection_mode = "scansplitterv6"
     elif detection_mode in ("ScanSplitterv5", "v5"):
         detection_mode = "scansplitterv5"
@@ -750,7 +753,7 @@ def run_detect(
     try:
         regions = detect_regions(image, detection_mode, request.min_area / 100, request.max_area / 100,
             request.album_layout, {"scansplitterv3": detect_photos_v3, "scansplitterv4": detect_photos_v4,
-                "scansplitterv5": detect_photos_v5, "scansplitterv6": detect_photos_v6, "album-splitter": detect_album_pages,
+                "scansplitterv5": detect_photos_v5, "scansplitterv6": detect_photos_v6, "scansplitterv7": detect_photos_v7, "album-splitter": detect_album_pages,
                 "openrouter": detect_photos_openrouter})
     except OpenRouterDetectionError as exc:
         raise HTTPException(status_code=503 if isinstance(exc, OpenRouterConfigurationError) else 502,

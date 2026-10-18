@@ -20,6 +20,7 @@ uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v3 --output b
 uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v4 --output benchmarks/results/v4.md
 uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v5 --output benchmarks/results/v5.md
 uv run benchmarks/evaluate.py --suite scansplitter --scan-detector v6 --output benchmarks/results/v6.md
+--scan-detector v7 --output benchmarks/results/v7.md
 uv run benchmarks/evaluate.py --suite album --output benchmarks/results/album.md
 ```
 

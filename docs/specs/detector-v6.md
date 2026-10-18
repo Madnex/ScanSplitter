@@ -1,6 +1,7 @@
 # Detector v6 (`scansplitterv6`)
 
-Status: experimental, NOT the default (v5 remains the default). Keep this file
+Status: experimental, NOT the default. The default is now v7 (see
+`detector-v7.md`; v5 stays selectable). Keep this file
 updated in the same commit as any change to `src/scansplitter/detector_v6.py`.
 
 ## Real-scan evaluation (2026-10-18)

@@ -71,7 +71,7 @@ function App() {
     autoRotate: true,
     edgeCleanupMode: "tight",
     autoDetect: true,
-    detectionMode: "scansplitterv5",
+    detectionMode: "scansplitterv7",
     albumLayout: "auto",
   });
 
@@ -201,6 +201,7 @@ function App() {
 
   useEffect(() => {
     const modelKeys: ModelKey[] =
+      settings.detectionMode === "scansplitterv7" ||
       settings.detectionMode === "scansplitterv5" ||
       settings.detectionMode === "scansplitterv4"
         ? MOBILE_SAM_MODEL_KEYS
@@ -320,7 +321,8 @@ function App() {
 
     try {
       if (
-        settings.detectionMode === "scansplitterv5" ||
+        settings.detectionMode === "scansplitterv7" ||
+      settings.detectionMode === "scansplitterv5" ||
         settings.detectionMode === "scansplitterv4"
       ) {
         await Promise.all(MOBILE_SAM_MODEL_KEYS.map(ensureModelReady));

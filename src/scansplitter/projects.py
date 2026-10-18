@@ -41,6 +41,7 @@ from .detector import (
     detect_photos_v5,
 )
 from .detector_v6 import detect_photos_v6
+from .detector_v7 import detect_photos_v7
 from .edge_cleanup import cleanup_photo_edges
 from .jobs import JobCancelled, new_artifact, registry, submit_job
 from .llm_detector import (
@@ -98,12 +99,13 @@ DETECTION_MODES = {
     "scansplitterv4",
     "scansplitterv5",
     "scansplitterv6",
+    "scansplitterv7",
     "openrouter",
     "album-splitter",
 }
 
 DEFAULT_SETTINGS: dict[str, Any] = {
-    "detection_mode": "scansplitterv5",
+    "detection_mode": "scansplitterv7",
     "album_layout": "auto",
     "min_area_ratio": 2.0,
     "max_area_ratio": 80.0,
@@ -416,7 +418,7 @@ class ProjectStore:
                             raise HTTPException(
                                 status_code=400,
                                 detail=(
-                                    "detection_mode must be one of: scansplitterv6, scansplitterv5, "
+                                    "detection_mode must be one of: scansplitterv7, scansplitterv6, scansplitterv5, "
                                     "scansplitterv4, scansplitterv3, openrouter, "
                                     "album-splitter"
                                 ),
@@ -1186,7 +1188,7 @@ def _detect(image: Image.Image, settings: dict) -> list[DetectedRegion]:
     return detect_regions(image, settings["detection_mode"], settings.get("min_area_ratio", 2) / 100,
         settings.get("max_area_ratio", 80) / 100, settings.get("album_layout", "auto"), {
             "scansplitterv3": detect_photos_v3, "scansplitterv4": detect_photos_v4,
-            "scansplitterv5": detect_photos_v5, "scansplitterv6": detect_photos_v6, "album-splitter": detect_album_pages,
+            "scansplitterv5": detect_photos_v5, "scansplitterv6": detect_photos_v6, "scansplitterv7": detect_photos_v7, "album-splitter": detect_album_pages,
             "openrouter": detect_photos_openrouter,
         })
 
