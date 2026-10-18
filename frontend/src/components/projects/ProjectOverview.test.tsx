@@ -13,6 +13,7 @@ describe("ProjectDetectorSelect", () => {
     );
 
     expect(html).toContain('aria-label="Detection mode"');
+    expect(html).toContain('<option value="scansplitterv7">ScanSplitterv7</option>');
     expect(html).toContain('<option value="scansplitterv5">ScanSplitterv5</option>');
     expect(html).toContain('<option value="scansplitterv4">ScanSplitterv4</option>');
     expect(html).toContain('<option value="openrouter">Cloud AI · OpenRouter</option>');

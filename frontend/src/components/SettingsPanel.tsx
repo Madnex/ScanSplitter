@@ -64,7 +64,8 @@ export function SettingsPanel({
       <CardContent className="space-y-4 px-4">
         <DetectionControls settings={settings} onChange={onSettingsChange} />
         {settings.autoRotate && orientationStatus?.status === "downloading" && <p role="status" className="text-xs text-muted-foreground">Preparing rotation model… {orientationStatus.progress}%</p>}
-        {(settings.detectionMode === "scansplitterv5" ||
+        {(settings.detectionMode === "scansplitterv7" ||
+          settings.detectionMode === "scansplitterv5" ||
           settings.detectionMode === "scansplitterv4") &&
           mobileSamStatuses.some((status) => status.status !== "ready") && (
             <div className="space-y-1 text-xs text-muted-foreground">

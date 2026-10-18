@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import itertools
 from typing import Any
 
 import cv2
@@ -30,33 +29,66 @@ def rotated_iou(first: RotatedRect, second: RotatedRect) -> float:
     return intersection / max(1.0, first_area + second_area - intersection)
 
 
+def _assign_min_cost(cost: list[list[float]]) -> list[int]:
+    """Hungarian algorithm (O(n^2 m)) for an n x m cost matrix with n <= m.
+
+    Returns, for each row, the column it is assigned to.
+    """
+    n, m = len(cost), len(cost[0])
+    inf = float("inf")
+    u = [0.0] * (n + 1)
+    v = [0.0] * (m + 1)
+    owner = [0] * (m + 1)  # owner[j] = row (1-based) assigned to column j
+    way = [0] * (m + 1)
+    for row in range(1, n + 1):
+        owner[0] = row
+        j0 = 0
+        minv = [inf] * (m + 1)
+        used = [False] * (m + 1)
+        while True:
+            used[j0] = True
+            i0, delta, j1 = owner[j0], inf, 0
+            for j in range(1, m + 1):
+                if used[j]:
+                    continue
+                current = cost[i0 - 1][j - 1] - u[i0] - v[j]
+                if current < minv[j]:
+                    minv[j], way[j] = current, j0
+                if minv[j] < delta:
+                    delta, j1 = minv[j], j
+            for j in range(m + 1):
+                if used[j]:
+                    u[owner[j]] += delta
+                    v[j] -= delta
+                else:
+                    minv[j] -= delta
+            j0 = j1
+            if owner[j0] == 0:
+                break
+        while j0:
+            j1 = way[j0]
+            owner[j0] = owner[j1]
+            j0 = j1
+    result = [0] * n
+    for j in range(1, m + 1):
+        if owner[j]:
+            result[owner[j] - 1] = j - 1
+    return result
+
+
 def best_pairs(
     expected: list[RotatedRect], actual: list[RotatedRect]
 ) -> list[tuple[int, int, float]]:
     """Return the one-to-one assignment with maximum total rotated IoU."""
     if not expected or not actual:
         return []
-    best: list[tuple[int, int, float]] = []
-    best_total = -1.0
+    iou = [[rotated_iou(e, a) for a in actual] for e in expected]
     if len(expected) <= len(actual):
-        assignments = (
-            [(index, permutation[index]) for index in range(len(expected))]
-            for permutation in itertools.permutations(range(len(actual)), len(expected))
-        )
-    else:
-        assignments = (
-            [(permutation[index], index) for index in range(len(actual))]
-            for permutation in itertools.permutations(range(len(expected)), len(actual))
-        )
-    for assignment in assignments:
-        pairs = [
-            (expected_index, actual_index, rotated_iou(expected[expected_index], actual[actual_index]))
-            for expected_index, actual_index in assignment
-        ]
-        total = sum(pair[2] for pair in pairs)
-        if total > best_total:
-            best, best_total = pairs, total
-    return best
+        columns = _assign_min_cost([[-value for value in row] for row in iou])
+        return [(i, j, iou[i][j]) for i, j in enumerate(columns)]
+    transposed = [[-iou[i][j] for i in range(len(expected))] for j in range(len(actual))]
+    rows = _assign_min_cost(transposed)
+    return [(i, j, iou[i][j]) for j, i in enumerate(rows)]
 
 
 def _classification(

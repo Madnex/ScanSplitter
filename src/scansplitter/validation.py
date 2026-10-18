@@ -8,7 +8,7 @@ from pydantic import BaseModel, ConfigDict, Field, ValidationError, model_valida
 
 class ProcessingSettings(BaseModel):
     model_config = ConfigDict(strict=True, extra="forbid", allow_inf_nan=False)
-    detection_mode: Literal["scansplitterv3", "scansplitterv4", "scansplitterv5", "album-splitter", "openrouter"] = "scansplitterv5"
+    detection_mode: Literal["scansplitterv3", "scansplitterv4", "scansplitterv5", "scansplitterv7", "album-splitter", "openrouter"] = "scansplitterv7"
     album_layout: Literal["auto", "single", "spread"] = "auto"
     min_area_ratio: float = Field(default=2, gt=0, lt=100)
     max_area_ratio: float = Field(default=80, gt=0, le=100)

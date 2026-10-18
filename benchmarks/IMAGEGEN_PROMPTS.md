@@ -51,3 +51,44 @@ The ten previously generated scan photographs were recovered at high quality
 for benchmark use into `source_textures/photos/`. The deterministic compositor
 in `_build_authentic_scans.py` places them as mounted prints and separately
 labels their inner photographic image areas.
+
+## Robustness benchmark sources (2026-10-16)
+
+Generated with Codex CLI image generation. Each photo prompt required a single
+full-bleed photorealistic analog snapshot with anonymous people and no borders,
+frames, collage, readable text, logos, or watermarks. Photos were resized to
+1024px on the long side (JPEG q92); photo-14, -19, -22, -26, -28 were center-cropped
+to 4:3, the rest are 3:2, 2:3 (20, 21, 23) or 1:1 (16, 25).
+
+Photos (`source_textures/photos/`), chosen as detector hard cases:
+
+- photo-11.jpg: snowy landscape, nearly all white (high-key, low contrast)
+- photo-12.jpg: night beach bonfire, mostly black (low-key)
+- photo-13.jpg: beige sand dunes, near-uniform beige
+- photo-14.jpg: 1970s living room, orange/brown tones (4:3)
+- photo-15.jpg: black-and-white school class group portrait
+- photo-16.jpg: baby close-up, soft pastel (1:1)
+- photo-17.jpg: foggy grey harbour, very low contrast
+- photo-18.jpg: bright green lawn football game
+- photo-19.jpg: kitchen with cabinets and tiles, strong straight lines (4:3)
+- photo-20.jpg: wedding couple, white dress against white wall (portrait)
+- photo-21.jpg: dark forest path, mostly dark greens (portrait)
+- photo-22.jpg: 1990s amusement park, saturated colors (4:3)
+- photo-23.jpg: sepia portrait of an elderly couple (portrait)
+- photo-24.jpg: beach with horizon through the middle
+- photo-25.jpg: faded polaroid-style indoor party, magenta/yellow cast (1:1)
+- photo-26.jpg: overhead dinner table (4:3)
+- photo-27.jpg: city skyline at dusk
+- photo-28.jpg: dog on a wooden porch, wood texture (4:3)
+- photo-29.jpg: black-and-white mountains with large sky
+- photo-30.jpg: children in a blue paddling pool
+
+Backgrounds (`source_textures/backgrounds/`, 1600x1150 PNG): straight-on,
+full-bleed, empty surfaces with no photos, table edges, or text.
+
+- flatbed-white.png: off-white scanner lid, uneven illumination, faint dust
+- flatbed-black.png: black felt/foam scanner lid backing, texture and dust
+- wood-table.png: oak table top from above, warm daylight
+- magnetic-album.png: cream "magnetic" album page, glue-line grid, glossy overlay reflections
+- grey-carpet.png: grey loop-pile carpet/fabric from above
+- kraft-paper.png: brown kraft paper/cardboard surface

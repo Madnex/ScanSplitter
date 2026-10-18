@@ -109,6 +109,7 @@ def test_benchmark_adds_openrouter_variant_only_when_configured(monkeypatch):
     monkeypatch.setattr(benchmarking, "detect_photos_v3", empty)
     monkeypatch.setattr(benchmarking, "detect_photos_v4", empty)
     monkeypatch.setattr(benchmarking, "detect_photos_v5", empty)
+    monkeypatch.setattr(benchmarking, "detect_photos_v7", empty)
     monkeypatch.setattr(benchmarking, "detect_photos_openrouter", empty)
     monkeypatch.setattr(benchmarking, "is_openrouter_configured", lambda: True)
     monkeypatch.setattr(benchmarking, "openrouter_model", lambda: "vendor/vision")
@@ -119,6 +120,31 @@ def test_benchmark_adds_openrouter_variant_only_when_configured(monkeypatch):
         "v3",
         "v4",
         "v5",
+        "v7",
         "llm",
     ]
     assert result["variants"][-1]["label"] == "OpenRouter · vendor/vision"
+
+
+def test_best_pairs_matches_brute_force_and_scales():
+    import itertools
+    import random
+
+    from scansplitter.benchmark_metrics import rotated_iou as iou
+
+    rng = random.Random(3)
+
+    def rect():
+        return ((rng.uniform(0, 300), rng.uniform(0, 300)), (rng.uniform(40, 120), rng.uniform(40, 120)), rng.uniform(-30, 30))
+
+    for n, m in ((3, 3), (2, 5), (5, 2), (4, 6)):
+        expected, actual = [rect() for _ in range(n)], [rect() for _ in range(m)]
+        total = sum(pair[2] for pair in best_pairs(expected, actual))
+        k = min(n, m)
+        if n <= m:
+            brute = max(sum(iou(expected[i], actual[p[i]]) for i in range(k)) for p in itertools.permutations(range(m), k))
+        else:
+            brute = max(sum(iou(expected[p[j]], actual[j]) for j in range(k)) for p in itertools.permutations(range(n), k))
+        assert total == pytest.approx(brute)
+    many = [((50.0 + 100 * i, 50.0), (80.0, 80.0), 0.0) for i in range(25)]
+    assert all(pair[2] == pytest.approx(1.0) for pair in best_pairs(many, list(reversed(many))))

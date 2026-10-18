@@ -1,0 +1,4200 @@
+{
+  "version": 1,
+  "rectangle_format": [
+    "center_x",
+    "center_y",
+    "width",
+    "height",
+    "angle_degrees"
+  ],
+  "target_definition": {
+    "robust-dev": "inner photographic image area; exclude borders, Polaroid frames, tape, corners, shadows",
+    "robust-holdout": "inner photographic image area; exclude borders, Polaroid frames, tape, corners, shadows"
+  },
+  "seeds": {
+    "dev": 1001,
+    "holdout": 2002
+  },
+  "source_photos": {
+    "dev": [
+      1,
+      4,
+      5,
+      13,
+      14,
+      15,
+      18,
+      19,
+      20,
+      23,
+      24,
+      25,
+      26,
+      28,
+      29
+    ],
+    "holdout": [
+      2,
+      3,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      16,
+      17,
+      21,
+      22,
+      27,
+      30
+    ]
+  },
+  "cases": [
+    {
+      "id": "robust-dev-flatbed-white-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-flatbed-white-01.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "lid-white",
+        "2550x3300"
+      ],
+      "image_size": [
+        2550,
+        3300
+      ],
+      "rectangles": [
+        [
+          1030.56,
+          2379.79,
+          1507,
+          1004,
+          0.502
+        ],
+        [
+          1093.26,
+          1022.12,
+          1477,
+          829,
+          3.021
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-flatbed-white-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-flatbed-white-02.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          451.78,
+          361.6,
+          691,
+          460,
+          -4.348
+        ],
+        [
+          475.82,
+          1036.18,
+          793,
+          528,
+          -1.457
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-flatbed-white-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-flatbed-white-03.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          444.49,
+          171.42,
+          431,
+          242,
+          -3.12
+        ],
+        [
+          1114.56,
+          485.57,
+          354,
+          198,
+          -1.718
+        ],
+        [
+          1066.08,
+          815.15,
+          360,
+          240,
+          0.13
+        ],
+        [
+          451.84,
+          802.15,
+          251,
+          167,
+          -3.014
+        ],
+        [
+          389.92,
+          466.92,
+          112,
+          167,
+          -4.528
+        ],
+        [
+          954.83,
+          192.61,
+          166,
+          207,
+          -0.149
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-flatbed-white-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-flatbed-white-04.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          980.88,
+          766.13,
+          438,
+          246,
+          6.891
+        ],
+        [
+          998.52,
+          285.87,
+          433,
+          324,
+          7.589
+        ],
+        [
+          319.85,
+          262.47,
+          312,
+          311,
+          -7.187
+        ],
+        [
+          392.7,
+          707.86,
+          413,
+          330,
+          1.652
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-flatbed-white-05",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-flatbed-white-05.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          952.77,
+          727.59,
+          170,
+          255,
+          3.913
+        ],
+        [
+          381.1,
+          749.7,
+          538,
+          358,
+          4.951
+        ],
+        [
+          437.04,
+          292.93,
+          228,
+          303,
+          4.793
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-flatbed-black-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-flatbed-black-01.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-black",
+      "tags": [
+        "bordered",
+        "flatbed",
+        "felt-black",
+        "2550x3300"
+      ],
+      "image_size": [
+        2550,
+        3300
+      ],
+      "rectangles": [
+        [
+          708.84,
+          908.16,
+          644,
+          1147,
+          -3.947
+        ],
+        [
+          658.16,
+          2455.75,
+          818,
+          1226,
+          6.453
+        ],
+        [
+          1852.24,
+          991.36,
+          838,
+          1047,
+          3.802
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-flatbed-black-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-flatbed-black-02.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-black",
+      "tags": [
+        "bordered",
+        "flatbed",
+        "felt-black",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          426.62,
+          612.36,
+          673,
+          841,
+          1.057
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-flatbed-black-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-flatbed-black-03.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-black",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "felt-black",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          702.45,
+          757.54,
+          305,
+          244,
+          -0.456
+        ],
+        [
+          713.18,
+          1164.65,
+          312,
+          249,
+          6.615
+        ],
+        [
+          277.68,
+          1172.65,
+          358,
+          238,
+          -5.605
+        ],
+        [
+          241.2,
+          304.2,
+          230,
+          153,
+          5.039
+        ],
+        [
+          739.48,
+          284.19,
+          376,
+          281,
+          -3.521
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-flatbed-black-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-flatbed-black-04.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-black",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "felt-black",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          305.18,
+          786.91,
+          336,
+          335,
+          1.541
+        ],
+        [
+          718.95,
+          455.52,
+          301,
+          451,
+          0.404
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-rotated-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-rotated-01.jpg",
+      "target": "photographic_content",
+      "scenario": "rotated",
+      "tags": [
+        "rotated",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          756.66,
+          305.89,
+          220,
+          330,
+          30.01
+        ],
+        [
+          755.29,
+          975.81,
+          318,
+          317,
+          -29.978
+        ],
+        [
+          264.38,
+          400.25,
+          265,
+          264,
+          -40.543
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-rotated-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-rotated-02.jpg",
+      "target": "photographic_content",
+      "scenario": "rotated",
+      "tags": [
+        "rotated",
+        "lid-white",
+        "2400x1700"
+      ],
+      "image_size": [
+        2400,
+        1700
+      ],
+      "rectangles": [
+        [
+          915.46,
+          444.13,
+          664,
+          373,
+          -40.043
+        ],
+        [
+          735.07,
+          1258.48,
+          550,
+          550,
+          15.675
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-rotated-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-rotated-03.jpg",
+      "target": "photographic_content",
+      "scenario": "rotated",
+      "tags": [
+        "rotated",
+        "proc-kraft",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          736.3,
+          243.35,
+          323,
+          323,
+          -10.708
+        ],
+        [
+          256.77,
+          1163.6,
+          395,
+          263,
+          -21.895
+        ],
+        [
+          265.8,
+          218.29,
+          352,
+          234,
+          -19.055
+        ],
+        [
+          747.88,
+          1150.35,
+          354,
+          283,
+          -36.277
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-rotated-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-rotated-04.jpg",
+      "target": "photographic_content",
+      "scenario": "rotated",
+      "tags": [
+        "rotated",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          961.64,
+          727.9,
+          323,
+          322,
+          -32.157
+        ],
+        [
+          302.94,
+          740.98,
+          326,
+          261,
+          -27.162
+        ],
+        [
+          347.18,
+          281.41,
+          281,
+          210,
+          41.335
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-single-large-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-single-large-01.jpg",
+      "target": "photographic_content",
+      "scenario": "single-large",
+      "tags": [
+        "single-large",
+        "bordered",
+        "area~53%",
+        "lid-white",
+        "2550x3300"
+      ],
+      "image_size": [
+        2550,
+        3300
+      ],
+      "rectangles": [
+        [
+          1002.9,
+          1751.47,
+          1623,
+          2472,
+          -1.377
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-single-large-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-single-large-02.jpg",
+      "target": "photographic_content",
+      "scenario": "single-large",
+      "tags": [
+        "single-large",
+        "bordered",
+        "area~67%",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          775.42,
+          491.89,
+          1027,
+          847,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-single-large-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-single-large-03.jpg",
+      "target": "photographic_content",
+      "scenario": "single-large",
+      "tags": [
+        "single-large",
+        "borderless",
+        "area~48%",
+        "felt-black",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          582.58,
+          557.91,
+          674,
+          1008,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-single-large-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-single-large-04.jpg",
+      "target": "photographic_content",
+      "scenario": "single-large",
+      "tags": [
+        "single-large",
+        "bordered",
+        "area~65%",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          452.4,
+          631.02,
+          780,
+          1098,
+          1.706
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-many-small-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-many-small-01.jpg",
+      "target": "photographic_content",
+      "scenario": "many-small",
+      "tags": [
+        "many-small",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          748.46,
+          600.82,
+          225,
+          169,
+          3.668
+        ],
+        [
+          599.32,
+          390.32,
+          100,
+          150,
+          -1.062
+        ],
+        [
+          1166.95,
+          844.01,
+          223,
+          167,
+          -1.549
+        ],
+        [
+          212.19,
+          834.62,
+          245,
+          163,
+          -3.747
+        ],
+        [
+          1059.19,
+          380.58,
+          177,
+          176,
+          3.664
+        ],
+        [
+          1146.36,
+          601.54,
+          203,
+          135,
+          4.274
+        ],
+        [
+          318.89,
+          609.04,
+          233,
+          155,
+          3.082
+        ],
+        [
+          1173.35,
+          159.43,
+          151,
+          150,
+          3.331
+        ],
+        [
+          658.68,
+          154.77,
+          305,
+          203,
+          -1.929
+        ],
+        [
+          259.43,
+          387.48,
+          210,
+          139,
+          2.679
+        ],
+        [
+          663.58,
+          855.44,
+          209,
+          156,
+          2.268
+        ],
+        [
+          198.14,
+          156.84,
+          223,
+          148,
+          -3.261
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-many-small-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-many-small-02.jpg",
+      "target": "photographic_content",
+      "scenario": "many-small",
+      "tags": [
+        "many-small",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          469.87,
+          851.02,
+          153,
+          204,
+          -4.855
+        ],
+        [
+          497.19,
+          1187.77,
+          189,
+          282,
+          -4.434
+        ],
+        [
+          174.93,
+          876.27,
+          232,
+          173,
+          1.913
+        ],
+        [
+          508.61,
+          537.22,
+          218,
+          272,
+          1.365
+        ],
+        [
+          771.42,
+          1161.74,
+          148,
+          197,
+          -0.842
+        ],
+        [
+          805.7,
+          847.69,
+          241,
+          135,
+          1.824
+        ],
+        [
+          832.79,
+          217.68,
+          176,
+          264,
+          -2.622
+        ],
+        [
+          513.03,
+          179.95,
+          215,
+          171,
+          3.036
+        ],
+        [
+          759.96,
+          549.24,
+          143,
+          254,
+          1.658
+        ],
+        [
+          190.64,
+          514.62,
+          237,
+          157,
+          -2.044
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-many-small-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-many-small-03.jpg",
+      "target": "photographic_content",
+      "scenario": "many-small",
+      "tags": [
+        "many-small",
+        "felt-black",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          824.19,
+          1142.36,
+          228,
+          304,
+          4.816
+        ],
+        [
+          491.76,
+          1157.58,
+          225,
+          281,
+          2.304
+        ],
+        [
+          201.63,
+          671.26,
+          229,
+          305,
+          2.39
+        ],
+        [
+          175.6,
+          1168.29,
+          182,
+          181,
+          2.032
+        ],
+        [
+          514.15,
+          295.66,
+          230,
+          288,
+          -3.915
+        ],
+        [
+          497.86,
+          637.42,
+          234,
+          233,
+          -1.384
+        ],
+        [
+          193.66,
+          275.81,
+          206,
+          365,
+          2.077
+        ],
+        [
+          807.2,
+          212.5,
+          198,
+          132,
+          3.337
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-tight-gutters-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-tight-gutters-01.jpg",
+      "target": "photographic_content",
+      "scenario": "tight-gutters",
+      "tags": [
+        "tight-gutters",
+        "gap~11px",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          381.8,
+          226.79,
+          542,
+          400,
+          1.528
+        ],
+        [
+          1016.91,
+          243.73,
+          706,
+          400,
+          1.528
+        ],
+        [
+          369.66,
+          681.96,
+          542,
+          488,
+          1.528
+        ],
+        [
+          1004.77,
+          698.9,
+          706,
+          488,
+          1.528
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-tight-gutters-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-tight-gutters-02.jpg",
+      "target": "photographic_content",
+      "scenario": "tight-gutters",
+      "tags": [
+        "tight-gutters",
+        "gap~9px",
+        "lid-white",
+        "2400x1700"
+      ],
+      "image_size": [
+        2400,
+        1700
+      ],
+      "rectangles": [
+        [
+          653.22,
+          441.05,
+          974,
+          766,
+          1.535
+        ],
+        [
+          1740.29,
+          470.18,
+          1170,
+          766,
+          1.535
+        ],
+        [
+          632.53,
+          1213.23,
+          974,
+          748,
+          1.535
+        ],
+        [
+          1719.6,
+          1242.37,
+          1170,
+          748,
+          1.535
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-tight-gutters-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-tight-gutters-03.jpg",
+      "target": "photographic_content",
+      "scenario": "tight-gutters",
+      "tags": [
+        "tight-gutters",
+        "gap~4px",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          263.86,
+          282.48,
+          378,
+          494,
+          0.133
+        ],
+        [
+          632.76,
+          283.34,
+          352,
+          494,
+          0.133
+        ],
+        [
+          1073.63,
+          284.36,
+          522,
+          494,
+          0.133
+        ],
+        [
+          262.82,
+          734.25,
+          378,
+          401,
+          0.133
+        ],
+        [
+          631.72,
+          735.1,
+          352,
+          401,
+          0.133
+        ],
+        [
+          1072.58,
+          736.13,
+          522,
+          401,
+          0.133
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-tight-gutters-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-tight-gutters-04.jpg",
+      "target": "photographic_content",
+      "scenario": "tight-gutters",
+      "tags": [
+        "tight-gutters",
+        "gap~5px",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          301.73,
+          368.56,
+          478,
+          594,
+          1.849
+        ],
+        [
+          762.24,
+          382.43,
+          354,
+          598,
+          1.849
+        ],
+        [
+          286.91,
+          998.14,
+          477,
+          596,
+          1.849
+        ],
+        [
+          742.71,
+          1018.35,
+          354,
+          595,
+          1.849
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-edge-touching-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-edge-touching-01.jpg",
+      "target": "photographic_content",
+      "scenario": "edge-touching",
+      "tags": [
+        "bordered",
+        "edge-touching",
+        "felt-black",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          400.63,
+          298.58,
+          426,
+          567,
+          0.224
+        ],
+        [
+          628.73,
+          1027.11,
+          680,
+          544,
+          -1.364
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-edge-touching-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-edge-touching-02.jpg",
+      "target": "photographic_content",
+      "scenario": "edge-touching",
+      "tags": [
+        "borderless",
+        "edge-touching",
+        "lid-white",
+        "1700x2400"
+      ],
+      "image_size": [
+        1700,
+        2400
+      ],
+      "rectangles": [
+        [
+          618.34,
+          1098.53,
+          1202,
+          1502,
+          -1.315
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-edge-touching-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-edge-touching-03.jpg",
+      "target": "photographic_content",
+      "scenario": "edge-touching",
+      "tags": [
+        "bordered",
+        "borderless",
+        "edge-touching",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          709.52,
+          823.74,
+          309,
+          309,
+          -0.396
+        ],
+        [
+          238.79,
+          738.34,
+          337,
+          505,
+          2.649
+        ],
+        [
+          1191.68,
+          423.83,
+          404,
+          403,
+          0.876
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-edge-touching-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-edge-touching-04.jpg",
+      "target": "photographic_content",
+      "scenario": "edge-touching",
+      "tags": [
+        "borderless",
+        "edge-touching",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          256.77,
+          787.77,
+          501,
+          333,
+          1.003
+        ],
+        [
+          1140.61,
+          216.1,
+          415,
+          414,
+          -2.026
+        ],
+        [
+          1148.85,
+          753.3,
+          480,
+          360,
+          2.696
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-low-contrast-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-low-contrast-01.jpg",
+      "target": "photographic_content",
+      "scenario": "low-contrast",
+      "tags": [
+        "low-contrast",
+        "snow",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          1102.01,
+          820.47,
+          355,
+          199,
+          -4.725
+        ],
+        [
+          1086.88,
+          209.93,
+          390,
+          219,
+          1.119
+        ],
+        [
+          1054.96,
+          492.46,
+          157,
+          209,
+          -5.766
+        ],
+        [
+          435.74,
+          816.36,
+          306,
+          229,
+          1.79
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-low-contrast-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-low-contrast-02.jpg",
+      "target": "photographic_content",
+      "scenario": "low-contrast",
+      "tags": [
+        "low-contrast",
+        "dark",
+        "felt-black",
+        "2400x1700"
+      ],
+      "image_size": [
+        2400,
+        1700
+      ],
+      "rectangles": [
+        [
+          612.08,
+          752.7,
+          921,
+          921,
+          2.386
+        ],
+        [
+          1683.25,
+          908.55,
+          686,
+          1221,
+          -6.931
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-low-contrast-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-low-contrast-03.jpg",
+      "target": "photographic_content",
+      "scenario": "low-contrast",
+      "tags": [
+        "low-contrast",
+        "beige",
+        "proc-kraft",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          497.23,
+          1147.99,
+          566,
+          318,
+          -4.144
+        ],
+        [
+          312.15,
+          722.33,
+          308,
+          308,
+          6.166
+        ],
+        [
+          532.13,
+          276.85,
+          497,
+          372,
+          0.775
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-low-contrast-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-low-contrast-04.jpg",
+      "target": "photographic_content",
+      "scenario": "low-contrast",
+      "tags": [
+        "low-contrast",
+        "snow",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          981.13,
+          485.93,
+          399,
+          709,
+          6.03
+        ],
+        [
+          368.63,
+          480.29,
+          478,
+          597,
+          -3.564
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-polaroid-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-polaroid-01.jpg",
+      "target": "photographic_content",
+      "scenario": "polaroid",
+      "tags": [
+        "polaroid",
+        "bg-grey-carpet",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          451.27,
+          791.14,
+          576,
+          613,
+          -11.054
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-polaroid-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-polaroid-02.jpg",
+      "target": "photographic_content",
+      "scenario": "polaroid",
+      "tags": [
+        "polaroid",
+        "bg-grey-carpet",
+        "2400x1700"
+      ],
+      "image_size": [
+        2400,
+        1700
+      ],
+      "rectangles": [
+        [
+          544.77,
+          444.74,
+          463,
+          478,
+          5.703
+        ],
+        [
+          1906.92,
+          437.92,
+          391,
+          395,
+          14.991
+        ],
+        [
+          1679.17,
+          1218.09,
+          430,
+          430,
+          24.66
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-polaroid-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-polaroid-03.jpg",
+      "target": "photographic_content",
+      "scenario": "polaroid",
+      "tags": [
+        "polaroid",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          697.25,
+          450.56,
+          543,
+          533,
+          -11.587
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-polaroid-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-polaroid-04.jpg",
+      "target": "photographic_content",
+      "scenario": "polaroid",
+      "tags": [
+        "polaroid",
+        "proc-wood",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          708.1,
+          453.01,
+          549,
+          543,
+          13.809
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-phone-capture-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-phone-capture-01.jpg",
+      "target": "photographic_content",
+      "scenario": "phone-capture",
+      "tags": [
+        "phone-capture",
+        "perspective",
+        "bg-grey-carpet",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          772.63,
+          486.9,
+          628.81,
+          614.88,
+          -9.226
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-phone-capture-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-phone-capture-02.jpg",
+      "target": "photographic_content",
+      "scenario": "phone-capture",
+      "tags": [
+        "phone-capture",
+        "perspective",
+        "proc-kraft",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          354.92,
+          257.02,
+          314.22,
+          305.74,
+          -0.752
+        ],
+        [
+          995.17,
+          279.21,
+          491.64,
+          272.4,
+          -5.481
+        ],
+        [
+          974.28,
+          696.97,
+          331.45,
+          214.1,
+          -20.944
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-phone-capture-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-phone-capture-03.jpg",
+      "target": "photographic_content",
+      "scenario": "phone-capture",
+      "tags": [
+        "phone-capture",
+        "perspective",
+        "bg-grey-carpet",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          534.83,
+          515.65,
+          678.14,
+          658.76,
+          -4.663
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-phone-capture-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-phone-capture-04.jpg",
+      "target": "photographic_content",
+      "scenario": "phone-capture",
+      "tags": [
+        "phone-capture",
+        "perspective",
+        "proc-kraft",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          633.93,
+          532.65,
+          799.03,
+          627.05,
+          -6.027
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-album-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-album-01.jpg",
+      "target": "photographic_content",
+      "scenario": "album",
+      "tags": [
+        "album",
+        "blank-spread",
+        "mounts",
+        "dark",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          325.3886906586897,
+          298.5007050292632,
+          252,
+          251,
+          3.6401358981784364
+        ],
+        [
+          1072.155616255498,
+          276.37562949788924,
+          233,
+          291,
+          3.897717176534581
+        ],
+        [
+          1100.9961023081487,
+          723.7667597338751,
+          193,
+          289,
+          -3.6922625875582686
+        ],
+        [
+          742.602403116811,
+          315.79483259478644,
+          159,
+          282,
+          2.387366118446569
+        ],
+        [
+          370.4784167643889,
+          707.7908772985968,
+          176,
+          314,
+          0.16103758061322415
+        ],
+        [
+          689.6175328457451,
+          713.4051720056642,
+          197,
+          295,
+          2.216601417194419
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-album-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-album-02.jpg",
+      "target": "photographic_content",
+      "scenario": "album",
+      "tags": [
+        "album",
+        "magnetic-album",
+        "plastic-glare",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          252.29,
+          252.98,
+          217,
+          325,
+          -2.654
+        ],
+        [
+          1094.03,
+          269.95,
+          266,
+          332,
+          2.881
+        ],
+        [
+          309.91,
+          765.71,
+          290,
+          193,
+          1.835
+        ],
+        [
+          1117.18,
+          726.21,
+          200,
+          356,
+          2.762
+        ],
+        [
+          667.34,
+          687.12,
+          209,
+          312,
+          -2.499
+        ],
+        [
+          673.77,
+          249.54,
+          283,
+          282,
+          -0.859
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-album-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-album-03.jpg",
+      "target": "photographic_content",
+      "scenario": "album",
+      "tags": [
+        "album",
+        "blank-spread",
+        "mounts",
+        "cream",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          307.07971605529127,
+          306.28925747254135,
+          204,
+          305,
+          2.107917075325295
+        ],
+        [
+          672.848361308834,
+          693.1796854943917,
+          240,
+          320,
+          1.2471459046961013
+        ],
+        [
+          1092.6671382797306,
+          704.9258558134626,
+          200,
+          299,
+          0.010719587858177282
+        ],
+        [
+          688.1800913547942,
+          305.7942278174987,
+          204,
+          305,
+          -4.2092335002813375
+        ],
+        [
+          328.6498368832881,
+          694.4266268702482,
+          279,
+          279,
+          3.1461274424233396
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-album-04",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-album-04.jpg",
+      "target": "photographic_content",
+      "scenario": "album",
+      "tags": [
+        "album",
+        "magnetic-album",
+        "plastic-glare",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          1042.74,
+          732.58,
+          370,
+          370,
+          0.937
+        ],
+        [
+          981.55,
+          258.93,
+          426,
+          319,
+          0.724
+        ],
+        [
+          357.52,
+          715.91,
+          427,
+          240,
+          2.634
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-mixed-hard-01",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-mixed-hard-01.jpg",
+      "target": "photographic_content",
+      "scenario": "mixed-hard",
+      "tags": [
+        "mixed-hard",
+        "tight-gutters",
+        "rotated",
+        "textured-bg",
+        "gap~11px",
+        "bg-magnetic-album",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          280.3,
+          412.25,
+          406,
+          552,
+          -9.145
+        ],
+        [
+          674.23,
+          348.83,
+          370,
+          552,
+          -9.145
+        ],
+        [
+          368.75,
+          961.68,
+          406,
+          539,
+          -9.145
+        ],
+        [
+          762.68,
+          898.26,
+          370,
+          539,
+          -9.145
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-mixed-hard-02",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-mixed-hard-02.jpg",
+      "target": "photographic_content",
+      "scenario": "mixed-hard",
+      "tags": [
+        "mixed-hard",
+        "rotated",
+        "textured-bg",
+        "bg-grey-carpet",
+        "1700x2400"
+      ],
+      "image_size": [
+        1700,
+        2400
+      ],
+      "rectangles": [
+        [
+          1249.81,
+          1871.81,
+          579,
+          578,
+          25.44
+        ],
+        [
+          1258.67,
+          737.38,
+          511,
+          639,
+          28.824
+        ],
+        [
+          447.78,
+          1722.79,
+          568,
+          378,
+          22.19
+        ]
+      ]
+    },
+    {
+      "id": "robust-dev-mixed-hard-03",
+      "suite": "robust-dev",
+      "image": "fixtures/dev/robust-dev-mixed-hard-03.jpg",
+      "target": "photographic_content",
+      "scenario": "mixed-hard",
+      "tags": [
+        "mixed-hard",
+        "tight-gutters",
+        "dark-on-dark",
+        "gap~5px",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          403.23,
+          269.67,
+          588,
+          430,
+          2.687
+        ],
+        [
+          1032.1,
+          301.7,
+          588,
+          423,
+          2.687
+        ],
+        [
+          380.51,
+          721.79,
+          605,
+          393,
+          2.687
+        ],
+        [
+          1013.04,
+          750.48,
+          580,
+          395,
+          2.687
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-flatbed-white-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-flatbed-white-01.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "lid-white",
+        "2550x3300"
+      ],
+      "image_size": [
+        2550,
+        3300
+      ],
+      "rectangles": [
+        [
+          601.45,
+          2761.06,
+          835,
+          668,
+          6.631
+        ],
+        [
+          1838.7,
+          659.63,
+          901,
+          721,
+          1.069
+        ],
+        [
+          1875.13,
+          2714.14,
+          789,
+          526,
+          -7.046
+        ],
+        [
+          619.71,
+          1650.45,
+          758,
+          505,
+          -4.315
+        ],
+        [
+          752.03,
+          773.1,
+          796,
+          530,
+          -2.054
+        ],
+        [
+          1914.27,
+          1744.52,
+          873,
+          654,
+          5.565
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-flatbed-white-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-flatbed-white-02.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "flatbed",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          678.24,
+          1130.81,
+          222,
+          295,
+          4.363
+        ],
+        [
+          262.54,
+          221.89,
+          395,
+          263,
+          -0.475
+        ],
+        [
+          245.96,
+          756.19,
+          271,
+          152,
+          -7.668
+        ],
+        [
+          748.73,
+          669.03,
+          154,
+          231,
+          -2.895
+        ],
+        [
+          234.68,
+          1197.79,
+          331,
+          186,
+          -2.123
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-flatbed-white-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-flatbed-white-03.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          263.75,
+          214.87,
+          335,
+          188,
+          7.717
+        ],
+        [
+          763.69,
+          1092.52,
+          290,
+          193,
+          -7.538
+        ],
+        [
+          749.71,
+          664.67,
+          375,
+          210,
+          -5.652
+        ],
+        [
+          726.78,
+          244.86,
+          341,
+          227,
+          -7.042
+        ],
+        [
+          285.16,
+          698.9,
+          310,
+          247,
+          5.688
+        ],
+        [
+          310.56,
+          1112.58,
+          227,
+          283,
+          3.59
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-flatbed-white-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-flatbed-white-04.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          351.0,
+          291.23,
+          447,
+          250,
+          -3.906
+        ],
+        [
+          1063.15,
+          296.46,
+          524,
+          294,
+          5.816
+        ],
+        [
+          401.34,
+          749.37,
+          398,
+          265,
+          -6.879
+        ],
+        [
+          1054.81,
+          723.99,
+          229,
+          285,
+          1.272
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-flatbed-white-05",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-flatbed-white-05.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-white",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          763.68,
+          881.37,
+          299,
+          224,
+          5.624
+        ],
+        [
+          697.86,
+          1191.32,
+          273,
+          204,
+          5.224
+        ],
+        [
+          212.86,
+          1189.4,
+          259,
+          258,
+          7.518
+        ],
+        [
+          233.37,
+          837.97,
+          300,
+          200,
+          2.524
+        ],
+        [
+          248.83,
+          538.7,
+          306,
+          229,
+          5.093
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-flatbed-black-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-flatbed-black-01.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-black",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "felt-black",
+        "2550x3300"
+      ],
+      "image_size": [
+        2550,
+        3300
+      ],
+      "rectangles": [
+        [
+          2093.41,
+          1188.65,
+          373,
+          373,
+          2.697
+        ],
+        [
+          789.19,
+          2010.57,
+          532,
+          531,
+          1.398
+        ],
+        [
+          535.97,
+          1263.2,
+          644,
+          515,
+          7.742
+        ],
+        [
+          730.27,
+          455.74,
+          507,
+          507,
+          -3.396
+        ],
+        [
+          1847.92,
+          420.57,
+          751,
+          500,
+          -1.616
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-flatbed-black-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-flatbed-black-02.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-black",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          288.74,
+          722.86,
+          266,
+          399,
+          7.887
+        ],
+        [
+          681.22,
+          255.28,
+          342,
+          273,
+          -4.429
+        ],
+        [
+          713.66,
+          759.07,
+          355,
+          354,
+          -6.799
+        ],
+        [
+          234.24,
+          242.79,
+          205,
+          153,
+          6.103
+        ],
+        [
+          1128.6,
+          714.58,
+          300,
+          299,
+          -3.123
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-flatbed-black-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-flatbed-black-03.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-black",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "felt-black",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          272.82,
+          1112.89,
+          342,
+          227,
+          -6.336
+        ],
+        [
+          727.29,
+          685.64,
+          361,
+          360,
+          -4.416
+        ],
+        [
+          229.21,
+          288.61,
+          290,
+          163,
+          5.434
+        ],
+        [
+          693.71,
+          1158.9,
+          250,
+          166,
+          -4.754
+        ],
+        [
+          256.87,
+          702.87,
+          354,
+          283,
+          -3.32
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-flatbed-black-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-flatbed-black-04.jpg",
+      "target": "photographic_content",
+      "scenario": "flatbed-black",
+      "tags": [
+        "bordered",
+        "borderless",
+        "flatbed",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          216.59,
+          733.69,
+          266,
+          399,
+          5.384
+        ],
+        [
+          685.38,
+          776.83,
+          277,
+          345,
+          -1.101
+        ],
+        [
+          680.67,
+          268.48,
+          288,
+          288,
+          -0.792
+        ],
+        [
+          1169.91,
+          253.35,
+          234,
+          292,
+          4.533
+        ],
+        [
+          1136.76,
+          746.39,
+          347,
+          347,
+          3.405
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-rotated-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-rotated-01.jpg",
+      "target": "photographic_content",
+      "scenario": "rotated",
+      "tags": [
+        "rotated",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          348.99,
+          732.53,
+          356,
+          199,
+          -35.436
+        ],
+        [
+          321.61,
+          256.76,
+          388,
+          258,
+          -31.603
+        ],
+        [
+          961.91,
+          259.45,
+          346,
+          230,
+          35.818
+        ],
+        [
+          1047.66,
+          734.44,
+          466,
+          310,
+          -20.908
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-rotated-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-rotated-02.jpg",
+      "target": "photographic_content",
+      "scenario": "rotated",
+      "tags": [
+        "rotated",
+        "bg-kraft-paper",
+        "2400x1700"
+      ],
+      "image_size": [
+        2400,
+        1700
+      ],
+      "rectangles": [
+        [
+          440.3,
+          882.67,
+          629,
+          629,
+          -11.639
+        ],
+        [
+          1206.72,
+          626.31,
+          508,
+          406,
+          32.271
+        ],
+        [
+          1976.73,
+          692.61,
+          414,
+          620,
+          -26.239
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-rotated-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-rotated-03.jpg",
+      "target": "photographic_content",
+      "scenario": "rotated",
+      "tags": [
+        "rotated",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          403.11,
+          265.61,
+          453,
+          302,
+          -13.283
+        ],
+        [
+          974.82,
+          253.17,
+          407,
+          271,
+          26.224
+        ],
+        [
+          959.02,
+          726.35,
+          316,
+          210,
+          -29.55
+        ],
+        [
+          410.91,
+          731.68,
+          212,
+          377,
+          31.348
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-rotated-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-rotated-04.jpg",
+      "target": "photographic_content",
+      "scenario": "rotated",
+      "tags": [
+        "rotated",
+        "bg-kraft-paper",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          1033.91,
+          728.94,
+          324,
+          323,
+          20.845
+        ],
+        [
+          1067.72,
+          257.79,
+          270,
+          270,
+          -19.926
+        ],
+        [
+          406.89,
+          275.55,
+          393,
+          314,
+          -13.349
+        ],
+        [
+          381.51,
+          738.8,
+          287,
+          287,
+          34.757
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-single-large-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-single-large-01.jpg",
+      "target": "photographic_content",
+      "scenario": "single-large",
+      "tags": [
+        "single-large",
+        "borderless",
+        "area~54%",
+        "felt-black",
+        "2550x3300"
+      ],
+      "image_size": [
+        2550,
+        3300
+      ],
+      "rectangles": [
+        [
+          1460.72,
+          1739.35,
+          1750,
+          2601,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-single-large-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-single-large-02.jpg",
+      "target": "photographic_content",
+      "scenario": "single-large",
+      "tags": [
+        "single-large",
+        "borderless",
+        "area~66%",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          935.41,
+          492.94,
+          777,
+          979,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-single-large-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-single-large-03.jpg",
+      "target": "photographic_content",
+      "scenario": "single-large",
+      "tags": [
+        "single-large",
+        "borderless",
+        "area~59%",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          432.07,
+          642.4,
+          703,
+          1185,
+          1.042
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-single-large-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-single-large-04.jpg",
+      "target": "photographic_content",
+      "scenario": "single-large",
+      "tags": [
+        "single-large",
+        "bordered",
+        "area~62%",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          825.63,
+          514.85,
+          1001,
+          801,
+          0.0
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-many-small-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-many-small-01.jpg",
+      "target": "photographic_content",
+      "scenario": "many-small",
+      "tags": [
+        "many-small",
+        "lid-white",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          480.58,
+          1192.52,
+          196,
+          261,
+          0.962
+        ],
+        [
+          181.35,
+          1224.65,
+          107,
+          190,
+          4.576
+        ],
+        [
+          194.87,
+          509.61,
+          145,
+          193,
+          -0.191
+        ],
+        [
+          484.19,
+          830.73,
+          226,
+          169,
+          -3.295
+        ],
+        [
+          185.77,
+          833.79,
+          249,
+          186,
+          2.793
+        ],
+        [
+          811.69,
+          847.83,
+          134,
+          239,
+          3.376
+        ],
+        [
+          531.96,
+          211.36,
+          201,
+          267,
+          -4.424
+        ],
+        [
+          842.34,
+          548.81,
+          140,
+          248,
+          -0.97
+        ],
+        [
+          180.11,
+          172.05,
+          274,
+          182,
+          -0.202
+        ],
+        [
+          811.71,
+          233.47,
+          214,
+          142,
+          2.883
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-many-small-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-many-small-02.jpg",
+      "target": "photographic_content",
+      "scenario": "many-small",
+      "tags": [
+        "many-small",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          213.09,
+          494.29,
+          273,
+          205,
+          -0.993
+        ],
+        [
+          1197.74,
+          483.12,
+          292,
+          194,
+          -2.748
+        ],
+        [
+          192.03,
+          781.49,
+          198,
+          131,
+          -2.135
+        ],
+        [
+          531.06,
+          165.65,
+          301,
+          225,
+          -0.216
+        ],
+        [
+          1200.79,
+          220.43,
+          236,
+          157,
+          4.758
+        ],
+        [
+          852.75,
+          203.94,
+          207,
+          206,
+          2.955
+        ],
+        [
+          867.02,
+          527.05,
+          224,
+          149,
+          4.63
+        ],
+        [
+          185.6,
+          213.11,
+          221,
+          165,
+          4.382
+        ],
+        [
+          566.18,
+          839.07,
+          228,
+          152,
+          -4.805
+        ],
+        [
+          1181.32,
+          767.81,
+          224,
+          149,
+          -3.158
+        ],
+        [
+          867.7,
+          828.44,
+          287,
+          191,
+          4.811
+        ],
+        [
+          529.78,
+          537.32,
+          253,
+          168,
+          -3.15
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-many-small-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-many-small-03.jpg",
+      "target": "photographic_content",
+      "scenario": "many-small",
+      "tags": [
+        "many-small",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          1217.34,
+          810.76,
+          236,
+          235,
+          3.501
+        ],
+        [
+          203.98,
+          166.11,
+          205,
+          154,
+          2.112
+        ],
+        [
+          199.22,
+          821.77,
+          284,
+          226,
+          -1.107
+        ],
+        [
+          862.5,
+          809.52,
+          237,
+          237,
+          -1.541
+        ],
+        [
+          522.51,
+          508.98,
+          268,
+          267,
+          1.676
+        ],
+        [
+          511.62,
+          138.62,
+          237,
+          133,
+          3.791
+        ],
+        [
+          859.45,
+          462.94,
+          218,
+          145,
+          -3.347
+        ],
+        [
+          1185.17,
+          233.35,
+          236,
+          157,
+          3.881
+        ],
+        [
+          1198.21,
+          476.01,
+          220,
+          219,
+          -1.045
+        ],
+        [
+          540.58,
+          795.37,
+          232,
+          154,
+          -1.692
+        ],
+        [
+          888.57,
+          158.18,
+          229,
+          183,
+          2.926
+        ],
+        [
+          192.09,
+          489.03,
+          152,
+          228,
+          0.148
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-tight-gutters-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-tight-gutters-01.jpg",
+      "target": "photographic_content",
+      "scenario": "tight-gutters",
+      "tags": [
+        "tight-gutters",
+        "gap~8px",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          378.72,
+          244.04,
+          674,
+          411,
+          1.297
+        ],
+        [
+          1012.71,
+          258.4,
+          577,
+          411,
+          1.297
+        ],
+        [
+          368.44,
+          698.08,
+          674,
+          480,
+          1.297
+        ],
+        [
+          1002.43,
+          712.43,
+          577,
+          480,
+          1.297
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-tight-gutters-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-tight-gutters-02.jpg",
+      "target": "photographic_content",
+      "scenario": "tight-gutters",
+      "tags": [
+        "tight-gutters",
+        "gap~4px",
+        "lid-white",
+        "2400x1700"
+      ],
+      "image_size": [
+        2400,
+        1700
+      ],
+      "rectangles": [
+        [
+          399.9,
+          454.71,
+          557,
+          714,
+          -0.599
+        ],
+        [
+          1091.31,
+          447.48,
+          810,
+          714,
+          -0.599
+        ],
+        [
+          1892.53,
+          439.11,
+          777,
+          714,
+          -0.599
+        ],
+        [
+          1099.34,
+          1216.1,
+          810,
+          807,
+          -0.599
+        ],
+        [
+          1900.56,
+          1207.73,
+          777,
+          807,
+          -0.599
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-tight-gutters-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-tight-gutters-03.jpg",
+      "target": "photographic_content",
+      "scenario": "tight-gutters",
+      "tags": [
+        "tight-gutters",
+        "gap~7px",
+        "felt-black",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          191.03,
+          379.11,
+          290,
+          634,
+          -2.256
+        ],
+        [
+          494.67,
+          369.65,
+          256,
+          635,
+          -2.256
+        ],
+        [
+          788.43,
+          356.57,
+          279,
+          632,
+          -2.256
+        ],
+        [
+          219.48,
+          1012.43,
+          293,
+          577,
+          -2.256
+        ],
+        [
+          518.49,
+          999.64,
+          252,
+          575,
+          -2.256
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-tight-gutters-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-tight-gutters-04.jpg",
+      "target": "photographic_content",
+      "scenario": "tight-gutters",
+      "tags": [
+        "tight-gutters",
+        "gap~9px",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          244.73,
+          299.16,
+          351,
+          476,
+          -1.456
+        ],
+        [
+          664.99,
+          289.48,
+          435,
+          476,
+          -1.456
+        ],
+        [
+          1112.47,
+          279.11,
+          408,
+          478,
+          -1.456
+        ],
+        [
+          257.79,
+          753.73,
+          350,
+          382,
+          -1.456
+        ],
+        [
+          678.02,
+          743.05,
+          438,
+          378,
+          -1.456
+        ],
+        [
+          1122.99,
+          732.24,
+          406,
+          381,
+          -1.456
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-edge-touching-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-edge-touching-01.jpg",
+      "target": "photographic_content",
+      "scenario": "edge-touching",
+      "tags": [
+        "borderless",
+        "edge-touching",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          1095.03,
+          558.12,
+          589,
+          735,
+          -1.313
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-edge-touching-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-edge-touching-02.jpg",
+      "target": "photographic_content",
+      "scenario": "edge-touching",
+      "tags": [
+        "bordered",
+        "borderless",
+        "edge-touching",
+        "felt-black",
+        "2400x1700"
+      ],
+      "image_size": [
+        2400,
+        1700
+      ],
+      "rectangles": [
+        [
+          1482.13,
+          325.06,
+          627,
+          627,
+          -1.443
+        ],
+        [
+          433.84,
+          1305.22,
+          788,
+          630,
+          -0.566
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-edge-touching-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-edge-touching-03.jpg",
+      "target": "photographic_content",
+      "scenario": "edge-touching",
+      "tags": [
+        "bordered",
+        "edge-touching",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          357.08,
+          794.48,
+          474,
+          355,
+          -1.749
+        ],
+        [
+          1121.94,
+          743.81,
+          523,
+          348,
+          -0.393
+        ],
+        [
+          1106.14,
+          198.29,
+          186,
+          330,
+          2.268
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-edge-touching-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-edge-touching-04.jpg",
+      "target": "photographic_content",
+      "scenario": "edge-touching",
+      "tags": [
+        "bordered",
+        "borderless",
+        "edge-touching",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          256.98,
+          883.42,
+          341,
+          227,
+          0.678
+        ],
+        [
+          1206.61,
+          323.44,
+          342,
+          456,
+          -1.511
+        ],
+        [
+          698.47,
+          839.78,
+          397,
+          298,
+          0.116
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-low-contrast-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-low-contrast-01.jpg",
+      "target": "photographic_content",
+      "scenario": "low-contrast",
+      "tags": [
+        "low-contrast",
+        "snow",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          693.06,
+          492.23,
+          728,
+          728,
+          -0.416
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-low-contrast-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-low-contrast-02.jpg",
+      "target": "photographic_content",
+      "scenario": "low-contrast",
+      "tags": [
+        "low-contrast",
+        "dark",
+        "felt-black",
+        "2400x1700"
+      ],
+      "image_size": [
+        2400,
+        1700
+      ],
+      "rectangles": [
+        [
+          1254.84,
+          825.82,
+          1467,
+          1173,
+          6.081
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-low-contrast-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-low-contrast-03.jpg",
+      "target": "photographic_content",
+      "scenario": "low-contrast",
+      "tags": [
+        "low-contrast",
+        "beige",
+        "bg-kraft-paper",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          256.93,
+          835.8,
+          310,
+          464,
+          6.774
+        ],
+        [
+          715.38,
+          804.45,
+          379,
+          504,
+          0.626
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-low-contrast-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-low-contrast-04.jpg",
+      "target": "photographic_content",
+      "scenario": "low-contrast",
+      "tags": [
+        "low-contrast",
+        "snow",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          721.59,
+          250.0,
+          433,
+          346,
+          -1.509
+        ],
+        [
+          394.88,
+          748.44,
+          350,
+          350,
+          -1.837
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-polaroid-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-polaroid-01.jpg",
+      "target": "photographic_content",
+      "scenario": "polaroid",
+      "tags": [
+        "polaroid",
+        "proc-carpet",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          963.06,
+          258.08,
+          267,
+          285,
+          1.545
+        ],
+        [
+          380.49,
+          244.37,
+          292,
+          291,
+          -7.909
+        ],
+        [
+          420.86,
+          708.29,
+          245,
+          254,
+          -10.85
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-polaroid-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-polaroid-02.jpg",
+      "target": "photographic_content",
+      "scenario": "polaroid",
+      "tags": [
+        "polaroid",
+        "felt-black",
+        "1700x2400"
+      ],
+      "image_size": [
+        1700,
+        2400
+      ],
+      "rectangles": [
+        [
+          847.32,
+          981.27,
+          886,
+          874,
+          21.077
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-polaroid-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-polaroid-03.jpg",
+      "target": "photographic_content",
+      "scenario": "polaroid",
+      "tags": [
+        "polaroid",
+        "lid-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          520.47,
+          465.37,
+          554,
+          554,
+          -0.874
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-polaroid-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-polaroid-04.jpg",
+      "target": "photographic_content",
+      "scenario": "polaroid",
+      "tags": [
+        "polaroid",
+        "proc-carpet",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          368.37,
+          227.68,
+          230,
+          244,
+          -20.962
+        ],
+        [
+          602.8,
+          680.17,
+          239,
+          253,
+          -13.309
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-phone-capture-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-phone-capture-01.jpg",
+      "target": "photographic_content",
+      "scenario": "phone-capture",
+      "tags": [
+        "phone-capture",
+        "perspective",
+        "bg-kraft-paper",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          1054.98,
+          298.64,
+          313.56,
+          225.9,
+          14.013
+        ],
+        [
+          949.4,
+          695.74,
+          269.48,
+          195.25,
+          -23.214
+        ],
+        [
+          408.6,
+          292.54,
+          328.09,
+          240.07,
+          -19.987
+        ],
+        [
+          384.46,
+          694.26,
+          400.31,
+          221.59,
+          -15.51
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-phone-capture-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-phone-capture-02.jpg",
+      "target": "photographic_content",
+      "scenario": "phone-capture",
+      "tags": [
+        "phone-capture",
+        "perspective",
+        "bg-kraft-paper",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          520.92,
+          553.53,
+          618.63,
+          594.86,
+          -85.894
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-phone-capture-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-phone-capture-03.jpg",
+      "target": "photographic_content",
+      "scenario": "phone-capture",
+      "tags": [
+        "phone-capture",
+        "perspective",
+        "bg-wood-table",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          933.81,
+          731.91,
+          372.59,
+          280.87,
+          -11.51
+        ],
+        [
+          406.49,
+          292.52,
+          430.38,
+          236.09,
+          23.446
+        ],
+        [
+          1003.74,
+          252.33,
+          424.96,
+          238.65,
+          8.669
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-phone-capture-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-phone-capture-04.jpg",
+      "target": "photographic_content",
+      "scenario": "phone-capture",
+      "tags": [
+        "phone-capture",
+        "perspective",
+        "proc-carpet",
+        "1000x1400"
+      ],
+      "image_size": [
+        1000,
+        1400
+      ],
+      "rectangles": [
+        [
+          617.13,
+          1109.5,
+          447.43,
+          326.74,
+          -2.339
+        ],
+        [
+          514.73,
+          699.67,
+          288.03,
+          214.1,
+          -21.683
+        ],
+        [
+          428.03,
+          306.12,
+          340.24,
+          269.84,
+          -11.129
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-album-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-album-01.jpg",
+      "target": "photographic_content",
+      "scenario": "album",
+      "tags": [
+        "album",
+        "blank-spread",
+        "mounts",
+        "faded",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          1093.9498429628356,
+          708.7511836613829,
+          199,
+          299,
+          -3.973449630484229
+        ],
+        [
+          290.6729100832965,
+          294.6873160959542,
+          217,
+          288,
+          -4.118890604865835
+        ],
+        [
+          661.9303072374146,
+          275.6192470170827,
+          194,
+          290,
+          0.8434906784214818
+        ],
+        [
+          1047.7799912047233,
+          302.3371595827717,
+          192,
+          288,
+          1.1764395689998985
+        ],
+        [
+          708.0554700753999,
+          670.1808452778902,
+          251,
+          201,
+          -4.91377413581756
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-album-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-album-02.jpg",
+      "target": "photographic_content",
+      "scenario": "album",
+      "tags": [
+        "album",
+        "magnetic-album",
+        "plastic-glare",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          1069.89,
+          508.92,
+          264,
+          395,
+          2.293
+        ],
+        [
+          325.61,
+          427.53,
+          313,
+          208,
+          -0.061
+        ],
+        [
+          696.13,
+          483.95,
+          297,
+          296,
+          -0.131
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-album-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-album-03.jpg",
+      "target": "photographic_content",
+      "scenario": "album",
+      "tags": [
+        "album",
+        "blank-spread",
+        "mounts",
+        "foxed",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          437.1464160343986,
+          282.2523649213415,
+          297,
+          297,
+          -2.427781828073248
+        ],
+        [
+          979.8769831860135,
+          304.9901609445665,
+          425,
+          283,
+          -4.238457344041243
+        ],
+        [
+          990.3159673527189,
+          685.2937792673108,
+          329,
+          263,
+          4.650838018322554
+        ],
+        [
+          436.6762650527965,
+          702.7056936032028,
+          337,
+          269,
+          -4.684684461724828
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-album-04",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-album-04.jpg",
+      "target": "photographic_content",
+      "scenario": "album",
+      "tags": [
+        "album",
+        "magnetic-album",
+        "plastic-glare",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          997.45,
+          565.14,
+          465,
+          581,
+          0.037
+        ],
+        [
+          412.8,
+          482.63,
+          490,
+          489,
+          1.811
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-mixed-hard-01",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-mixed-hard-01.jpg",
+      "target": "photographic_content",
+      "scenario": "mixed-hard",
+      "tags": [
+        "mixed-hard",
+        "tight-gutters",
+        "rotated",
+        "textured-bg",
+        "gap~9px",
+        "bg-flatbed-white",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          499.92,
+          239.91,
+          466,
+          317,
+          10.279
+        ],
+        [
+          1031.95,
+          337.92,
+          549,
+          322,
+          10.279
+        ],
+        [
+          432.08,
+          622.42,
+          465,
+          399,
+          10.279
+        ],
+        [
+          962.18,
+          717.03,
+          553,
+          390,
+          10.279
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-mixed-hard-02",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-mixed-hard-02.jpg",
+      "target": "photographic_content",
+      "scenario": "mixed-hard",
+      "tags": [
+        "mixed-hard",
+        "rotated",
+        "textured-bg",
+        "bg-wood-table",
+        "2400x1700"
+      ],
+      "image_size": [
+        2400,
+        1700
+      ],
+      "rectangles": [
+        [
+          1908.14,
+          1229.25,
+          351,
+          624,
+          26.899
+        ],
+        [
+          1151.9,
+          1226.17,
+          367,
+          550,
+          -16.776
+        ],
+        [
+          503.89,
+          454.87,
+          308,
+          547,
+          -21.629
+        ],
+        [
+          1250.84,
+          467.39,
+          375,
+          562,
+          9.624
+        ],
+        [
+          1952.9,
+          462.2,
+          469,
+          586,
+          -27.197
+        ]
+      ]
+    },
+    {
+      "id": "robust-holdout-mixed-hard-03",
+      "suite": "robust-holdout",
+      "image": "fixtures/holdout/robust-holdout-mixed-hard-03.jpg",
+      "target": "photographic_content",
+      "scenario": "mixed-hard",
+      "tags": [
+        "mixed-hard",
+        "tight-gutters",
+        "dark-on-dark",
+        "gap~7px",
+        "felt-black",
+        "1400x1000"
+      ],
+      "image_size": [
+        1400,
+        1000
+      ],
+      "rectangles": [
+        [
+          381.37,
+          272.39,
+          594,
+          366,
+          -1.295
+        ],
+        [
+          1013.34,
+          255.6,
+          587,
+          361,
+          -1.295
+        ],
+        [
+          390.1,
+          724.99,
+          593,
+          463,
+          -1.295
+        ],
+        [
+          1025.08,
+          708.64,
+          584,
+          469,
+          -1.295
+        ]
+      ]
+    }
+  ]
+}
