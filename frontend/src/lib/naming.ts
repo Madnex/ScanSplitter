@@ -116,10 +116,23 @@ export function findDuplicateName(names: string[]): string | null {
   return null;
 }
 
-/** Apply a valid naming pattern to image-like objects without mutating them. */
+/**
+ * Apply a valid naming pattern to image-like objects without mutating them.
+ *
+ * By default every name is overwritten and any `nameEdited` flag is cleared
+ * (an explicit pattern change wins over manual names). With
+ * `preserveEdited`, images flagged `nameEdited` keep their own name and flag
+ * but still occupy their slot in the {n}/{photo} numbering.
+ */
 export function withGeneratedNames<
-  T extends { name: string; source: NamingImageInfo },
->(images: T[], pattern: string, startNumber: number, albumName: string): T[] {
+  T extends { name: string; nameEdited?: boolean; source: NamingImageInfo },
+>(
+  images: T[],
+  pattern: string,
+  startNumber: number,
+  albumName: string,
+  options: { preserveEdited?: boolean } = {}
+): T[] {
   if (!validatePattern(pattern).valid) return images;
   const names = generateNamesForImages(
     pattern,
@@ -127,5 +140,10 @@ export function withGeneratedNames<
     albumName,
     images.map((image) => image.source)
   );
-  return images.map((image, index) => ({ ...image, name: names[index] }));
+  return images.map((image, index) => {
+    if (options.preserveEdited && image.nameEdited) return image;
+    return image.nameEdited
+      ? { ...image, name: names[index], nameEdited: false }
+      : { ...image, name: names[index] };
+  });
 }

@@ -12,9 +12,8 @@ interface NamingPatternInputProps {
     photoIndex: number;
     globalIndex: number;
   };
-  // First duplicate filename the pattern would produce across the current
-  // image set, if any. Null/undefined means no duplicates (or nothing to
-  // check yet).
+  // First duplicate among the actual photo names (generated or hand-edited)
+  // across the full image set, if any. Null/undefined means no duplicates.
   duplicateWarning?: string | null;
   extension?: "jpg" | "png";
 }
@@ -102,9 +101,9 @@ export function NamingPatternInput({
       )}
 
       {/* Duplicate name warning */}
-      {validation.valid && duplicateWarning && (
+      {duplicateWarning && (
         <p className="text-xs text-amber-600 dark:text-amber-400">
-          This pattern produces duplicate filenames (e.g. "{duplicateWarning}") - exports would overwrite each other. Adjust the pattern or start number.
+          Duplicate filenames (e.g. "{duplicateWarning}") - exports would overwrite each other. Adjust the pattern, start number or photo names.
         </p>
       )}
     </div>
