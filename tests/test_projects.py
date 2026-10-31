@@ -16,8 +16,8 @@ import types
 import zipfile
 from dataclasses import dataclass
 
-import fitz
 import piexif
+import pymupdf as fitz
 import pytest
 from fastapi.testclient import TestClient
 from PIL import Image
