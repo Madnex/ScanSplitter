@@ -1,5 +1,6 @@
 import { useEffect, useRef, useCallback, useState } from "react";
 import * as fabric from "fabric";
+import { CROP_BOX_STYLE } from "@/lib/cropBoxStyle";
 import { AlertTriangle, Plus, RefreshCw, Trash2, RotateCcw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { BoundingBox } from "@/types";
@@ -146,23 +147,13 @@ export function ImageCanvas({
       angle: box.angle,
       originX: 'center',
       originY: 'center',
-      fill: "rgba(59, 130, 246, 0.2)",
-      stroke: "#3b82f6",
-      strokeWidth: 2,
+      ...CROP_BOX_STYLE,
       // Make sure it's selectable and has controls
       selectable: true,
       hasControls: true,
       hasBorders: true,
       lockRotation: false,
       lockUniScaling: false,
-      // Control styling
-      cornerColor: "#3b82f6",
-      cornerStyle: "circle",
-      cornerSize: 12,
-      transparentCorners: false,
-      borderColor: "#3b82f6",
-      borderScaleFactor: 2,
-      padding: 0,
     });
 
     // Store ID in data property
