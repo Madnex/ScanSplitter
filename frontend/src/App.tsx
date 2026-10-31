@@ -16,7 +16,7 @@ import { Button } from "@/components/ui/button";
 import { ProjectsRoot } from "@/components/projects/ProjectsRoot";
 import { uploadFile, detectBoxes, cropImages, exportZip, exportLocal, getImageUrl, isAbortError, FileConflictError, getModelStatuses, selectDirectory, startModelDownload } from "@/lib/api";
 import { findDuplicateName, withGeneratedNames } from "@/lib/naming";
-import { cropTargets, nextPendingDetectionIndex } from "@/lib/quickMode";
+import { cropTargets, moveCroppedImage, nextPendingDetectionIndex } from "@/lib/quickMode";
 import { buildExportPayload } from "@/lib/utils";
 import type { UploadedFile, BoundingBox, CroppedImage, DetectionSettings, NamingPattern, ModelKey, ModelStatus } from "@/types";
 
@@ -595,7 +595,7 @@ function App() {
   // Handle image name change
   const handleImageNameChange = useCallback((id: string, name: string) => {
     setCroppedImages((prev) =>
-      prev.map((img) => (img.id === id ? { ...img, name } : img))
+      prev.map((img) => (img.id === id ? { ...img, name, nameEdited: true } : img))
     );
   }, []);
 
@@ -631,6 +631,11 @@ function App() {
       );
     });
   }, []);
+
+  // Swap a photo with its neighbour within the same scan and renumber names
+  const handleMoveImage = useCallback((id: string, offset: -1 | 1) => {
+    setCroppedImages((prev) => moveCroppedImage(prev, id, offset, namingPattern));
+  }, [namingPattern]);
 
   // Handle image rotation (90° increments)
   const handleImageRotate = useCallback((id: string, direction: "left" | "right") => {
@@ -748,7 +753,8 @@ function App() {
           [...filtered, ...imagesWithSource],
           namingPattern.pattern,
           namingPattern.startNumber,
-          namingPattern.albumName
+          namingPattern.albumName,
+          { preserveEdited: true }
         );
       });
     } catch (error) {
@@ -829,7 +835,8 @@ function App() {
           [...retained, ...added],
           namingPattern.pattern,
           namingPattern.startNumber,
-          namingPattern.albumName
+          namingPattern.albumName,
+          { preserveEdited: true }
         );
       });
       setResultsViewMode("all");
@@ -1125,6 +1132,7 @@ function App() {
               onNameChange={handleImageNameChange}
               onDateChange={handleImageDateChange}
               onRotate={handleImageRotate}
+              onMoveImage={handleMoveImage}
               isExporting={isExporting}
               exportProgress={exportProgress}
               isBrowsingOutputDirectory={isBrowsingOutputDirectory}

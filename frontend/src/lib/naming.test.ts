@@ -21,5 +21,30 @@ describe("withGeneratedNames", () => {
   it("keeps the last valid names while a pattern is invalid", () => {
     expect(withGeneratedNames(images, "invalid", 1, "Family")).toBe(images);
   });
-});
 
+  describe("preserveEdited", () => {
+    const edited = [
+      { ...images[0], nameEdited: false },
+      { ...images[1], name: "Grandma", nameEdited: true },
+      { ...images[2], nameEdited: false },
+    ];
+
+    it("keeps edited names but still counts them in the numbering", () => {
+      const renamed = withGeneratedNames(edited, "{album}_{n}", 1, "Family", { preserveEdited: true });
+      expect(renamed.map((image) => image.name)).toEqual(["Family_0001", "Grandma", "Family_0003"]);
+      expect(renamed[1].nameEdited).toBe(true);
+    });
+
+    it("overwrites edited names and clears the flag without the option", () => {
+      const renamed = withGeneratedNames(edited, "{album}_{n}", 1, "Family");
+      expect(renamed.map((image) => image.name)).toEqual(["Family_0001", "Family_0002", "Family_0003"]);
+      expect(renamed.map((image) => image.nameEdited)).toEqual([false, false, false]);
+      expect(edited[1].nameEdited).toBe(true);
+    });
+
+    it("leaves names and flags untouched for an invalid pattern", () => {
+      expect(withGeneratedNames(edited, "invalid", 1, "Family")).toBe(edited);
+      expect(withGeneratedNames(edited, "invalid", 1, "Family", { preserveEdited: true })).toBe(edited);
+    });
+  });
+});

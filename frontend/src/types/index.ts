@@ -43,6 +43,7 @@ export interface CroppedImage {
   height: number;
   rotationApplied: number;
   name: string; // custom name for download
+  nameEdited?: boolean; // true once the user typed this name by hand
   source: ImageSource;
   dateTaken: string | null; // YYYY-MM-DD format for EXIF
 }

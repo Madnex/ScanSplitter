@@ -1,6 +1,6 @@
 import { buildExportPayload } from "@/lib/utils";
 import { useMemo, useState } from "react";
-import { Download, FolderDown, FolderOpen, RotateCcw, RotateCw, Expand, Calendar } from "lucide-react";
+import { Download, FolderDown, FolderOpen, RotateCcw, RotateCw, Expand, Calendar, ArrowUp, ArrowDown } from "lucide-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -8,7 +8,8 @@ import { ProgressBar } from "@/components/ui/progress";
 import { Lightbox } from "@/components/Lightbox";
 import { NamingPatternInput } from "@/components/NamingPatternInput";
 import { estimateBase64FileSize, formatFileSize, formatDimensions } from "@/lib/utils";
-import { validatePattern, generateNamesForImages, findDuplicateName } from "@/lib/naming";
+import { findDuplicateName } from "@/lib/naming";
+import { canMoveCroppedImage } from "@/lib/quickMode";
 import type { CroppedImage, NamingPattern } from "@/types";
 
 interface JobProgress {
@@ -28,6 +29,7 @@ interface ResultsGalleryProps {
   onNameChange: (id: string, name: string) => void;
   onDateChange: (id: string, date: string | null) => void;
   onRotate: (id: string, direction: "left" | "right") => void;
+  onMoveImage: (id: string, offset: -1 | 1) => void;
   isExporting: boolean;
   exportProgress?: JobProgress | null;
   isBrowsingOutputDirectory: boolean;
@@ -52,6 +54,7 @@ export function ResultsGallery({
   onNameChange,
   onDateChange,
   onRotate,
+  onMoveImage,
   isExporting,
   exportProgress = null,
   isBrowsingOutputDirectory,
@@ -68,29 +71,12 @@ export function ResultsGallery({
   // Use the appropriate images based on view mode
   const displayImages = viewMode === "current" ? currentScanImages : allImages;
 
-  const patternValidation = useMemo(
-    () => validatePattern(namingPattern.pattern),
-    [namingPattern.pattern]
+  // Check the actual names (generated and hand-edited) across the *full*
+  // image set, since export names every photo regardless of the active view.
+  const duplicateNameWarning = useMemo(
+    () => findDuplicateName(allImages.map((img) => img.name)),
+    [allImages]
   );
-
-  // Would the naming pattern produce duplicate filenames across the *full*
-  // image set? Mirrors what "Apply" actually does (App.tsx's
-  // applyNamingPattern operates on all images, not just the current view),
-  // so this warning matches reality regardless of which view is active.
-  const duplicateNameWarning = useMemo(() => {
-    if (!patternValidation.valid || allImages.length === 0) return null;
-    const names = generateNamesForImages(
-      namingPattern.pattern,
-      namingPattern.startNumber,
-      namingPattern.albumName,
-      allImages.map((img) => ({
-        fileIndex: img.source.fileIndex,
-        page: img.source.page,
-        filename: img.source.filename,
-      }))
-    );
-    return findDuplicateName(names);
-  }, [allImages, namingPattern, patternValidation.valid]);
 
   const downloadImage = async (image: CroppedImage) => {
     try {
@@ -352,6 +338,28 @@ export function ResultsGallery({
                     className="h-7 text-xs flex-1"
                     title={outputFormat === "jpeg" ? "Photo date (embedded in JPEG export)" : "Photo date metadata is available in JPEG export"}
                   />
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 flex-shrink-0"
+                    onClick={() => onMoveImage(image.id, -1)}
+                    disabled={isExporting || !canMoveCroppedImage(allImages, image.id, -1)}
+                    title="Move up"
+                    aria-label="Move up"
+                  >
+                    <ArrowUp className="w-3 h-3" />
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-7 px-2 flex-shrink-0"
+                    onClick={() => onMoveImage(image.id, 1)}
+                    disabled={isExporting || !canMoveCroppedImage(allImages, image.id, 1)}
+                    title="Move down"
+                    aria-label="Move down"
+                  >
+                    <ArrowDown className="w-3 h-3" />
+                  </Button>
                 </div>
               </div>
             ))}
